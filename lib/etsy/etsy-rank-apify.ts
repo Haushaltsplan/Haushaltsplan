@@ -12,7 +12,18 @@ import {
 } from '@/lib/etsy/etsy-seo-audit-cache'
 import type { EtsyRankKeywordResult, EtsyRankTrackingResult } from '@/lib/etsy/etsy-seo-audit-types'
 import { ladeEtsyShopListings } from '@/lib/etsy/etsy-listings-server'
-import { sucheEtsyReihenfolge, type EtsySuchReihenfolge } from '@/lib/etsy/etsy-scraping'
+import {
+  etsyCircuitOffen,
+  markiereEtsyApifyFehler,
+  markiereEtsyApifyOk,
+} from '@/lib/etsy/etsy-circuit-breaker'
+import {
+  etsyHtmlCircuitOffen,
+  etsyHtmlCircuitRestMs,
+  sucheEtsyReihenfolge,
+  syncEtsyHtmlCircuitFromDb,
+  type EtsySuchReihenfolge,
+} from '@/lib/etsy/etsy-scraping'
 
 const SEITE = 48
 
@@ -152,24 +163,53 @@ export async function trackeEtsyListingRanks(opts: {
   let results: EtsyRankKeywordResult[] | null = null
   let provider: EtsyRankTrackingResult['provider'] = 'unavailable'
 
-  if (apifyKonfiguriert()) {
+  await syncEtsyHtmlCircuitFromDb()
+  const apifyOffen = await etsyCircuitOffen('apify')
+
+  if (apifyKonfiguriert() && !apifyOffen) {
     try {
       results = await trackeViaApify({ listingId: opts.listingId, keywords })
-      if (results) provider = 'apify'
+      if (results) {
+        provider = 'apify'
+        await markiereEtsyApifyOk()
+      } else {
+        await markiereEtsyApifyFehler('leeres Apify-Ergebnis')
+      }
     } catch (e) {
+      await markiereEtsyApifyFehler(e instanceof Error ? e.message : 'Apify Fehler')
       console.warn('[etsy-rank] Apify:', e instanceof Error ? e.message : e)
     }
+  } else if (apifyOffen) {
+    console.info(`[etsy-rank] Apify Circuit offen (DB) — skip Apify`)
   }
 
+  // HTML nur wenn Circuit zu; sonst Open-API-Relevanz über sucheEtsyReihenfolge (interner Fallback)
   if (!results) {
+    if (etsyHtmlCircuitOffen()) {
+      console.info(
+        `[etsy-rank] HTML Circuit offen (${Math.round(etsyHtmlCircuitRestMs() / 1000)}s) — nur API-Relevanz`,
+      )
+    }
     const reihen: Array<EtsySuchReihenfolge | null> = []
     results = []
-    for (const keyword of keywords) {
-      const r = await sucheEtsyReihenfolge(keyword)
-      reihen.push(r)
-      results.push(positionAus(r, keyword, opts.listingId))
+    try {
+      for (const keyword of keywords) {
+        const r = await sucheEtsyReihenfolge(keyword)
+        reihen.push(r)
+        results.push(positionAus(r, keyword, opts.listingId))
+      }
+      provider = providerAus(reihen)
+    } catch (e) {
+      console.warn('[etsy-rank] Suche:', e instanceof Error ? e.message : e)
+      results = keywords.map((keyword) => ({
+        keyword,
+        page: null,
+        position: null,
+        found: false,
+        note: 'Suche übersprungen (Circuit/Fehler)',
+      }))
+      provider = 'unavailable'
     }
-    provider = providerAus(reihen)
   }
 
   if (opts.ownerUserId && provider !== 'unavailable') {

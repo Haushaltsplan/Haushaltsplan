@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { ladeEtsyShopListings } from '@/lib/etsy/etsy-listings-server'
+import { baueEtsyFeeLedgerAuswertung } from '@/lib/etsy/etsy-fee-ledger-server'
 import {
   berechneMarge,
   type EtsyGeldErgebnis,
@@ -21,6 +22,9 @@ const DEFAULT_EINSTELLUNGEN: EtsyShopEinstellungen = {
   etsyGebuehrPct: 6.5,
   paymentGebuehrPct: 4,
   paymentGebuehrFix: 0.25,
+  gemeinkostenAufschlagPct: 12,
+  mwstSatzPct: 19,
+  preisIstBrutto: true,
   kapazitaetProWoche: 4,
   starSeller: {},
 }
@@ -65,6 +69,14 @@ export async function ladeEtsyEinstellungen(
     etsyGebuehrPct: Number(data.etsy_gebuehr_pct) || DEFAULT_EINSTELLUNGEN.etsyGebuehrPct,
     paymentGebuehrPct: Number(data.payment_gebuehr_pct) || DEFAULT_EINSTELLUNGEN.paymentGebuehrPct,
     paymentGebuehrFix: Number(data.payment_gebuehr_fix) || DEFAULT_EINSTELLUNGEN.paymentGebuehrFix,
+    gemeinkostenAufschlagPct:
+      data.gemeinkosten_aufschlag_pct != null
+        ? Number(data.gemeinkosten_aufschlag_pct)
+        : DEFAULT_EINSTELLUNGEN.gemeinkostenAufschlagPct,
+    mwstSatzPct:
+      data.mwst_satz_pct != null ? Number(data.mwst_satz_pct) : DEFAULT_EINSTELLUNGEN.mwstSatzPct,
+    preisIstBrutto:
+      data.preis_ist_brutto != null ? Boolean(data.preis_ist_brutto) : DEFAULT_EINSTELLUNGEN.preisIstBrutto,
     kapazitaetProWoche: Number(data.kapazitaet_pro_woche) || DEFAULT_EINSTELLUNGEN.kapazitaetProWoche,
     starSeller: (data.star_seller as EtsyStarSellerCheck) || {},
   }
@@ -81,6 +93,9 @@ export async function speichereEtsyEinstellungen(
     etsyGebuehrPct: patch.etsyGebuehrPct ?? aktuell.etsyGebuehrPct,
     paymentGebuehrPct: patch.paymentGebuehrPct ?? aktuell.paymentGebuehrPct,
     paymentGebuehrFix: patch.paymentGebuehrFix ?? aktuell.paymentGebuehrFix,
+    gemeinkostenAufschlagPct: patch.gemeinkostenAufschlagPct ?? aktuell.gemeinkostenAufschlagPct,
+    mwstSatzPct: patch.mwstSatzPct ?? aktuell.mwstSatzPct,
+    preisIstBrutto: patch.preisIstBrutto ?? aktuell.preisIstBrutto,
     kapazitaetProWoche: patch.kapazitaetProWoche ?? aktuell.kapazitaetProWoche,
     starSeller: patch.starSeller ?? aktuell.starSeller,
   }
@@ -90,6 +105,9 @@ export async function speichereEtsyEinstellungen(
     etsy_gebuehr_pct: next.etsyGebuehrPct,
     payment_gebuehr_pct: next.paymentGebuehrPct,
     payment_gebuehr_fix: next.paymentGebuehrFix,
+    gemeinkosten_aufschlag_pct: next.gemeinkostenAufschlagPct,
+    mwst_satz_pct: next.mwstSatzPct,
+    preis_ist_brutto: next.preisIstBrutto,
     kapazitaet_pro_woche: next.kapazitaetProWoche,
     star_seller: next.starSeller,
     updated_at: new Date().toISOString(),
@@ -211,16 +229,23 @@ export async function baueEtsyGeld(ownerUserId: string, sb: SupabaseClient): Pro
   }
   toteListings.sort((a, b) => b.priceEur - a.priceEur)
 
+  const modellGeb = Math.round(gebuehren30 * 100) / 100
+  const feeLedger = await baueEtsyFeeLedgerAuswertung(ownerUserId, sb, modellGeb).catch(() => null)
+  const gebuehrenEcht = feeLedger && feeLedger.fees30Eur > 0 ? feeLedger.fees30Eur : null
+  const gebFuerNetto = gebuehrenEcht ?? modellGeb
+
   return {
     einstellungen,
     listings: geldListings,
     pnl: {
       umsatz30: Math.round(umsatz30 * 100) / 100,
-      gebuehren30: Math.round(gebuehren30 * 100) / 100,
+      gebuehren30: modellGeb,
+      gebuehrenEcht30: gebuehrenEcht,
       material30: Math.round(material30 * 100) / 100,
-      netto30: Math.round((umsatz30 - gebuehren30 - material30) * 100) / 100,
+      netto30: Math.round((umsatz30 - gebFuerNetto - material30) * 100) / 100,
       verkaufe30,
     },
+    feeLedger,
     portfolio: {
       aktiverWertEur: Math.round(aktiverWertEur * 100) / 100,
       listingsMitKosten,

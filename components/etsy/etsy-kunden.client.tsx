@@ -2,8 +2,15 @@
 
 import { ShopKpi, ShopSection, eur, postShop, zahl } from '@/components/etsy/etsy-shop-ui'
 import type { EtsyKundenErgebnis } from '@/lib/etsy/etsy-shop-os-types'
+import { kopiereEtsySmartCopy, type EtsySmartCopyArt } from '@/lib/etsy/etsy-smart-copy'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+
+function crmArtZuCopy(art: string): EtsySmartCopyArt {
+  if (art === 'geschenk_11m') return 'geschenk_11m'
+  if (art === 'review') return 'review'
+  return 'pflege_30d'
+}
 
 type Props = { verbunden: boolean }
 
@@ -65,15 +72,29 @@ export function EtsyKunden({ verbunden }: Props) {
                         fällig {a.faelligAm} — {a.text}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      className="text-xs text-amber-300 hover:underline"
-                      onClick={() =>
-                        void postShop('/api/etsy/kunden', { action: 'crm_erledigt', id: a.id }).then(() => lade())
-                      }
-                    >
-                      Erledigt
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="text-xs text-sky-300 hover:underline"
+                        onClick={() =>
+                          void kopiereEtsySmartCopy(crmArtZuCopy(a.art), {
+                            kaeufer_name: a.kaeuferName,
+                            holzart: daten.kaeufer.find((k) => k.key === a.kaeuferKey)?.holzVorlieben[0],
+                          }).then(() => toast.success('Nachricht kopiert — in Etsy einfügen'))
+                        }
+                      >
+                        Smart Copy
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs text-amber-300 hover:underline"
+                        onClick={() =>
+                          void postShop('/api/etsy/kunden', { action: 'crm_erledigt', id: a.id }).then(() => lade())
+                        }
+                      >
+                        Erledigt
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -138,32 +159,67 @@ export function EtsyKunden({ verbunden }: Props) {
                   <span>
                     {g.kaeuferName}: „{g.textWunsch}” · +{eur(g.aufschlagEur)}
                   </span>
-                  <select
-                    value={g.status}
-                    onChange={(e) =>
-                      void postShop('/api/etsy/kunden', {
-                        action: 'gravur_status',
-                        id: g.id,
-                        gravur: { status: e.target.value },
-                      }).then(() => lade())
-                    }
-                    className="rounded-lg border border-[var(--app-border)] bg-transparent px-2 py-1 text-xs"
-                  >
-                    {['offen', 'skizze', 'fertig', 'abgelehnt'].map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="text-xs text-sky-300 hover:underline"
+                      onClick={() =>
+                        void kopiereEtsySmartCopy('gravur_bestaetigung', {
+                          kaeufer_name: g.kaeuferName,
+                          gravur_text: g.textWunsch,
+                          aufschlag_eur: g.aufschlagEur,
+                          receipt_id: g.receiptId ?? undefined,
+                        }).then(() => toast.success('Gravur-Text kopiert'))
+                      }
+                    >
+                      Smart Copy
+                    </button>
+                    <select
+                      value={g.status}
+                      onChange={(e) =>
+                        void postShop('/api/etsy/kunden', {
+                          action: 'gravur_status',
+                          id: g.id,
+                          gravur: { status: e.target.value },
+                        }).then(() => lade())
+                      }
+                      className="rounded-lg border border-[var(--app-border)] bg-transparent px-2 py-1 text-xs"
+                    >
+                      {['offen', 'skizze', 'fertig', 'abgelehnt'].map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </li>
               ))}
             </ul>
           </ShopSection>
 
-          <ShopSection title="Inbox-Triage (manuell)">
-            <p className="text-xs text-[var(--app-text-muted)]">
-              Ohne conversations-Scope: wichtige Etsy-Nachrichten hier priorisieren.
-            </p>
+          {daten.receiptNachrichten.length > 0 ? (
+            <ShopSection title="Käufertexte aus Bestellungen">
+              <p className="text-xs text-[var(--app-text-muted)]">{daten.conversationsHinweis}</p>
+              <ul className="mt-2 space-y-2">
+                {daten.receiptNachrichten.map((r) => (
+                  <li key={r.receiptId} className="rounded-xl border border-[var(--app-border)] p-3 text-sm">
+                    <p className="font-medium text-[var(--app-text)]">
+                      {r.kaeuferName} · #{r.receiptId}
+                    </p>
+                    {r.messageFromBuyer ? (
+                      <p className="mt-1 text-[var(--app-text-muted)]">Käufer: {r.messageFromBuyer}</p>
+                    ) : null}
+                    {r.giftMessage ? (
+                      <p className="mt-1 text-[var(--app-text-muted)]">Geschenk: {r.giftMessage}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </ShopSection>
+          ) : null}
+
+          <ShopSection title="Inbox-Triage">
+            <p className="text-xs text-[var(--app-text-muted)]">{daten.conversationsHinweis}</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <select
                 value={msgPrio}

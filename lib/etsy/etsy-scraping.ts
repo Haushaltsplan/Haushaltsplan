@@ -102,13 +102,41 @@ function erstelleDrossel(minAbstandMs: number) {
 const apiDrossel = erstelleDrossel(150)
 const htmlDrossel = erstelleDrossel(1500)
 let htmlGeblocktBis = 0
+let htmlCircuitSynced = false
 
 function htmlGeblockt(): boolean {
   return Date.now() < htmlGeblocktBis
 }
 
+/** Für Rank/Cron: HTML-Circuit offen? (DataDome 403/429) — Memory + DB. */
+export function etsyHtmlCircuitOffen(): boolean {
+  return htmlGeblockt()
+}
+
+export function etsyHtmlCircuitRestMs(): number {
+  return Math.max(0, htmlGeblocktBis - Date.now())
+}
+
+/** Vor Cron/Rank: DB-Stand in Memory laden (Cold-Start-sicher). */
+export async function syncEtsyHtmlCircuitFromDb(): Promise<void> {
+  if (htmlCircuitSynced && htmlGeblockt()) return
+  try {
+    const { etsyCircuitOffen, etsyCircuitRestMs } = await import('@/lib/etsy/etsy-circuit-breaker')
+    if (await etsyCircuitOffen('html')) {
+      htmlGeblocktBis = Date.now() + (await etsyCircuitRestMs('html'))
+    }
+  } catch {
+    /* Migration fehlt — nur Memory */
+  }
+  htmlCircuitSynced = true
+}
+
 function markiereHtmlGeblockt(status: number) {
-  if (status === 403 || status === 429) htmlGeblocktBis = Date.now() + HTML_BLOCK_MS
+  if (status !== 403 && status !== 429) return
+  htmlGeblocktBis = Date.now() + HTML_BLOCK_MS
+  void import('@/lib/etsy/etsy-circuit-breaker')
+    .then((m) => m.markiereEtsyHtmlGeblockt(status, `etsy-html ${status}`))
+    .catch(() => undefined)
 }
 
 // ---------------------------------------------------------------------------

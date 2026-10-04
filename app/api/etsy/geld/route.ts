@@ -1,4 +1,5 @@
 import { etsyApiUser } from '@/lib/etsy/etsy-api-auth'
+import { syncEtsyFeeLedger } from '@/lib/etsy/etsy-fee-ledger-server'
 import {
   baueEtsyGeld,
   speichereEtsyEinstellungen,
@@ -53,6 +54,10 @@ export async function POST(req: Request) {
     if (body.action === 'vorlage' && body.vorlageName && body.kosten) {
       await speichereKostenVorlage(auth.userId, body.vorlageName, body.kosten, auth.sb)
       return NextResponse.json({ ok: true })
+    }
+    if (body.action === 'ledger_sync') {
+      const sync = await syncEtsyFeeLedger(auth.userId)
+      return NextResponse.json({ ok: true, sync })
     }
     return NextResponse.json({ error: 'Unbekannte Aktion.' }, { status: 400 })
   } catch (e) {

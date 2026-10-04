@@ -2,6 +2,7 @@
 
 import { ShopKpi, ShopSection, eur, postShop, zahl } from '@/components/etsy/etsy-shop-ui'
 import type { EtsyBestellStatus } from '@/lib/etsy/etsy-shop-os-types'
+import { kopiereEtsySmartCopy } from '@/lib/etsy/etsy-smart-copy'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -21,6 +22,8 @@ type Bestellung = {
   masseText: string | null
   zollHinweis: string
   notiz: string
+  messageFromBuyer?: string
+  giftMessage?: string
   gekauftAt: string | null
 }
 
@@ -145,6 +148,12 @@ export function EtsyBetrieb({ verbunden }: Props) {
                         </p>
                         {b.zollHinweis ? <p className="mt-1 text-xs text-amber-300">{b.zollHinweis}</p> : null}
                         {b.adresse ? <p className="mt-1 text-xs text-[var(--app-text-muted)]">{b.adresse}</p> : null}
+                        {b.messageFromBuyer ? (
+                          <p className="mt-1 text-xs text-sky-200">Käufer: {b.messageFromBuyer}</p>
+                        ) : null}
+                        {b.giftMessage ? (
+                          <p className="mt-1 text-xs text-sky-200">Geschenk: {b.giftMessage}</p>
+                        ) : null}
                       </div>
                       <select
                         value={b.status}
@@ -158,11 +167,26 @@ export function EtsyBetrieb({ verbunden }: Props) {
                         ))}
                       </select>
                     </div>
-                    <p className="mt-2 text-[11px] text-[var(--app-text-muted)]">
-                      Packcheck: Menge {zahl(b.menge)}
-                      {b.gewichtG != null ? ` · ${b.gewichtG} g` : ' · Gewicht fehlt'}
-                      {b.masseText ? ` · ${b.masseText}` : ''}
-                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <p className="text-[11px] text-[var(--app-text-muted)]">
+                        Packcheck: Menge {zahl(b.menge)}
+                        {b.gewichtG != null ? ` · ${b.gewichtG} g` : ' · Gewicht fehlt'}
+                        {b.masseText ? ` · ${b.masseText}` : ''}
+                      </p>
+                      <button
+                        type="button"
+                        className="text-[11px] text-sky-300 hover:underline"
+                        onClick={() =>
+                          void kopiereEtsySmartCopy('unterwegs', {
+                            kaeufer_name: b.kaeuferName,
+                            bestellung_id: b.receiptId,
+                            listing_title: b.listingTitle,
+                          }).then(() => toast.success('Versand-Text kopiert'))
+                        }
+                      >
+                        Smart Copy Versand
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>

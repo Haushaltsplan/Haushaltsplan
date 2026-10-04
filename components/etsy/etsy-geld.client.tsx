@@ -34,6 +34,9 @@ export function EtsyGeld({ verbunden }: Props) {
   const [kosten, setKosten] = useState<EtsyKostenZeile>(LEER_KOSTEN)
   const [holzart, setHolzart] = useState('')
   const [zielMarge, setZielMarge] = useState(55)
+  const [gemeinkosten, setGemeinkosten] = useState(12)
+  const [mwst, setMwst] = useState(19)
+  const [preisBrutto, setPreisBrutto] = useState(true)
 
   const lade = useCallback(async () => {
     if (!verbunden) return
@@ -44,6 +47,9 @@ export function EtsyGeld({ verbunden }: Props) {
       if (!res.ok) throw new Error(j.error || 'Laden fehlgeschlagen')
       setDaten(j)
       setZielMarge(j.einstellungen.zielMargePct)
+      setGemeinkosten(j.einstellungen.gemeinkostenAufschlagPct)
+      setMwst(j.einstellungen.mwstSatzPct)
+      setPreisBrutto(j.einstellungen.preisIstBrutto)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
@@ -77,8 +83,16 @@ export function EtsyGeld({ verbunden }: Props) {
 
   async function speichereMarge() {
     try {
-      await postShop('/api/etsy/geld', { action: 'einstellungen', einstellungen: { zielMargePct: zielMarge } })
-      toast.success('Zielmarge gespeichert')
+      await postShop('/api/etsy/geld', {
+        action: 'einstellungen',
+        einstellungen: {
+          zielMargePct: zielMarge,
+          gemeinkostenAufschlagPct: gemeinkosten,
+          mwstSatzPct: mwst,
+          preisIstBrutto: preisBrutto,
+        },
+      })
+      toast.success('Kalkulation gespeichert')
       void lade()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
@@ -92,10 +106,68 @@ export function EtsyGeld({ verbunden }: Props) {
         <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <ShopKpi label="Umsatz 30d" value={eur(daten.pnl.umsatz30)} hint={`${zahl(daten.pnl.verkaufe30)} Verkäufe`} />
-            <ShopKpi label="Gebühren 30d" value={eur(daten.pnl.gebuehren30)} />
+            <ShopKpi
+              label="Gebühren 30d"
+              value={eur(daten.pnl.gebuehrenEcht30 ?? daten.pnl.gebuehren30)}
+              hint={
+                daten.pnl.gebuehrenEcht30 != null
+                  ? `Echt · Modell ${eur(daten.pnl.gebuehren30)}`
+                  : 'Modell (Ledger syncen)'
+              }
+            />
             <ShopKpi label="Material+Arbeit" value={eur(daten.pnl.material30)} />
             <ShopKpi label="Netto 30d" value={eur(daten.pnl.netto30)} hint="nach Gebühren & Kosten" />
           </div>
+
+          <ShopSection
+            title="Etsy Fee-Ledger (echt)"
+            action={
+              <button
+                type="button"
+                className="text-xs text-amber-300 hover:underline"
+                onClick={() =>
+                  void postShop('/api/etsy/geld', { action: 'ledger_sync' })
+                    .then(() => {
+                      toast.success('Ledger synchronisiert')
+                      void lade()
+                    })
+                    .catch((e: Error) => toast.error(e.message))
+                }
+              >
+                Sync Ledger
+              </button>
+            }
+          >
+            {daten.feeLedger ? (
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <ShopKpi label="Echte Fees 30d" value={eur(daten.feeLedger.fees30Eur)} />
+                  <ShopKpi label="Gross Payments" value={eur(daten.feeLedger.gross30Eur)} />
+                  <ShopKpi label="Net Payments" value={eur(daten.feeLedger.net30Eur)} />
+                  <ShopKpi
+                    label="Δ vs Modell"
+                    value={eur(daten.feeLedger.vergleichModell.deltaEur)}
+                    hint={daten.feeLedger.vergleichModell.hinweis}
+                  />
+                </div>
+                <ul className="mt-3 space-y-1 text-xs text-[var(--app-text-muted)]">
+                  {daten.feeLedger.letzteEintraege.slice(0, 8).map((e) => (
+                    <li key={e.entryId} className="flex justify-between gap-2">
+                      <span className="truncate">
+                        {e.description || e.entryType || `#${e.entryId}`}
+                      </span>
+                      <span className="shrink-0 tabular-nums">{eur(e.amountEur)}</span>
+                    </li>
+                  ))}
+                  {daten.feeLedger.letzteEintraege.length === 0 ? (
+                    <li>Noch keine Einträge — Sync oder Migration prüfen.</li>
+                  ) : null}
+                </ul>
+              </>
+            ) : (
+              <p className="text-sm text-[var(--app-text-muted)]">Ledger noch nicht geladen.</p>
+            )}
+          </ShopSection>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <ShopKpi label="Portfolio-Wert" value={eur(daten.portfolio.aktiverWertEur)} hint="aktive Listings × Preis" />
             <ShopKpi
@@ -107,24 +179,56 @@ export function EtsyGeld({ verbunden }: Props) {
           </div>
 
           <ShopSection
-            title="Zielmarge"
+            title="Kalkulation (Marge · Gemeinkosten · MwSt)"
             action={
               <button type="button" onClick={() => void speichereMarge()} className="text-xs text-amber-300 hover:underline">
                 Speichern
               </button>
             }
           >
-            <div className="flex flex-wrap items-center gap-3">
-              <input
-                type="number"
-                min={10}
-                max={90}
-                value={zielMarge}
-                onChange={(e) => setZielMarge(Number(e.target.value))}
-                className="w-24 rounded-lg border border-[var(--app-border)] bg-transparent px-2 py-1.5 text-sm"
-              />
-              <span className="text-sm text-[var(--app-text-muted)]">% Netto vom Verkaufspreis (nach Gebühren)</span>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <label className="text-xs text-[var(--app-text-muted)]">
+                Zielmarge %
+                <input
+                  type="number"
+                  min={10}
+                  max={90}
+                  value={zielMarge}
+                  onChange={(e) => setZielMarge(Number(e.target.value))}
+                  className="mt-0.5 w-full rounded-lg border border-[var(--app-border)] bg-transparent px-2 py-1.5 text-sm text-[var(--app-text)]"
+                />
+              </label>
+              <label className="text-xs text-[var(--app-text-muted)]">
+                Gemeinkosten %
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={gemeinkosten}
+                  onChange={(e) => setGemeinkosten(Number(e.target.value))}
+                  className="mt-0.5 w-full rounded-lg border border-[var(--app-border)] bg-transparent px-2 py-1.5 text-sm text-[var(--app-text)]"
+                />
+              </label>
+              <label className="text-xs text-[var(--app-text-muted)]">
+                MwSt %
+                <input
+                  type="number"
+                  min={0}
+                  max={25}
+                  value={mwst}
+                  onChange={(e) => setMwst(Number(e.target.value))}
+                  className="mt-0.5 w-full rounded-lg border border-[var(--app-border)] bg-transparent px-2 py-1.5 text-sm text-[var(--app-text)]"
+                />
+              </label>
+              <label className="flex items-end gap-2 pb-1.5 text-xs text-[var(--app-text-muted)]">
+                <input type="checkbox" checked={preisBrutto} onChange={(e) => setPreisBrutto(e.target.checked)} />
+                Preis inkl. MwSt
+              </label>
             </div>
+            <p className="mt-2 text-xs text-[var(--app-text-muted)]">
+              Gemeinkosten = Verschnitt/Risse/Werkstatt auf Material+Arbeit. Marge auf Netto-Erlös (MwSt herausgerechnet).
+              Kleinunternehmer: MwSt 0. Fees weiterhin auf Brutto-Transaktion.
+            </p>
           </ShopSection>
 
           {daten.portfolio.toteListings.length > 0 ? (

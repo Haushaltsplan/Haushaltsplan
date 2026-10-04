@@ -19,6 +19,9 @@ type ApiReceipt = {
   is_shipped?: boolean
   create_timestamp?: number
   created_timestamp?: number
+  message_from_buyer?: string | null
+  gift_message?: string | null
+  buyer_user_id?: number | null
   grandtotal?: { amount?: number; divisor?: number }
   total_price?: { amount?: number; divisor?: number }
   transactions?: Array<{
@@ -121,6 +124,9 @@ export async function syncEtsyBestellungen(ownerUserId: string): Promise<{ anzah
         menge: Math.max(1, Number(tx?.quantity) || 1),
         is_shipped: shipped,
         zoll_hinweis: zollHinweis(land),
+        message_from_buyer: String(r.message_from_buyer || '').slice(0, 1000),
+        gift_message: String(r.gift_message || '').slice(0, 1000),
+        buyer_user_id: r.buyer_user_id != null ? Number(r.buyer_user_id) : null,
         gekauft_at: Number.isFinite(ts) ? new Date(ts).toISOString() : null,
         updated_at: new Date().toISOString(),
       })
@@ -174,6 +180,8 @@ export type EtsyBestellungZeile = {
   masseText: string | null
   zollHinweis: string
   notiz: string
+  messageFromBuyer: string
+  giftMessage: string
   gekauftAt: string | null
 }
 
@@ -202,6 +210,8 @@ export async function ladeEtsyBestellungen(ownerUserId: string, sb: SupabaseClie
     masseText: r.masse_text != null ? String(r.masse_text) : null,
     zollHinweis: String(r.zoll_hinweis || ''),
     notiz: String(r.notiz || ''),
+    messageFromBuyer: String(r.message_from_buyer || ''),
+    giftMessage: String(r.gift_message || ''),
     gekauftAt: r.gekauft_at != null ? String(r.gekauft_at) : null,
   }))
 }

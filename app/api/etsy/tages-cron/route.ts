@@ -7,8 +7,10 @@
  * Kein Gemini — nur Etsy-/Google-/Amazon-Daten.
  */
 import { syncEtsyBestellungen } from '@/lib/etsy/etsy-bestellung-server'
+import { syncEtsyFeeLedger } from '@/lib/etsy/etsy-fee-ledger-server'
 import { scanneEtsyKeywordsFuerShop } from '@/lib/etsy/etsy-keyword-auto-server'
 import { aktualisiereEtsyKonkurrenz } from '@/lib/etsy/etsy-konkurrenz-server'
+import { syncEtsyHtmlCircuitFromDb } from '@/lib/etsy/etsy-scraping'
 import { erfasseEtsyListingStatistik } from '@/lib/etsy/etsy-statistik-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { NextResponse } from 'next/server'
@@ -25,16 +27,22 @@ function cronErlaubt(req: Request): boolean {
 
 export async function GET(req: Request) {
   if (!cronErlaubt(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  await syncEtsyHtmlCircuitFromDb().catch(() => undefined)
   const { data: owners } = await createSupabaseAdmin().from('etsy_oauth_tokens').select('owner_user_id')
   const userIds = [...new Set((owners ?? []).map((o) => String(o.owner_user_id)).filter(Boolean))]
   const report: Array<Record<string, unknown>> = []
   for (const ownerUserId of userIds) {
-    const [statistik, bestellungen, konkurrenz] = await Promise.all([
+    const [statistik, bestellungen, ledger, konkurrenz] = await Promise.all([
       erfasseEtsyListingStatistik(ownerUserId).catch((e) => ({
         fehler: e instanceof Error ? e.message.slice(0, 160) : 'Fehler',
       })),
       syncEtsyBestellungen(ownerUserId).catch((e) => ({
         anzahl: 0,
+        fehler: e instanceof Error ? e.message.slice(0, 160) : 'Fehler',
+      })),
+      syncEtsyFeeLedger(ownerUserId).catch((e) => ({
+        ledger: 0,
+        payments: 0,
         fehler: e instanceof Error ? e.message.slice(0, 160) : 'Fehler',
       })),
       aktualisiereEtsyKonkurrenz(ownerUserId).catch((e) => ({
@@ -46,7 +54,7 @@ export async function GET(req: Request) {
       .catch((e) => ({
         fehler: e instanceof Error ? e.message.slice(0, 160) : 'Fehler',
       }))
-    report.push({ ownerUserId, statistik, bestellungen, konkurrenz, keywords })
+    report.push({ ownerUserId, statistik, bestellungen, ledger, konkurrenz, keywords })
   }
   console.info('[etsy-tages-cron]', JSON.stringify(report))
   return NextResponse.json({ ok: true, report })

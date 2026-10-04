@@ -269,8 +269,9 @@ function tageZwischen(a: string, b: string): number {
 }
 
 /**
- * Zuwachs eines Lebenszeit-Zählers im Fenster (von, bis]. Gibt den Wert nur zurück,
- * wenn beide Snapshots existieren und höchstens 2 Tage vom Soll abweichen.
+ * Zuwachs eines Lebenszeit-Zählers im Fenster (von, bis].
+ * Cron-Lücken: Wert = (Δ Snapshots / TageSpan) × SollTage — nicht starr heute−gestern.
+ * Wenn Anker >4 Tage vom Soll abweichen → null (zu unzuverlässig für Alarm-Aufgaben).
  */
 export function zuwachsImFenster(
   reihe: StatPunkt[],
@@ -281,11 +282,15 @@ export function zuwachsImFenster(
   const a = stand(reihe, von)
   const b = stand(reihe, bis)
   if (!a || !b || a.tag === b.tag) return null
-  if (tageZwischen(a.tag, von) > 2 || tageZwischen(b.tag, bis) > 2) return null
+  if (tageZwischen(a.tag, von) > 4 || tageZwischen(b.tag, bis) > 4) return null
   const va = a[feld]
   const vb = b[feld]
   if (va == null || vb == null) return null
-  return { wert: Math.max(0, vb - va), tage: tageZwischen(a.tag, b.tag) }
+  const tageSpan = Math.max(1, tageZwischen(a.tag, b.tag))
+  const sollTage = Math.max(1, tageZwischen(von, bis))
+  const roh = Math.max(0, vb - va)
+  const wert = Math.round((roh / tageSpan) * sollTage)
+  return { wert, tage: tageSpan }
 }
 
 export function bewerteWirkung(w: Omit<EtsyWirkung, 'urteil'>): EtsyWirkung['urteil'] {

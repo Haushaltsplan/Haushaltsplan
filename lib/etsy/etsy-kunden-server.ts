@@ -117,13 +117,53 @@ export async function syncEtsyKaeuferAusBestellungen(
   return rows.length
 }
 
+async function syncReceiptNachrichtenInInbox(ownerUserId: string, sb: SupabaseClient): Promise<void> {
+  const { data: bestellungen } = await sb
+    .from('etsy_bestellung')
+    .select('receipt_id, kaeufer_name, listing_title, message_from_buyer, gift_message, gekauft_at')
+    .eq('owner_user_id', ownerUserId)
+    .order('gekauft_at', { ascending: false })
+    .limit(60)
+
+  for (const b of bestellungen ?? []) {
+    const msg = String(b.message_from_buyer || '').trim()
+    const gift = String(b.gift_message || '').trim()
+    if (!msg && !gift) continue
+    const betreff = `Receipt #${b.receipt_id}: ${msg ? 'Käufertext' : 'Geschenknotiz'}`
+    const { data: exist } = await sb
+      .from('etsy_nachricht_notiz')
+      .select('id')
+      .eq('owner_user_id', ownerUserId)
+      .eq('betreff', betreff)
+      .maybeSingle()
+    if (exist) continue
+    await sb.from('etsy_nachricht_notiz').insert({
+      owner_user_id: ownerUserId,
+      prioritaet: 'kaufabsicht',
+      betreff,
+      kaeufer_name: String(b.kaeufer_name || ''),
+      notiz: [msg && `Käufer: ${msg}`, gift && `Geschenk: ${gift}`, b.listing_title && `Listing: ${b.listing_title}`]
+        .filter(Boolean)
+        .join('\n')
+        .slice(0, 500),
+    })
+  }
+}
+
 export async function baueEtsyKunden(ownerUserId: string, sb: SupabaseClient): Promise<EtsyKundenErgebnis> {
   await syncEtsyKaeuferAusBestellungen(ownerUserId, sb).catch(() => 0)
-  const [kaeuferRes, crmRes, gravRes, msgRes] = await Promise.all([
+  await syncReceiptNachrichtenInInbox(ownerUserId, sb).catch(() => undefined)
+  const [kaeuferRes, crmRes, gravRes, msgRes, receiptRes] = await Promise.all([
     sb.from('etsy_kaeufer').select('*').eq('owner_user_id', ownerUserId).order('letzte_kauf_at', { ascending: false }).limit(50),
     sb.from('etsy_crm_aufgabe').select('*').eq('owner_user_id', ownerUserId).eq('erledigt', false).order('faellig_am').limit(30),
     sb.from('etsy_gravur_anfrage').select('*').eq('owner_user_id', ownerUserId).order('created_at', { ascending: false }).limit(30),
     sb.from('etsy_nachricht_notiz').select('*').eq('owner_user_id', ownerUserId).order('created_at', { ascending: false }).limit(30),
+    sb
+      .from('etsy_bestellung')
+      .select('receipt_id, kaeufer_name, listing_title, message_from_buyer, gift_message, gekauft_at')
+      .eq('owner_user_id', ownerUserId)
+      .order('gekauft_at', { ascending: false })
+      .limit(40),
   ])
 
   return {
@@ -166,5 +206,17 @@ export async function baueEtsyKunden(ownerUserId: string, sb: SupabaseClient): P
       notiz: String(r.notiz || ''),
       createdAt: String(r.created_at),
     })),
+    receiptNachrichten: (receiptRes.data ?? [])
+      .filter((r) => String(r.message_from_buyer || '').trim() || String(r.gift_message || '').trim())
+      .map((r) => ({
+        receiptId: Number(r.receipt_id),
+        kaeuferName: String(r.kaeufer_name || ''),
+        listingTitle: String(r.listing_title || ''),
+        messageFromBuyer: String(r.message_from_buyer || ''),
+        giftMessage: String(r.gift_message || ''),
+        gekauftAt: r.gekauft_at != null ? String(r.gekauft_at) : null,
+      })),
+    conversationsHinweis:
+      'Etsy Open API v3 bietet keine Conversations-/Messages-Endpunkte. Inbox = Receipt-Käufertexte + Smart Copy zum Einfügen in Etsy Messages.',
   }
 }

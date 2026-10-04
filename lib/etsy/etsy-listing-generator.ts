@@ -28,6 +28,7 @@ import {
   type EtsyListingBasis,
   type EtsyListingGeoInsights,
 } from '@/lib/etsy/etsy-types'
+import { mitEtsyGeminiQueue } from '@/lib/etsy/etsy-gemini-queue'
 import {
   geminiFreeTierFlashModelKandidaten,
   resolveGeminiFreeTierProvider,
@@ -306,26 +307,28 @@ export async function generiereEtsyListingTexte(
     },
   ]
 
-  const result = await runCoachCompletion(
-    'gemini',
-    resolved.apiKey,
-    buildEtsyListingSystemPrompt({
-      standortText: basis.standortText,
-      finishText: basis.finishText,
-    }),
-    messages,
-    {
-      temperature: 0.45,
-      geminiForceFreeApiKey: true,
-      thinkingMinimal: true,
-      /** Listing-JSON ist lang; Thinking zählt mit — nicht zu knapp. */
-      maxOutputTokens: 8192,
-      /** Pro Modell kürzer als das Gesamtbudget, damit bei hängendem Flash das nächste Modell echte Zeit hat. */
-      timeoutMs: 65_000,
-      geminiTotalBudgetMs: 140_000,
-      geminiModels: geminiFreeTierFlashModelKandidaten(),
-      jsonResponse: { schema: ETSY_LISTING_JSON_SCHEMA },
-    },
+  const result = await mitEtsyGeminiQueue(() =>
+    runCoachCompletion(
+      'gemini',
+      resolved.apiKey,
+      buildEtsyListingSystemPrompt({
+        standortText: basis.standortText,
+        finishText: basis.finishText,
+      }),
+      messages,
+      {
+        temperature: 0.45,
+        geminiForceFreeApiKey: true,
+        thinkingMinimal: true,
+        /** Listing-JSON ist lang; Thinking zählt mit — nicht zu knapp. */
+        maxOutputTokens: 8192,
+        /** Pro Modell kürzer als das Gesamtbudget, damit bei hängendem Flash das nächste Modell echte Zeit hat. */
+        timeoutMs: 65_000,
+        geminiTotalBudgetMs: 140_000,
+        geminiModels: geminiFreeTierFlashModelKandidaten(),
+        jsonResponse: { schema: ETSY_LISTING_JSON_SCHEMA },
+      },
+    ),
   )
 
   if (!result.ok) throw new Error(result.hint || 'KI-Generierung fehlgeschlagen.')
@@ -472,24 +475,26 @@ export async function optimiereEtsyListingTexte(
     },
   ]
 
-  const result = await runCoachCompletion(
-    'gemini',
-    resolved.apiKey,
-    buildEtsyListingSystemPrompt({
-      standortText: basis.standortText,
-      finishText: basis.finishText,
-    }),
-    messages,
-    {
-      temperature: 0.25,
-      geminiForceFreeApiKey: true,
-      thinkingMinimal: true,
-      maxOutputTokens: 8192,
-      timeoutMs: 65_000,
-      geminiTotalBudgetMs: 140_000,
-      geminiModels: geminiFreeTierFlashModelKandidaten(),
-      jsonResponse: { schema: ETSY_LISTING_JSON_SCHEMA },
-    },
+  const result = await mitEtsyGeminiQueue(() =>
+    runCoachCompletion(
+      'gemini',
+      resolved.apiKey,
+      buildEtsyListingSystemPrompt({
+        standortText: basis.standortText,
+        finishText: basis.finishText,
+      }),
+      messages,
+      {
+        temperature: 0.25,
+        geminiForceFreeApiKey: true,
+        thinkingMinimal: true,
+        maxOutputTokens: 8192,
+        timeoutMs: 65_000,
+        geminiTotalBudgetMs: 140_000,
+        geminiModels: geminiFreeTierFlashModelKandidaten(),
+        jsonResponse: { schema: ETSY_LISTING_JSON_SCHEMA },
+      },
+    ),
   )
 
   if (!result.ok) throw new Error(result.hint || 'SEO-Optimierung fehlgeschlagen.')

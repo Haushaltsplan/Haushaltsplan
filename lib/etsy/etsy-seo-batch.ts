@@ -59,7 +59,8 @@ export async function batchAuditiereEtsyShop(opts: {
   }
   const listings = [...alle].sort((a, b) => auditZeit(a.listingId) - auditZeit(b.listingId)).slice(0, limit)
 
-  const results = await mapPool(listings, 2, async (kurz): Promise<EtsyBatchAuditZeile> => {
+  // Concurrency 1: Gemini Free + Queue — Parallelität würde Rate-Limits triggern
+  const results = await mapPool(listings, 1, async (kurz): Promise<EtsyBatchAuditZeile> => {
     try {
       const { listing } = await ladeEtsyListingDetail(opts.ownerUserId, kurz.listingId)
       const fp = listingFingerprint(listing)

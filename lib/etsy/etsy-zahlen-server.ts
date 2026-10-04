@@ -10,6 +10,7 @@ import {
   type EtsyKillOrScale,
   type EtsyZahlenErgebnis,
 } from '@/lib/etsy/etsy-shop-os-types'
+import { funnelDelta7, type StatistikSnap } from '@/lib/etsy/etsy-statistik-delta'
 import { berlinTag } from '@/lib/etsy/etsy-statistik-server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -51,9 +52,9 @@ function klassifiziere(opts: {
 export async function baueEtsyZahlen(ownerUserId: string, sb: SupabaseClient): Promise<EtsyZahlenErgebnis> {
   const einstellungen = await ladeEtsyEinstellungen(ownerUserId, sb)
   const heute = berlinTag()
+  // 21 Tage Historie: bei Cron-Lücken trotzdem Anker-Snapshots finden
+  const vor21 = berlinTag(new Date(Date.now() - 21 * 86_400_000))
   const vor7 = berlinTag(new Date(Date.now() - 7 * 86_400_000))
-  const vor8 = berlinTag(new Date(Date.now() - 8 * 86_400_000))
-  const vor14 = berlinTag(new Date(Date.now() - 14 * 86_400_000))
 
   const [{ listings }, statsRes, verkaufRes, kostenRes, auditRes] = await Promise.all([
     ladeEtsyShopListings(ownerUserId, { state: 'active', limit: 100 }),
@@ -61,7 +62,7 @@ export async function baueEtsyZahlen(ownerUserId: string, sb: SupabaseClient): P
       .from('etsy_listing_statistik')
       .select('listing_id, tag, views, favoriten')
       .eq('owner_user_id', ownerUserId)
-      .gte('tag', vor14)
+      .gte('tag', vor21)
       .lte('tag', heute),
     sb
       .from('etsy_listing_verkauf')
@@ -72,29 +73,17 @@ export async function baueEtsyZahlen(ownerUserId: string, sb: SupabaseClient): P
     sb.from('etsy_seo_audit_cache').select('listing_id, overall_score').eq('owner_user_id', ownerUserId),
   ])
 
-  type Snap = { views: number; favs: number }
-  const byListing = new Map<number, Map<string, Snap>>()
+  const byListing = new Map<number, StatistikSnap[]>()
   for (const s of statsRes.data ?? []) {
     const id = Number(s.listing_id)
     const tag = String(s.tag).slice(0, 10)
-    if (!byListing.has(id)) byListing.set(id, new Map())
-    byListing.get(id)!.set(tag, { views: Number(s.views) || 0, favs: Number(s.favoriten) || 0 })
-  }
-
-  function delta7(id: number, ende: string, start: string): { views: number; favs: number } {
-    const m = byListing.get(id)
-    if (!m) return { views: 0, favs: 0 }
-    let endeSnap: { tag: string; snap: Snap } | null = null
-    let startSnap: { tag: string; snap: Snap } | null = null
-    for (const [tag, snap] of m) {
-      if (tag <= ende && (!endeSnap || tag > endeSnap.tag)) endeSnap = { tag, snap }
-      if (tag <= start && (!startSnap || tag > startSnap.tag)) startSnap = { tag, snap }
-    }
-    if (!endeSnap || !startSnap) return { views: 0, favs: 0 }
-    return {
-      views: Math.max(0, endeSnap.snap.views - startSnap.snap.views),
-      favs: Math.max(0, endeSnap.snap.favs - startSnap.snap.favs),
-    }
+    const arr = byListing.get(id) ?? []
+    arr.push({
+      tag,
+      views: s.views != null ? Number(s.views) : null,
+      favoriten: s.favoriten != null ? Number(s.favoriten) : null,
+    })
+    byListing.set(id, arr)
   }
 
   const verkaufe30By = new Map<number, number>()
@@ -121,14 +110,14 @@ export async function baueEtsyZahlen(ownerUserId: string, sb: SupabaseClient): P
 
   let views7Shop = 0
   let favs7Shop = 0
+  let sparseCount = 0
   const funnelListings: EtsyFunnelListing[] = []
 
   for (const l of listings) {
-    const d = delta7(l.listingId, heute, vor7)
-    // fallback if sparse: try vor8 window end
-    const d2 = d.views === 0 && d.favs === 0 ? delta7(l.listingId, vor8, vor14) : d
-    const views7 = d2.views
-    const favs7 = d2.favs
+    const delta = funnelDelta7(byListing.get(l.listingId) ?? [], heute, vor7)
+    if (delta.unvollstaendig) sparseCount++
+    const views7 = Math.round(delta.views7)
+    const favs7 = Math.round(delta.favs7)
     views7Shop += views7
     favs7Shop += favs7
     const verkaufe30 = verkaufe30By.get(l.listingId) ?? 0
@@ -218,6 +207,13 @@ export async function baueEtsyZahlen(ownerUserId: string, sb: SupabaseClient): P
       prio: 4,
     })
   }
+  if (sparseCount > 0 && entscheidungen.length < 3) {
+    entscheidungen.push({
+      titel: 'Messlücken',
+      detail: `${sparseCount} Listings mit lückenhaften Statistik-Snapshots — 7d-Werte sind auf vorhandene Tage normalisiert.`,
+      prio: 5,
+    })
+  }
   entscheidungen.sort((a, b) => a.prio - b.prio)
 
   const rateProTag = verkaufe30Shop / 30
@@ -242,8 +238,8 @@ export async function baueEtsyZahlen(ownerUserId: string, sb: SupabaseClient): P
       verkaufe90: Math.round(rateProTag * 90 * saisonBoost * 10) / 10,
       hinweis:
         saisonBoost > 1
-          ? 'Oktober–Dezember: Saison-Boost eingerechnet (+35 %).'
-          : 'Linear aus den letzten 30 Tagen — ohne Saison-Boost.',
+          ? `Oktober–Dezember: Saison-Boost (+35 %).${sparseCount ? ` ${sparseCount} Listings mit Snapshot-Lücken (normalisiert).` : ''}`
+          : `Linear aus den letzten 30 Tagen.${sparseCount ? ` ${sparseCount} Listings mit Snapshot-Lücken (normalisiert).` : ''}`,
     },
   }
 }

@@ -26,6 +26,12 @@ export type EtsyShopEinstellungen = {
   etsyGebuehrPct: number
   paymentGebuehrPct: number
   paymentGebuehrFix: number
+  /** Verschnitt/Ausschuss/Gemeinkosten auf Material+Arbeit, Default 12 % */
+  gemeinkostenAufschlagPct: number
+  /** MwSt-Satz, Default 19 (DE). Bei Kleinunternehmer: 0 */
+  mwstSatzPct: number
+  /** Listing-Preis ist Brutto (inkl. MwSt) — typisch für DE-Endkunden */
+  preisIstBrutto: boolean
   kapazitaetProWoche: number
   starSeller: EtsyStarSellerCheck
 }
@@ -47,11 +53,19 @@ export type EtsyPreisAmpel = 'zu_billig' | 'fair' | 'premium' | 'ohne_kosten'
 export type EtsyMargeErgebnis = {
   materialEur: number
   arbeitEur: number
+  gemeinkostenEur: number
   variableEur: number
+  /** Brutto-Listingpreis (wie auf Etsy) */
+  bruttoPreisEur: number | null
+  /** Netto-Erlös vor Gebühren (MwSt herausgerechnet falls brutto) */
+  nettoErloesEur: number | null
+  mwstEur: number
   gebuehrenEur: number
   gesamtkostenEur: number
+  /** Netto nach Kosten+Gebühren (Unternehmer-Ergebnis vor ESt) */
   nettoEur: number
   margePct: number | null
+  /** Empfohlener Brutto-Mindestpreis auf Etsy */
   mindestpreisEur: number
   ampel: EtsyPreisAmpel
 }
@@ -71,42 +85,88 @@ export function summeMaterial(k: EtsyKostenZeile): number {
   )
 }
 
-/** Regelbasierte Marge / Mindestpreis / Ampel — ohne KI. */
+/**
+ * Regelbasierte Marge / Mindestpreis / Ampel — ohne KI.
+ *
+ * Modell (DE Handwerk auf Etsy):
+ * - Etsy-/Payment-Fees auf den Brutto-Transaktionsbetrag (Buyer zahlt).
+ * - MwSt ist Durchlaufposten: bei `preisIstBrutto` wird sie aus dem Preis herausgerechnet,
+ *   bevor die Unternehmer-Marge auf dem Netto-Erlös gemessen wird.
+ * - Gemeinkosten-Aufschlag deckt Verschnitt/Risse/Werkstatt (aus Rohholz-Pipeline).
+ * - Mindestpreis = Brutto-Listingpreis, der Zielmarge nach Fees+MwSt+Gemeinkosten erreicht.
+ */
 export function berechneMarge(
   verkaufspreisEur: number | null,
   kosten: EtsyKostenZeile,
   einstellungen: Pick<
     EtsyShopEinstellungen,
-    'zielMargePct' | 'etsyGebuehrPct' | 'paymentGebuehrPct' | 'paymentGebuehrFix'
+    | 'zielMargePct'
+    | 'etsyGebuehrPct'
+    | 'paymentGebuehrPct'
+    | 'paymentGebuehrFix'
+    | 'gemeinkostenAufschlagPct'
+    | 'mwstSatzPct'
+    | 'preisIstBrutto'
   >,
 ): EtsyMargeErgebnis {
   const materialEur = summeMaterial(kosten)
   const arbeitEur = Math.max(0, kosten.arbeitsstunden) * Math.max(0, kosten.stundensatzEur)
-  const variableEur = materialEur + arbeitEur
-  const preis = verkaufspreisEur != null && verkaufspreisEur > 0 ? verkaufspreisEur : null
-  const gebuehrenEur = preis
+  const basis = materialEur + arbeitEur
+  const gkPct = Math.max(0, Math.min(80, einstellungen.gemeinkostenAufschlagPct ?? 12)) / 100
+  const gemeinkostenEur = Math.round(basis * gkPct * 100) / 100
+  const variableEur = Math.round((basis + gemeinkostenEur) * 100) / 100
+
+  const brutto = verkaufspreisEur != null && verkaufspreisEur > 0 ? verkaufspreisEur : null
+  const mwstSatz = Math.max(0, Math.min(30, einstellungen.mwstSatzPct ?? 0)) / 100
+  const bruttoAlsNetto =
+    brutto == null
+      ? null
+      : einstellungen.preisIstBrutto && mwstSatz > 0
+        ? brutto / (1 + mwstSatz)
+        : brutto
+  const mwstEur =
+    brutto != null && bruttoAlsNetto != null ? Math.round((brutto - bruttoAlsNetto) * 100) / 100 : 0
+
+  // Etsy fees on gross transaction amount
+  const gebuehrenEur = brutto
     ? Math.round(
-        ((preis * (einstellungen.etsyGebuehrPct + einstellungen.paymentGebuehrPct)) / 100 +
+        ((brutto * (einstellungen.etsyGebuehrPct + einstellungen.paymentGebuehrPct)) / 100 +
           einstellungen.paymentGebuehrFix) *
           100,
       ) / 100
     : 0
+
   const gesamtkostenEur = Math.round((variableEur + gebuehrenEur) * 100) / 100
-  const nettoEur = preis != null ? Math.round((preis - gesamtkostenEur) * 100) / 100 : -gesamtkostenEur
-  const margePct = preis != null && preis > 0 ? Math.round((nettoEur / preis) * 1000) / 10 : null
+  const nettoEur =
+    bruttoAlsNetto != null ? Math.round((bruttoAlsNetto - gesamtkostenEur) * 100) / 100 : -gesamtkostenEur
+  // Marge auf Netto-Erlös (ohne MwSt), nicht auf Brutto — sonst unterschätzt Kleinunternehmer / überschätzt USt-Pflichtige
+  const margePct =
+    bruttoAlsNetto != null && bruttoAlsNetto > 0
+      ? Math.round((nettoEur / bruttoAlsNetto) * 1000) / 10
+      : null
 
   const ziel = Math.max(5, Math.min(90, einstellungen.zielMargePct)) / 100
-  const gebFaktor =
-    1 - (einstellungen.etsyGebuehrPct + einstellungen.paymentGebuehrPct) / 100
-  const mindestpreisEur =
-    gebFaktor > 0.2
-      ? Math.ceil(
-          ((variableEur + einstellungen.paymentGebuehrFix) / (gebFaktor * (1 - ziel))) * 100,
-        ) / 100
-      : Math.ceil(variableEur * 2.2 * 100) / 100
+  const feePct = (einstellungen.etsyGebuehrPct + einstellungen.paymentGebuehrPct) / 100
+  // Brutto B: NettoErloes = B/(1+mwst) bzw. B; Fees = B*feePct + fix
+  // NettoErgebnis = NettoErloes - variable - Fees ≥ ziel * NettoErloes
+  // → NettoErloes*(1-ziel) ≥ variable + B*feePct + fix
+  const mwstFaktor = einstellungen.preisIstBrutto && mwstSatz > 0 ? 1 + mwstSatz : 1
+  let mindestpreisEur: number
+  if (1 - ziel - feePct * mwstFaktor > 0.05) {
+    // variable + fix ≤ NettoErloes*(1-ziel) - B*feePct; B = NettoErloes * mwstFaktor
+    // variable + fix ≤ B/mwstFaktor*(1-ziel) - B*feePct
+    // variable + fix ≤ B * ((1-ziel)/mwstFaktor - feePct)
+    const denom = (1 - ziel) / mwstFaktor - feePct
+    mindestpreisEur =
+      denom > 0.05
+        ? Math.ceil(((variableEur + einstellungen.paymentGebuehrFix) / denom) * 100) / 100
+        : Math.ceil(variableEur * 2.4 * mwstFaktor * 100) / 100
+  } else {
+    mindestpreisEur = Math.ceil(variableEur * 2.4 * mwstFaktor * 100) / 100
+  }
 
   let ampel: EtsyPreisAmpel = 'ohne_kosten'
-  if (variableEur > 0 && preis != null) {
+  if (variableEur > 0 && brutto != null) {
     if (margePct != null && margePct < ziel * 100 - 10) ampel = 'zu_billig'
     else if (margePct != null && margePct > ziel * 100 + 15) ampel = 'premium'
     else ampel = 'fair'
@@ -117,7 +177,11 @@ export function berechneMarge(
   return {
     materialEur: Math.round(materialEur * 100) / 100,
     arbeitEur: Math.round(arbeitEur * 100) / 100,
-    variableEur: Math.round(variableEur * 100) / 100,
+    gemeinkostenEur,
+    variableEur,
+    bruttoPreisEur: brutto,
+    nettoErloesEur: bruttoAlsNetto != null ? Math.round(bruttoAlsNetto * 100) / 100 : null,
+    mwstEur,
     gebuehrenEur,
     gesamtkostenEur,
     nettoEur,
@@ -154,16 +218,42 @@ export type EtsyGeldListing = {
   marge: EtsyMargeErgebnis
 }
 
+export type EtsyFeeLedgerUi = {
+  fees30Eur: number
+  gross30Eur: number
+  net30Eur: number
+  ledgerDebits30Eur: number
+  ledgerCredits30Eur: number
+  paymentsCount30: number
+  ledgerCount30: number
+  vergleichModell: {
+    modellGebuehren30: number
+    deltaEur: number
+    hinweis: string
+  }
+  letzteEintraege: Array<{
+    entryId: number
+    amountEur: number | null
+    description: string
+    entryType: string
+    at: string | null
+  }>
+}
+
 export type EtsyGeldErgebnis = {
   einstellungen: EtsyShopEinstellungen
   listings: EtsyGeldListing[]
   pnl: {
     umsatz30: number
+    /** Modell-Schätzung (6,5%+4%+0,25€) */
     gebuehren30: number
+    /** Echte Fees aus Payment/Ledger wenn vorhanden */
+    gebuehrenEcht30: number | null
     material30: number
     netto30: number
     verkaufe30: number
   }
+  feeLedger: EtsyFeeLedgerUi | null
   portfolio: {
     aktiverWertEur: number
     listingsMitKosten: number
@@ -303,6 +393,16 @@ export type EtsyKundenErgebnis = {
     notiz: string
     createdAt: string
   }>
+  /** Käufertexte aus Receipts — Etsy hat keine Conversations-API */
+  receiptNachrichten: Array<{
+    receiptId: number
+    kaeuferName: string
+    listingTitle: string
+    messageFromBuyer: string
+    giftMessage: string
+    gekauftAt: string | null
+  }>
+  conversationsHinweis: string
 }
 
 export type EtsyCeoBriefing = {

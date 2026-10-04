@@ -20,6 +20,7 @@ import {
   ladeEtsyMarktKontext,
   marktSeedsFuerListing,
 } from '@/lib/etsy/etsy-scraping'
+import { mitEtsyGeminiQueue } from '@/lib/etsy/etsy-gemini-queue'
 import { marktIssues, pruefeListingRegeln, pruefeMarktAbdeckung } from '@/lib/etsy/etsy-seo-regeln'
 import {
   geminiFreeTierFlashModelKandidaten,
@@ -262,12 +263,8 @@ export async function auditiereEtsyListing(
     },
   ]
 
-  const result = await runCoachCompletion(
-    'gemini',
-    resolved.apiKey,
-    buildEtsySeoAuditSystemPrompt(),
-    messages,
-    {
+  const result = await mitEtsyGeminiQueue(() =>
+    runCoachCompletion('gemini', resolved.apiKey, buildEtsySeoAuditSystemPrompt(), messages, {
       temperature: 0.35,
       geminiForceFreeApiKey: true,
       thinkingMinimal: true,
@@ -277,7 +274,7 @@ export async function auditiereEtsyListing(
       geminiTotalBudgetMs: 140_000,
       geminiModels: geminiFreeTierFlashModelKandidaten(),
       jsonResponse: { schema: ETSY_SEO_AUDIT_JSON_SCHEMA },
-    },
+    }),
   )
 
   if (!result.ok) throw new Error(result.hint || 'SEO-Audit fehlgeschlagen.')

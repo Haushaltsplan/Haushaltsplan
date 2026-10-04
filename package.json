@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:etsy": "tsx scripts/test-etsy-geld-statistik.ts",
     "check:ki": "node scripts/verify-ki.mjs",
     "audit:portfolio": "node scripts/portfolio-analyse-audit/run.mjs",
     "audit:portfolio:strict": "node scripts/portfolio-analyse-audit/run.mjs --strict --fix-hints",
