@@ -2,8 +2,8 @@
 
 import type { NewsTerminalKiPaket } from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 
-/** v2: längere Fazite, keine „Nachrichtenlage dünn“-Meta. */
-const LS_KEY = 'pa-news-ki-fazit-v2'
+/** v3: längere Fazite + Rate-Limit-sichere Batches (keine Fehler-Caches behalten). */
+const LS_KEY = 'pa-news-ki-fazit-v3'
 
 type Store = Record<string, NewsTerminalKiPaket>
 
@@ -55,7 +55,16 @@ export function ladeNewsKiFazitAusCache(key: string): NewsTerminalKiPaket | null
 }
 
 export function speichereNewsKiFazitImCache(key: string, paket: NewsTerminalKiPaket) {
+  // Nur gelungene Fazite cachen — sonst kleben Rate-Limit-Fehler im UI.
+  const okFazite = paket.fazite.filter((f) => f.fazit && !f.fehler)
+  if (okFazite.length === 0) return
   const store = ladeStore()
-  store[key] = paket
+  const prev = store[key]
+  const map = new Map((prev?.fazite ?? []).map((f) => [f.symbol.toUpperCase(), f]))
+  for (const f of okFazite) map.set(f.symbol.toUpperCase(), f)
+  store[key] = {
+    ...paket,
+    fazite: [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'de')),
+  }
   speichereStore(store)
 }

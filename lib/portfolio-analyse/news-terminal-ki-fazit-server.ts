@@ -1,6 +1,6 @@
 /**
  * News-Terminal — KI-Tagesfazit pro Unternehmen (Deutsch, Gemini Free Flash).
- * Pro Request bewusst wenige Titel (Client batched alle ~40 in mehreren Calls).
+ * Strikt sequentiell + Pausen: Free-Tier RPM sonst sofort 429.
  */
 
 import 'server-only'
@@ -10,7 +10,6 @@ import {
   resolveGeminiFreeTierProvider,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
-import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
 import type {
   NewsTerminalKiFazit,
   NewsTerminalKiPaket,
@@ -40,6 +39,16 @@ VERBOTEN — diese Meta-Sätze und Synonyme niemals schreiben:
 Wenn nur wenig Brauchbares da ist: kurz die konkreten Fakten nennen — oder bei komplett irrelevanten Titeln gar nichts Meta schreiben, sondern 1–2 Sätze nur zum greifbaren Inhalt. Nie die Dürftigkeit kommentieren.`
 
 const MAX_HEADLINES = 12
+/** Pro Client-Batch — klein halten, damit Retries in maxDuration passen. */
+const MAX_UNTERNEHMEN_PRO_REQUEST = 4
+/** Mindestabstand zwischen Free-Tier-Calls (RPM). */
+const GAP_MS = Math.max(1_500, Number(process.env.NEWS_SUMMARY_GEMINI_GAP_MS) || 2_800)
+const MAX_RETRIES_BEI_RATE_LIMIT = 3
+const ZEIT_BUDGET_MS = 280_000
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms))
+}
 
 /** Entfernt Meta-Floskeln zur „dünnen Nachrichtenlage“, falls das Modell sie trotzdem liefert. */
 function bereinigeFazitMeta(text: string): string {
@@ -56,10 +65,12 @@ function bereinigeFazitMeta(text: string): string {
   const behalten = saetze.filter((s) => !meta.test(s))
   return (behalten.length ? behalten : saetze).join(' ').trim()
 }
-/** Sicherheit pro Request — der Client schickt Batches. */
-const MAX_UNTERNEHMEN_PRO_REQUEST = 8
-const PARALLEL = 2
-const ZEIT_BUDGET_MS = 150_000
+
+function istRateLimitHinweis(hint: string): boolean {
+  return /rate.?limit|30–60|zu viele anfragen|resource.?exhausted|too many requests|quota|429|kapazit/i.test(
+    hint,
+  )
+}
 
 type Gruppe = {
   symbol: string
@@ -127,30 +138,45 @@ async function fazitFuerUnternehmen(g: Gruppe): Promise<NewsTerminalKiFazit> {
     primaryEnvKeys: ['NEWS_SUMMARY_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
   })
 
-  const result = await runCoachCompletion(
-    provider.provider,
-    provider.apiKey,
-    SYSTEM_PROMPT,
-    [{ role: 'user', content: userText }],
-    { temperature: 0.3, geminiModels: models, geminiForceFreeApiKey: true },
-  )
+  let letzterFehler = 'KI-Zusammenfassung fehlgeschlagen.'
 
-  if (!result.ok) {
-    return {
-      symbol: g.symbol,
-      name: g.name,
-      fazit: '',
-      anzahlMeldungen: g.headlines.length,
-      fehler: result.hint || 'KI-Zusammenfassung fehlgeschlagen.',
+  for (let attempt = 0; attempt < MAX_RETRIES_BEI_RATE_LIMIT; attempt++) {
+    if (attempt > 0) {
+      const backoff = 18_000 + attempt * 12_000 + Math.floor(Math.random() * 2_000)
+      console.warn(
+        `[news-ki-fazit] ${g.symbol}: Rate-Limit — warte ${Math.round(backoff / 1000)}s (Versuch ${attempt + 1}/${MAX_RETRIES_BEI_RATE_LIMIT})`,
+      )
+      await sleep(backoff)
     }
+
+    const result = await runCoachCompletion(
+      provider.provider,
+      provider.apiKey,
+      SYSTEM_PROMPT,
+      [{ role: 'user', content: userText }],
+      { temperature: 0.3, geminiModels: models, geminiForceFreeApiKey: true },
+    )
+
+    if (result.ok) {
+      return {
+        symbol: g.symbol,
+        name: g.name,
+        fazit: bereinigeFazitMeta(result.reply.trim()),
+        anzahlMeldungen: g.headlines.length,
+        fehler: null,
+      }
+    }
+
+    letzterFehler = result.hint || letzterFehler
+    if (!istRateLimitHinweis(letzterFehler)) break
   }
 
   return {
     symbol: g.symbol,
     name: g.name,
-    fazit: bereinigeFazitMeta(result.reply.trim()),
+    fazit: '',
     anzahlMeldungen: g.headlines.length,
-    fehler: null,
+    fehler: letzterFehler,
   }
 }
 
@@ -161,23 +187,28 @@ export async function generiereNewsTerminalKiFazite(opts: {
   const gruppen = gruppiereNachUnternehmen(opts.zeilen, opts.nurHeute)
   const fazite: NewsTerminalKiFazit[] = []
   const start = Date.now()
-  const batches = teileArray(gruppen, PARALLEL)
+  let letzterCall = 0
 
-  for (let bi = 0; bi < batches.length; bi++) {
+  for (let i = 0; i < gruppen.length; i++) {
+    const g = gruppen[i]!
     if (Date.now() - start > ZEIT_BUDGET_MS) {
-      for (const g of batches.slice(bi).flat()) {
+      for (const rest of gruppen.slice(i)) {
         fazite.push({
-          symbol: g.symbol,
-          name: g.name,
+          symbol: rest.symbol,
+          name: rest.name,
           fazit: '',
-          anzahlMeldungen: g.headlines.length,
-          fehler: 'Zeitbudget in diesem Batch — bitte erneut versuchen.',
+          anzahlMeldungen: rest.headlines.length,
+          fehler: 'Zeitbudget in diesem Batch — bitte „Fehlgeschlagene erneut“ nutzen.',
         })
       }
       break
     }
-    const parts = await Promise.all(batches[bi].map((g) => fazitFuerUnternehmen(g)))
-    fazite.push(...parts)
+
+    const warten = letzterCall + GAP_MS - Date.now()
+    if (warten > 0) await sleep(warten)
+    letzterCall = Date.now()
+
+    fazite.push(await fazitFuerUnternehmen(g))
   }
 
   fazite.sort((a, b) => a.name.localeCompare(b.name, 'de'))
