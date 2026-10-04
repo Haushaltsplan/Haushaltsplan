@@ -17,16 +17,45 @@ import type {
   NewsTerminalZeile,
 } from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 
-const SYSTEM_PROMPT = `Du bist ein nüchterner Finanz-Nachrichtenredakteur.
-Aufgabe: Fasse die vorliegenden Schlagzeilen zu EINEM Unternehmen in 2–4 kurzen deutschen Sätzen zusammen.
-Regeln:
-- Nur Deutsch.
-- Nur Fakten aus den Schlagzeilen — nichts erfinden, keine Kursziele, keine Kauf-/Verkaufsempfehlung.
-- Wenn die Meldungen dünn oder irrelevant wirken: klar sagen, dass wenig Substanz dabei ist.
-- Keine Aufzählung der Originaltitel; verdichte zu einem lesbaren Tagesfazit.
-- Maximal ~80 Wörter.`
+const SYSTEM_PROMPT = `Du bist ein nüchterner Finanz-Nachrichtenredakteur für ein Aktien-Depot-Dashboard.
+Aufgabe: Schreibe zu EINEM Unternehmen ein informatives deutsches Nachrichtenfazit aus den gelieferten Schlagzeilen.
 
-const MAX_HEADLINES = 8
+Inhalt (so viel wie die Schlagzeilen hergeben):
+- Was konkret passiert ist (Produkt, Quartalszahlen, Personal, Regulierung, M&A, Partnerschaft, Rechtsstreit, …)
+- Wer betroffen ist / was das Unternehmen betrifft
+- Genannte Zahlen, Zeiträume, Produkte, Regionen — wörtlich übernehmen, wenn in den Titeln stehen
+- Wenn mehrere Themen: die 2–3 wichtigsten getrennt ansprechen (nicht alles zu einem Nebel verdichten)
+- Kurzer Kontext nur, wenn er aus den Schlagzeilen folgt (z. B. „nach Gewinnwarnung“, „vor Earnings“)
+
+Form:
+- Nur Deutsch, 4–8 Sätze, ca. 120–220 Wörter wenn Substanz da ist
+- Fließtext, keine Aufzählung der Originaltitel, keine Bullet-Punkte
+- Nichts erfinden; keine Kursziele; keine Kauf-/Verkaufsempfehlung
+
+VERBOTEN — diese Meta-Sätze und Synonyme niemals schreiben:
+- „Nachrichtenlage dünn/schwach/ruhig/überschaubar“
+- „wenig Substanz / wenig Relevanz / kaum belastbare Infos“
+- „keine wesentlichen Meldungen / nichts Neues / nur Rauschen“
+- Kommentare über die Qualität oder Menge der Nachrichtenlage
+Wenn nur wenig Brauchbares da ist: kurz die konkreten Fakten nennen — oder bei komplett irrelevanten Titeln gar nichts Meta schreiben, sondern 1–2 Sätze nur zum greifbaren Inhalt. Nie die Dürftigkeit kommentieren.`
+
+const MAX_HEADLINES = 12
+
+/** Entfernt Meta-Floskeln zur „dünnen Nachrichtenlage“, falls das Modell sie trotzdem liefert. */
+function bereinigeFazitMeta(text: string): string {
+  const saetze = text
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+
+  const meta =
+    /nachrichtenlage|wenig substanz|kaum (belastbar|relevant|verwertbar)|keine wesentlichen meldungen|nichts wesentliches|nur (wenig|kaum) (relevante|substanzielle)|dünn(e|er)? (meldungs|nachrichten)|überschaubar(e|er)? nachrichten|kein(e)? relevante[nr]? (news|meldungen)|kaum neue information/i
+
+  const behalten = saetze.filter((s) => !meta.test(s))
+  return (behalten.length ? behalten : saetze).join(' ').trim()
+}
 /** Sicherheit pro Request — der Client schickt Batches. */
 const MAX_UNTERNEHMEN_PRO_REQUEST = 8
 const PARALLEL = 2
@@ -90,7 +119,8 @@ async function fazitFuerUnternehmen(g: Gruppe): Promise<NewsTerminalKiFazit> {
     'Schlagzeilen:',
     liste,
     '',
-    'Schreibe jetzt das deutsche Tagesfazit.',
+    'Schreibe jetzt ein informatives deutsches Fazit mit möglichst vielen konkreten Fakten aus diesen Schlagzeilen.',
+    'Keine Meta-Kommentare zur Nachrichtenlage.',
   ].join('\n')
 
   const models = geminiFreeTierFlashModelKandidaten({
@@ -118,7 +148,7 @@ async function fazitFuerUnternehmen(g: Gruppe): Promise<NewsTerminalKiFazit> {
   return {
     symbol: g.symbol,
     name: g.name,
-    fazit: result.reply.trim(),
+    fazit: bereinigeFazitMeta(result.reply.trim()),
     anzahlMeldungen: g.headlines.length,
     fehler: null,
   }

@@ -2,7 +2,8 @@
 
 import type { NewsTerminalKiPaket } from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 
-const LS_KEY = 'pa-news-ki-fazit-v1'
+/** v2: längere Fazite, keine „Nachrichtenlage dünn“-Meta. */
+const LS_KEY = 'pa-news-ki-fazit-v2'
 
 type Store = Record<string, NewsTerminalKiPaket>
 

@@ -423,7 +423,7 @@ export function PortfolioNewsTerminalClient() {
                     {f.fehler ? (
                       <p className="mt-2 text-[13px] text-amber-200/90">{f.fehler}</p>
                     ) : (
-                      <p className="mt-2 text-[13px] leading-relaxed text-[var(--app-text-muted)]">
+                      <p className="mt-2 text-[13px] leading-relaxed text-[var(--app-text-muted)] whitespace-pre-wrap">
                         {f.fazit}
                       </p>
                     )}
