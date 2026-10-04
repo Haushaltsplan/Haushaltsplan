@@ -16,11 +16,10 @@ function portfolioAnalyseQueryHref(
 ): string {
   const params = new URLSearchParams()
   const isin = opts.isin?.trim().toUpperCase()
+  const symbol = opts.symbol?.trim()
+  // Beide setzen — sonst bleibt beim Wechsel oft der alte Kontext „kleben“.
   if (isin) params.set('isin', isin)
-  else {
-    const symbol = opts.symbol?.trim()
-    if (symbol) params.set('symbol', symbol)
-  }
+  if (symbol) params.set('symbol', symbol)
   const name = opts.name?.trim()
   if (name) params.set('name', name)
   const q = params.toString()

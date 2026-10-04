@@ -186,63 +186,88 @@ export function PortfolioDcfClient() {
     return [...depot, ...watchlist]
   }, [live?.positionen, meta, watchlistVersion])
 
+  const isin = isinParam?.trim().toUpperCase() || null
+  const symbol = symbolParam?.trim() || null
+  const name = nameParam?.trim() || null
+  const hatTitel = Boolean(isin || symbol)
+  /** Stabile Auswahl-ID — steuert Laden/Reset beim Titelwechsel. */
+  const selectionKey = `${isin ?? ''}|${(symbol ?? '').toUpperCase()}`
+
+  const resetTitelState = useCallback(() => {
+    setPaket(null)
+    setInputs(null)
+    setBaseAnnahmen(null)
+    setAnnahmen(null)
+    setSzenario('base')
+    setFehler(null)
+    setDetailsOffen(false)
+    setWaccDetailsOffen(false)
+  }, [])
+
   const navigiereZu = useCallback(
     (opts: { isin?: string | null; symbol?: string | null; name?: string | null }) => {
-      const isin = opts.isin?.trim().toUpperCase() || null
-      const symbol = opts.symbol?.trim() || null
-      if (!isin && !symbol) {
+      const nextIsin = opts.isin?.trim().toUpperCase() || null
+      const nextSymbol = opts.symbol?.trim() || null
+      if (!nextIsin && !nextSymbol) {
         setSucheFehler('Kein Ticker für diesen Treffer.')
         return
       }
+      const nextKey = `${nextIsin ?? ''}|${(nextSymbol ?? '').toUpperCase()}`
+      if (nextKey === selectionKey) {
+        setSucheFehler(null)
+        return
+      }
       setSucheFehler(null)
-      router.replace(dcfHref({ isin, symbol, name: opts.name }))
+      // Sofort leeren — sonst bleibt der alte Titel sichtbar / „klebt“.
+      resetTitelState()
+      setLaden(true)
+      router.push(dcfHref({ isin: nextIsin, symbol: nextSymbol, name: opts.name }))
     },
-    [router],
+    [router, selectionKey, resetTitelState],
   )
 
   const onSucheAuswahl = useCallback(
     (a: AktienSucheAuswahl) => {
       navigiereZu({
         isin: a.isin,
-        symbol: a.meta.symbolYahoo,
+        symbol: a.meta.symbolYahoo ?? a.meta.symbolCandidates?.[0] ?? null,
         name: a.meta.name,
       })
     },
     [navigiereZu],
   )
 
-  const isin = isinParam?.trim().toUpperCase() || null
-  const symbol = symbolParam?.trim() || null
-  const name = nameParam?.trim() || null
-  const hatTitel = Boolean(isin || symbol)
-
   const anfrage = useMemo<FundamentaldatenAnfrage | null>(() => {
     if (!hatTitel) return null
     const k = isin ? isinKenntnis(isin) : undefined
+    const symbolYahoo = symbol || k?.symbolYahoo || null
     return {
       isin,
-      name: name || k?.name || symbol || isin || undefined,
-      symbolYahoo: symbol || k?.symbolYahoo || null,
-      symbolCandidates: [...(symbol ? [symbol] : []), ...(k?.symbolCandidates ?? [])],
+      name: name || k?.name || symbolYahoo || isin || undefined,
+      symbolYahoo,
+      symbolCandidates: [
+        ...(symbolYahoo ? [symbolYahoo] : []),
+        ...(symbol && symbol !== symbolYahoo ? [symbol] : []),
+        ...(k?.symbolCandidates ?? []),
+      ],
       frequenz: 'jahr',
     }
   }, [hatTitel, isin, symbol, name])
 
   useEffect(() => {
-    if (!anfrage) {
-      setPaket(null)
-      setInputs(null)
-      setBaseAnnahmen(null)
-      setAnnahmen(null)
-      setFehler(null)
+    if (!anfrage || !hatTitel) {
+      resetTitelState()
+      setLaden(false)
       return
     }
 
     let cancelled = false
     const ac = new AbortController()
     const req = anfrage
+    const erwartetKey = selectionKey
 
     function applyPaket(p: FundamentaldatenPaket) {
+      if (cancelled) return
       const inp = dcfInputsAusPaket(p)
       const exitMultiple = defaultExitMultipleFuerPaket(p)
       const base = annahmenAusPaketInputs(inp, { exitMultiple })
@@ -251,13 +276,13 @@ export function PortfolioDcfClient() {
       setBaseAnnahmen(base)
       setAnnahmen(base)
       setSzenario('base')
-      if (!base) {
-        setFehler(
-          inp.fcf0Usd == null || !(inp.fcf0Usd > 0)
+      setFehler(
+        base
+          ? null
+          : inp.fcf0Usd == null || !(inp.fcf0Usd > 0)
             ? 'Kein positiver Reported FCF im Paket — DCF nicht möglich.'
             : 'Keine gültige Aktienanzahl — DCF nicht möglich.',
-        )
-      }
+      )
     }
 
     async function run() {
@@ -270,22 +295,16 @@ export function PortfolioDcfClient() {
       try {
         const live = await ladeFundamentaldatenClient(req, { signal: ac.signal })
         if (cancelled) return
-        if (!live.ok) {
-          setFehler(live.fehler || 'Fundamentaldaten konnten nicht geladen werden.')
-          if (!cached?.ok) {
-            setPaket(null)
-            setInputs(null)
-            setBaseAnnahmen(null)
-            setAnnahmen(null)
-          }
-          return
-        }
         applyPaket(live)
       } catch (e) {
         if (cancelled || (e instanceof DOMException && e.name === 'AbortError')) return
         setFehler(e instanceof Error ? e.message : 'Laden fehlgeschlagen.')
+        // Alten Titel nicht stehen lassen, wenn der neue Fetch scheitert.
+        if (!cached?.ok) resetTitelState()
       } finally {
-        if (!cancelled) setLaden(false)
+        if (!cancelled && erwartetKey === `${isin ?? ''}|${(symbol ?? '').toUpperCase()}`) {
+          setLaden(false)
+        }
       }
     }
 
@@ -294,7 +313,7 @@ export function PortfolioDcfClient() {
       cancelled = true
       ac.abort()
     }
-  }, [anfrage])
+  }, [selectionKey, anfrage, hatTitel, isin, symbol, resetTitelState])
 
   const patchAnnahmen = useCallback((patch: Partial<DcfAnnahmen>) => {
     setAnnahmen((prev) => (prev ? { ...prev, ...patch } : prev))
@@ -420,7 +439,7 @@ export function PortfolioDcfClient() {
         ) : null}
 
         {annahmen && ergebnis && inputs ? (
-          <>
+          <div key={selectionKey} className="space-y-6">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
               <PaHeroKpi
                 label="Fair Value / Aktie"
@@ -503,11 +522,13 @@ export function PortfolioDcfClient() {
                 <AssumptionRow
                   label="FCF-Wachstum (Start)"
                   hint={`Quelle: ${
-                    inputs.gStartQuelle === 'schaetzung'
-                      ? 'Consensus FY1/FY0 (nicht Restjahr)'
-                      : inputs.gStartQuelle === 'cagr5'
-                        ? 'FCF-CAGR 5J'
-                        : 'Fallback 10 %'
+                    inputs.gStartQuelle === 'fcf_forecast'
+                      ? 'FCF-Forecast (StockAnalysis, ggf. via Umsatz-Consensus ergänzt)'
+                      : inputs.gStartQuelle === 'umsatz_consensus'
+                        ? 'Umsatz-Consensus (Forward)'
+                        : inputs.gStartQuelle === 'eps_consensus'
+                          ? 'EPS-Consensus (Forward)'
+                          : 'Fallback 10 %'
                   }`}
                 >
                   <NumSlider
@@ -848,7 +869,7 @@ export function PortfolioDcfClient() {
                 ) : null}
               </div>
             </PaCard>
-          </>
+          </div>
         ) : null}
       </div>
     </PortfolioAnalyseShell>

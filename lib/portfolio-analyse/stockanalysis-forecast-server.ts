@@ -2,6 +2,9 @@ import 'server-only'
 
 import { fruehestesSchaetzJahr } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { fuelleFehlendeFcfAusUmsatzWachstum } from '@/lib/portfolio-analyse/stockanalysis-forecast-fcf-fill'
+
+export { fuelleFehlendeFcfAusUmsatzWachstum } from '@/lib/portfolio-analyse/stockanalysis-forecast-fcf-fill'
 
 const BASE = 'https://stockanalysis.com'
 const USER_AGENT =
@@ -479,6 +482,7 @@ function parseForecastAusHtml(html: string, url: string): StockanalysisJahresFor
   const annualBlock = extrahiereAnnualBlock(html)
   let jahresreihe = annualBlock ? baueJahresreiheAusAnnual(annualBlock) : []
   jahresreihe = ergaenzeJahresreiheAusForecastTriples(html, jahresreihe)
+  jahresreihe = fuelleFehlendeFcfAusUmsatzWachstum(jahresreihe)
   const schaetzungen = jahresreihe.filter((j) => j.istSchätzung)
 
   if (!revThis && !revNext && !epsThis && !epsNext && schaetzungen.length === 0) return null

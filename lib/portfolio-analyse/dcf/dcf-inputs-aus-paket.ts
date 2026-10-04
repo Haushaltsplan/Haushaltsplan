@@ -1,4 +1,4 @@
-import { cagr5AusSerie, cagrJaehrlichAusSerie } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { cagrJaehrlichAusSerie, cagrProzent } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import {
   effektiverSteuersatz,
   historischeWerteAusZeile,
@@ -7,7 +7,12 @@ import {
   ttmOderLetzterFlow,
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { FundamentaldatenPaket, FundamentalMetrikZeile } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { FUNDAMENTAL_FY0E_KEY, FUNDAMENTAL_FY1E_KEY, FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import {
+  FUNDAMENTAL_FY0E_KEY,
+  FUNDAMENTAL_FY1E_KEY,
+  FUNDAMENTAL_TTM_KEY,
+  istFundamentalSchaetzungIso,
+} from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { DcfAnnahmen, DcfPaketInputs, DcfWaccBaustein } from '@/lib/portfolio-analyse/dcf/dcf-types'
 
 const RISK_FREE_PCT = 4.5
@@ -32,6 +37,31 @@ function runde1(v: number): number {
 /** Sinnvolles High-Growth-g für 5–10J-DCF (nicht Restjahr FY0≈TTM). */
 function istBrauchbaresWachstum(gPct: number): boolean {
   return Number.isFinite(gPct) && gPct >= 4 && gPct <= 25
+}
+
+function mittelWachstum(werte: Array<number | null | undefined>): number | null {
+  const xs = werte.filter((v): v is number => v != null && Number.isFinite(v))
+  if (xs.length === 0) return null
+  return xs.reduce((a, b) => a + b, 0) / xs.length
+}
+
+/** Forward-FCF-Serie aus Schätzzeile (Mio. → geordnet FY0, FY1, …). */
+function fcfForecastMioSerie(paket: FundamentaldatenPaket): number[] {
+  const z = zeile(paket, 'fcf_schaetzung')
+  if (!z) return []
+  const keys = [
+    FUNDAMENTAL_FY0E_KEY,
+    FUNDAMENTAL_FY1E_KEY,
+    ...Object.keys(z.werte)
+      .filter((k) => istFundamentalSchaetzungIso(k) && k !== FUNDAMENTAL_FY0E_KEY && k !== FUNDAMENTAL_FY1E_KEY)
+      .sort(),
+  ]
+  const out: number[] = []
+  for (const k of keys) {
+    const v = z.werte[k]
+    if (v != null && Number.isFinite(v) && v > 0) out.push(v)
+  }
+  return out
 }
 
 /** DE-formatierte Key-Metric-Strings → Zahl (wie Nachkauf-Radar). */
@@ -70,44 +100,57 @@ function fcfUsdAusPaket(paket: FundamentaldatenPaket): { usd: number | null; que
 }
 
 /**
- * High-Growth-Default für den DCF (mehrjährig), nicht „Restjahr“.
+ * High-Growth-Default — nur prognostizierte Quellen (kein Hist-CAGR).
  *
- * Reihenfolge:
- * 1. Consensus FY1E / FY0E (echtes Forward-YoY)
- * 2. Consensus FY1E / TTM (wenn FY0 fehlt oder ≈ TTM)
- * 3. Historischer FCF-CAGR 5J
+ * 1. FCF-Forecast-CAGR (StockAnalysis; fehlende Jahre via Umsatz-Consensus gefüllt)
+ * 2. Consensus-Umsatzwachstum (FY0/FY1 Mittel oder fwd_rev_cagr_2y)
+ * 3. Consensus-EPS-Wachstum (dito)
  * 4. Fallback 10 %
- *
- * Nie FY0E/TTM allein — bei Compoundern ist FY0 oft ≈ TTM → Schein-1–2 %.
  */
-function gStartAusPaket(paket: FundamentaldatenPaket, fcf0Usd: number | null): {
+function gStartAusPaket(paket: FundamentaldatenPaket, _fcf0Usd: number | null): {
   gStartPct: number
   quelle: DcfPaketInputs['gStartQuelle']
 } {
-  const sz = zeile(paket, 'fcf_schaetzung')
-  const fy0Mio = sz?.werte[FUNDAMENTAL_FY0E_KEY] ?? null
-  const fy1Mio = sz?.werte[FUNDAMENTAL_FY1E_KEY] ?? null
-
-  // 1) Echtes Forward-YoY aus Consensus
-  if (fy0Mio != null && fy1Mio != null && fy0Mio > 0) {
-    const g = ((fy1Mio - fy0Mio) / fy0Mio) * 100
-    if (istBrauchbaresWachstum(g)) {
-      return { gStartPct: runde1(clip(g, -5, 25)), quelle: 'schaetzung' }
+  const fcfSerie = fcfForecastMioSerie(paket)
+  if (fcfSerie.length >= 2) {
+    const cagr = cagrProzent(fcfSerie, fcfSerie.length - 1)
+    if (cagr != null && istBrauchbaresWachstum(cagr)) {
+      return { gStartPct: runde1(clip(cagr, -5, 25)), quelle: 'fcf_forecast' }
+    }
+    // Einzel-YoYs mitteln, falls CAGR durch Plateau verzerrt
+    const yoy: number[] = []
+    for (let i = 1; i < fcfSerie.length; i++) {
+      const a = fcfSerie[i - 1]!
+      const b = fcfSerie[i]!
+      if (a > 0) yoy.push(((b - a) / a) * 100)
+    }
+    const mid = mittelWachstum(yoy)
+    if (mid != null && istBrauchbaresWachstum(mid)) {
+      return { gStartPct: runde1(clip(mid, -5, 25)), quelle: 'fcf_forecast' }
     }
   }
 
-  // 2) Historischer Trend — zuverlässiger als Restjahr/schwaches FY1
-  const fcfHist = historischeWerteAusZeile(zeile(paket, 'fcf'), paket.perioden)
-  const cagr = cagr5AusSerie(fcfHist)
-  if (cagr != null && Number.isFinite(cagr) && cagr > -5) {
-    return { gStartPct: runde1(clip(cagr, -5, 25)), quelle: 'cagr5' }
+  const umsatzW = zeile(paket, 'umsatz_wachstum_schaetzung')
+  const umsatzMid = mittelWachstum([
+    umsatzW?.werte[FUNDAMENTAL_FY0E_KEY],
+    umsatzW?.werte[FUNDAMENTAL_FY1E_KEY],
+  ])
+  const fwdRev = kmZahl(paket, 'fwd_rev_cagr_2y')
+  for (const g of [umsatzMid, fwdRev]) {
+    if (g != null && istBrauchbaresWachstum(g)) {
+      return { gStartPct: runde1(clip(g, -5, 25)), quelle: 'umsatz_consensus' }
+    }
   }
 
-  // 3) FY1 vs. TTM nur wenn CAGR fehlt und Wachstum substanziell ist
-  if (fy1Mio != null && fy1Mio > 0 && fcf0Usd != null && fcf0Usd > 0) {
-    const g = ((fy1Mio * 1_000_000 - fcf0Usd) / fcf0Usd) * 100
-    if (istBrauchbaresWachstum(g)) {
-      return { gStartPct: runde1(clip(g, -5, 25)), quelle: 'schaetzung' }
+  const epsW = zeile(paket, 'eps_wachstum_schaetzung')
+  const epsMid = mittelWachstum([
+    epsW?.werte[FUNDAMENTAL_FY0E_KEY],
+    epsW?.werte[FUNDAMENTAL_FY1E_KEY],
+  ])
+  const fwdEps = kmZahl(paket, 'fwd_eps_cagr_2y')
+  for (const g of [epsMid, fwdEps]) {
+    if (g != null && istBrauchbaresWachstum(g)) {
+      return { gStartPct: runde1(clip(g, -5, 25)), quelle: 'eps_consensus' }
     }
   }
 

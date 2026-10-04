@@ -24,7 +24,8 @@ export type DcfPaketInputs = {
   fcf0Usd: number | null
   fcf0Quelle: 'ttm' | 'gj' | null
   gStartPct: number
-  gStartQuelle: 'schaetzung' | 'cagr5' | 'fallback'
+  /** Immer Forward/Consensus — nie historischer CAGR. */
+  gStartQuelle: 'fcf_forecast' | 'umsatz_consensus' | 'eps_consensus' | 'fallback'
   gTerminalPct: number
   jahre: number
   wacc: DcfWaccBaustein
