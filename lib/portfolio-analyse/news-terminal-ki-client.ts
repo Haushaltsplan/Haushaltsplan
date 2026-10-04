@@ -2,8 +2,8 @@
 
 import type { NewsTerminalKiPaket } from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 
-/** v3: längere Fazite + Rate-Limit-sichere Batches (keine Fehler-Caches behalten). */
-const LS_KEY = 'pa-news-ki-fazit-v3'
+/** v4: Multi-Firma-JSON-Call (deutlich schneller). */
+const LS_KEY = 'pa-news-ki-fazit-v4'
 
 type Store = Record<string, NewsTerminalKiPaket>
 

@@ -1,6 +1,6 @@
 /**
  * News-Terminal — KI-Tagesfazit pro Unternehmen (Deutsch, Gemini Free Flash).
- * Strikt sequentiell + Pausen: Free-Tier RPM sonst sofort 429.
+ * Ein Gemini-Call pro Request für alle Titel im Batch (JSON) — sonst Free-RPM/Timeouts.
  */
 
 import 'server-only'
@@ -17,40 +17,51 @@ import type {
 } from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 
 const SYSTEM_PROMPT = `Du bist ein nüchterner Finanz-Nachrichtenredakteur für ein Aktien-Depot-Dashboard.
-Aufgabe: Schreibe zu EINEM Unternehmen ein informatives deutsches Nachrichtenfazit aus den gelieferten Schlagzeilen.
+Aufgabe: Für JEDE gelieferte Firma ein informatives deutsches Nachrichtenfazit aus deren Schlagzeilen.
 
-Inhalt (so viel wie die Schlagzeilen hergeben):
-- Was konkret passiert ist (Produkt, Quartalszahlen, Personal, Regulierung, M&A, Partnerschaft, Rechtsstreit, …)
-- Wer betroffen ist / was das Unternehmen betrifft
-- Genannte Zahlen, Zeiträume, Produkte, Regionen — wörtlich übernehmen, wenn in den Titeln stehen
-- Wenn mehrere Themen: die 2–3 wichtigsten getrennt ansprechen (nicht alles zu einem Nebel verdichten)
-- Kurzer Kontext nur, wenn er aus den Schlagzeilen folgt (z. B. „nach Gewinnwarnung“, „vor Earnings“)
+Inhalt je Firma (so viel wie die Schlagzeilen hergeben):
+- Was konkret passiert ist (Produkt, Zahlen, Personal, Regulierung, M&A, Partnerschaft, Rechtsstreit, …)
+- Genannte Zahlen, Zeiträume, Produkte, Regionen aus den Titeln übernehmen
+- Bei mehreren Themen die 2–3 wichtigsten getrennt ansprechen
 
-Form:
-- Nur Deutsch, 4–8 Sätze, ca. 120–220 Wörter wenn Substanz da ist
-- Fließtext, keine Aufzählung der Originaltitel, keine Bullet-Punkte
+Form je Fazit:
+- Nur Deutsch, 3–6 Sätze (ca. 80–160 Wörter wenn Substanz da ist)
+- Fließtext, keine Bullet-Punkte, keine Aufzählung der Originaltitel
 - Nichts erfinden; keine Kursziele; keine Kauf-/Verkaufsempfehlung
 
-VERBOTEN — diese Meta-Sätze und Synonyme niemals schreiben:
-- „Nachrichtenlage dünn/schwach/ruhig/überschaubar“
-- „wenig Substanz / wenig Relevanz / kaum belastbare Infos“
-- „keine wesentlichen Meldungen / nichts Neues / nur Rauschen“
-- Kommentare über die Qualität oder Menge der Nachrichtenlage
-Wenn nur wenig Brauchbares da ist: kurz die konkreten Fakten nennen — oder bei komplett irrelevanten Titeln gar nichts Meta schreiben, sondern 1–2 Sätze nur zum greifbaren Inhalt. Nie die Dürftigkeit kommentieren.`
+VERBOTEN in jedem Fazit:
+- „Nachrichtenlage dünn/schwach/ruhig“, „wenig Substanz“, „kaum Relevanz“, „nichts Neues“
+- Meta-Kommentare zur Menge/Qualität der Meldungen
+Wenn wenig Brauchbares: kurz die konkreten Fakten — nie die Dürftigkeit kommentieren.
 
-const MAX_HEADLINES = 12
-/** Pro Client-Batch — klein halten, damit Retries in maxDuration passen. */
-const MAX_UNTERNEHMEN_PRO_REQUEST = 4
-/** Mindestabstand zwischen Free-Tier-Calls (RPM). */
-const GAP_MS = Math.max(1_500, Number(process.env.NEWS_SUMMARY_GEMINI_GAP_MS) || 2_800)
-const MAX_RETRIES_BEI_RATE_LIMIT = 3
-const ZEIT_BUDGET_MS = 280_000
+Antwort: NUR gültiges JSON gemäß Schema. Für jedes Symbol genau einen Eintrag.`
+
+const MAX_HEADLINES = 8
+const MAX_UNTERNEHMEN_PRO_REQUEST = 6
+const MAX_RETRIES_BEI_RATE_LIMIT = 2
+
+const FAZIT_JSON_SCHEMA: Record<string, unknown> = {
+  type: 'OBJECT',
+  properties: {
+    fazite: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          symbol: { type: 'STRING' },
+          fazit: { type: 'STRING' },
+        },
+        required: ['symbol', 'fazit'],
+      },
+    },
+  },
+  required: ['fazite'],
+}
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-/** Entfernt Meta-Floskeln zur „dünnen Nachrichtenlage“, falls das Modell sie trotzdem liefert. */
 function bereinigeFazitMeta(text: string): string {
   const saetze = text
     .replace(/\s+/g, ' ')
@@ -107,31 +118,70 @@ function gruppiereNachUnternehmen(
     .slice(0, MAX_UNTERNEHMEN_PRO_REQUEST)
 }
 
-async function fazitFuerUnternehmen(g: Gruppe): Promise<NewsTerminalKiFazit> {
-  const provider = resolveGeminiFreeTierProvider()
-  if (!provider) {
-    return {
+function parseFaziteJson(
+  raw: string,
+  gruppen: Gruppe[],
+): Map<string, string> {
+  const out = new Map<string, string>()
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    const m = raw.match(/\{[\s\S]*\}/)
+    if (!m) return out
+    try {
+      parsed = JSON.parse(m[0])
+    } catch {
+      return out
+    }
+  }
+  const list =
+    parsed && typeof parsed === 'object' && Array.isArray((parsed as { fazite?: unknown }).fazite)
+      ? (parsed as { fazite: Array<{ symbol?: unknown; fazit?: unknown }> }).fazite
+      : []
+  const known = new Set(gruppen.map((g) => g.symbol.toUpperCase()))
+  for (const row of list) {
+    const symbol = String(row.symbol ?? '')
+      .trim()
+      .toUpperCase()
+    const fazit = bereinigeFazitMeta(String(row.fazit ?? '').trim())
+    if (!symbol || !fazit || !known.has(symbol)) continue
+    out.set(symbol, fazit)
+  }
+  return out
+}
+
+async function faziteFuerBatch(gruppen: Gruppe[]): Promise<NewsTerminalKiFazit[]> {
+  const leer = (fehler: string): NewsTerminalKiFazit[] =>
+    gruppen.map((g) => ({
       symbol: g.symbol,
       name: g.name,
       fazit: '',
       anzahlMeldungen: g.headlines.length,
-      fehler: 'GEMINI_API_KEY_FREE fehlt — News-Fazit darf den Billing-Key nicht nutzen.',
-    }
+      fehler,
+    }))
+
+  const provider = resolveGeminiFreeTierProvider()
+  if (!provider) {
+    return leer('GEMINI_API_KEY_FREE fehlt — News-Fazit darf den Billing-Key nicht nutzen.')
   }
 
-  const liste = g.headlines
-    .map((h, i) => `${i + 1}. [${h.quelle}] ${h.titel}`)
-    .join('\n')
+  const bloecke = gruppen
+    .map((g) => {
+      const liste = g.headlines
+        .map((h, i) => `  ${i + 1}. [${h.quelle}] ${h.titel}`)
+        .join('\n')
+      return `### ${g.name} (${g.symbol}) — ${g.headlines.length} Meldung(en)\n${liste}`
+    })
+    .join('\n\n')
 
   const userText = [
-    `Unternehmen: ${g.name} (${g.symbol})`,
-    `Anzahl Meldungen: ${g.headlines.length}`,
+    `Erstelle für jede der ${gruppen.length} Firmen ein Fazit.`,
+    `Symbole (exakt so zurückgeben): ${gruppen.map((g) => g.symbol).join(', ')}`,
     '',
-    'Schlagzeilen:',
-    liste,
+    bloecke,
     '',
-    'Schreibe jetzt ein informatives deutsches Fazit mit möglichst vielen konkreten Fakten aus diesen Schlagzeilen.',
-    'Keine Meta-Kommentare zur Nachrichtenlage.',
+    'JSON mit Array „fazite“: [{ "symbol": "…", "fazit": "…" }, …] — ein Eintrag pro Symbol.',
   ].join('\n')
 
   const models = geminiFreeTierFlashModelKandidaten({
@@ -142,9 +192,9 @@ async function fazitFuerUnternehmen(g: Gruppe): Promise<NewsTerminalKiFazit> {
 
   for (let attempt = 0; attempt < MAX_RETRIES_BEI_RATE_LIMIT; attempt++) {
     if (attempt > 0) {
-      const backoff = 18_000 + attempt * 12_000 + Math.floor(Math.random() * 2_000)
+      const backoff = 12_000 + attempt * 8_000
       console.warn(
-        `[news-ki-fazit] ${g.symbol}: Rate-Limit — warte ${Math.round(backoff / 1000)}s (Versuch ${attempt + 1}/${MAX_RETRIES_BEI_RATE_LIMIT})`,
+        `[news-ki-fazit] Batch Rate-Limit — warte ${Math.round(backoff / 1000)}s (Versuch ${attempt + 1})`,
       )
       await sleep(backoff)
     }
@@ -154,30 +204,43 @@ async function fazitFuerUnternehmen(g: Gruppe): Promise<NewsTerminalKiFazit> {
       provider.apiKey,
       SYSTEM_PROMPT,
       [{ role: 'user', content: userText }],
-      { temperature: 0.3, geminiModels: models, geminiForceFreeApiKey: true },
+      {
+        temperature: 0.3,
+        geminiModels: models,
+        geminiForceFreeApiKey: true,
+        jsonResponse: { schema: FAZIT_JSON_SCHEMA },
+        maxOutputTokens: 4096,
+        thinkingMinimal: true,
+        timeoutMs: 90_000,
+        geminiTotalBudgetMs: 120_000,
+      },
     )
 
-    if (result.ok) {
+    if (!result.ok) {
+      letzterFehler = result.hint || letzterFehler
+      if (!istRateLimitHinweis(letzterFehler)) break
+      continue
+    }
+
+    const map = parseFaziteJson(result.reply, gruppen)
+    if (map.size === 0) {
+      letzterFehler = 'KI lieferte keine auswertbaren Fazite.'
+      break
+    }
+
+    return gruppen.map((g) => {
+      const fazit = map.get(g.symbol.toUpperCase()) ?? ''
       return {
         symbol: g.symbol,
         name: g.name,
-        fazit: bereinigeFazitMeta(result.reply.trim()),
+        fazit,
         anzahlMeldungen: g.headlines.length,
-        fehler: null,
+        fehler: fazit ? null : 'Kein Fazit für dieses Symbol in der KI-Antwort.',
       }
-    }
-
-    letzterFehler = result.hint || letzterFehler
-    if (!istRateLimitHinweis(letzterFehler)) break
+    })
   }
 
-  return {
-    symbol: g.symbol,
-    name: g.name,
-    fazit: '',
-    anzahlMeldungen: g.headlines.length,
-    fehler: letzterFehler,
-  }
+  return leer(letzterFehler)
 }
 
 export async function generiereNewsTerminalKiFazite(opts: {
@@ -185,31 +248,10 @@ export async function generiereNewsTerminalKiFazite(opts: {
   nurHeute: boolean
 }): Promise<NewsTerminalKiPaket> {
   const gruppen = gruppiereNachUnternehmen(opts.zeilen, opts.nurHeute)
-  const fazite: NewsTerminalKiFazit[] = []
-  const start = Date.now()
-  let letzterCall = 0
-
-  for (let i = 0; i < gruppen.length; i++) {
-    const g = gruppen[i]!
-    if (Date.now() - start > ZEIT_BUDGET_MS) {
-      for (const rest of gruppen.slice(i)) {
-        fazite.push({
-          symbol: rest.symbol,
-          name: rest.name,
-          fazit: '',
-          anzahlMeldungen: rest.headlines.length,
-          fehler: 'Zeitbudget in diesem Batch — bitte „Fehlgeschlagene erneut“ nutzen.',
-        })
-      }
-      break
-    }
-
-    const warten = letzterCall + GAP_MS - Date.now()
-    if (warten > 0) await sleep(warten)
-    letzterCall = Date.now()
-
-    fazite.push(await fazitFuerUnternehmen(g))
-  }
+  const fazite =
+    gruppen.length === 0
+      ? []
+      : await faziteFuerBatch(gruppen)
 
   fazite.sort((a, b) => a.name.localeCompare(b.name, 'de'))
 

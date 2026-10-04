@@ -70,7 +70,7 @@ async function fetchKiFaziteBatch(opts: {
       })),
       nurHeute: opts.nurHeute,
     }),
-    signal: AbortSignal.timeout(200_000),
+    signal: AbortSignal.timeout(130_000),
   })
   const raw = await res.text()
   let json: { ok?: boolean; message?: string; error?: string } & Partial<NewsTerminalKiPaket>
@@ -95,9 +95,9 @@ async function fetchKiFaziteBatch(opts: {
   }
 }
 
-/** Klein + Pause: Free-Gemini RPM sonst sofort 429. */
-const KI_BATCH_GROESSE = 4
-const KI_PAUSE_ZWISCHEN_BATCHES_MS = 12_000
+/** 6 Titel / 1 Gemini-Call; kurze Pause nur gegen Free-RPM. */
+const KI_BATCH_GROESSE = 6
+const KI_PAUSE_ZWISCHEN_BATCHES_MS = 4_000
 
 function sleepMs(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
@@ -176,10 +176,12 @@ async function fetchKiFaziteAlle(opts: {
       alleFazite = mergeKiFazite(alleFazite, teil.fazite)
     } catch (e) {
       letzterFehler = e instanceof Error ? e : new Error('Batch fehlgeschlagen')
-      const batchHinweis =
-        /failed to fetch|load failed|networkerror|timeout/i.test(letzterFehler.message)
-          ? 'Verbindung zum Server abgebrochen (Timeout oder Netz). Bitte Fazit erneut starten.'
-          : letzterFehler.message
+      const msg = letzterFehler.message
+      const batchHinweis = /timed out|timeout|aborted|failed to fetch|load failed|networkerror/i.test(
+        msg,
+      )
+        ? 'Batch-Timeout — Free-Gemini war zu langsam. „Fehlgeschlagene erneut“ drücken.'
+        : msg
       alleFazite = mergeKiFazite(
         alleFazite,
         batches[i].map((sym) => {
@@ -189,11 +191,16 @@ async function fetchKiFaziteAlle(opts: {
                 (z.unternehmen[0]?.symbol || z.unternehmen[0]?.id || '').trim().toUpperCase() ===
                 sym,
             )?.unternehmen[0]?.name || sym
+          const anzahl = subset.filter(
+            (z) =>
+              (z.unternehmen[0]?.symbol || z.unternehmen[0]?.id || '').trim().toUpperCase() ===
+              sym,
+          ).length
           return {
             symbol: sym,
             name,
             fazit: '',
-            anzahlMeldungen: 0,
+            anzahlMeldungen: anzahl,
             fehler: batchHinweis,
           }
         }),
@@ -512,8 +519,8 @@ export function PortfolioNewsTerminalClient() {
 
           <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">
             Quelle: Yahoo Finance + Google News. „KI-Tagesfazit“ fasst Titel auf Deutsch zusammen (Gemini Free,
-            langsam sequentiell wegen Rate-Limits — bei ~40 Titeln oft 5–10 Minuten). Bei 429: „Fehlgeschlagene
-            erneut“. Details unter{' '}
+            ein Call pro 6 Firmen — bei ~40 Titeln oft 1–3 Minuten). Bei Fehlern: „Fehlgeschlagene erneut“.
+            Details unter{' '}
             <Link href="/portfolioanalyse/fundamentaldaten" className="text-teal-400 hover:underline">
               Fundamentaldaten → News
             </Link>
