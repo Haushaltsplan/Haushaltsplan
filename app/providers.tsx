@@ -14,6 +14,7 @@ import { TerminMorgenReminderRunner } from '@/components/termin-morgen-reminder'
 import { AuthGate } from '@/components/auth-gate'
 import { ZugriffGate } from '@/components/zugriff-gate'
 import { AppLockGate } from '@/components/app-lock-gate'
+import { AppQueryProvider } from '@/components/app-query-provider'
 import { ClientStateBootstrap } from '@/components/client-state-bootstrap'
 import { ClientStateThemeSync } from '@/components/client-state-theme-sync'
 import { installApiAuth } from '@/lib/api-auth-client'
@@ -53,18 +54,20 @@ export function Providers({ children }: { children: ReactNode }) {
       <OmniaAndroidBack />
       <OmniaExternalLinks />
       <OmniaErrorBoundary>
-        <AppConfirmProvider>
-          <AuthGate>
-            <AppLockGate>
-              <ZugriffGate>
-                <ClientStateBootstrap />
-                <ClientStateThemeSync />
-                <OmniaOfflineBanner />
-                {children}
-              </ZugriffGate>
-            </AppLockGate>
-          </AuthGate>
-        </AppConfirmProvider>
+        <AppQueryProvider>
+          <AppConfirmProvider>
+            <AuthGate>
+              <AppLockGate>
+                <ZugriffGate>
+                  <ClientStateBootstrap />
+                  <ClientStateThemeSync />
+                  <OmniaOfflineBanner />
+                  {children}
+                </ZugriffGate>
+              </AppLockGate>
+            </AuthGate>
+          </AppConfirmProvider>
+        </AppQueryProvider>
       </OmniaErrorBoundary>
       <PwaServiceWorkerRegister />
       {!whoopApp ? <TerminMorgenReminderRunner /> : null}

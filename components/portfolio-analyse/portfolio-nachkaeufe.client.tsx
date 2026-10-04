@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { appTableScrollClassName } from '@/components/page-shell'
+import {
+  useInvalidateNachkaufQueries,
+  useNachkaufErgebnisseQuery,
+  useNachkaufKaufempfehlungQuery,
+  useNachkaufPerformanceQuery,
+} from '@/lib/query/nachkauf-queries'
 import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/pa-earnings-call-analyse'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaSectionTitle, PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
@@ -1808,57 +1814,40 @@ export function NachkaufRadarClient() {
   const [kaufBudget, setKaufBudget] = useState<number>(500)
   const [performance, setPerformance] = useState<NachkaufPerformanceUebersicht | null>(null)
   const scanRef = useRef(false)
+  const invalidateNachkauf = useInvalidateNachkaufQueries()
+  const ergebnisseQuery = useNachkaufErgebnisseQuery()
+  const kaufempfehlungQuery = useNachkaufKaufempfehlungQuery()
+  const performanceQuery = useNachkaufPerformanceQuery()
 
-  // Gespeicherte Ergebnisse beim Start laden
+  // Cloud-Stand via TanStack Query → lokaler UI-State
   useEffect(() => {
-    async function init() {
-      setLaden(true)
-      try {
-        const res = await fetch('/api/portfolio-analyse/nachkaeufe/ergebnisse')
-        if (res.ok) {
-          const paket = (await res.json()) as NachkaufErgebnissePaket
-          if (typeof paket.gesamtAnzahl === 'number') setGesamtAnzahl(paket.gesamtAnzahl)
-          if (paket.ausstehend != null) setAusstehend(paket.ausstehend)
-          if (paket.ergebnisse.length > 0) {
-            setErgebnisse(paket.ergebnisse)
-            setMonatsEmpfehlung(paket.monatsEmpfehlung)
-            setGescannt_am(paket.gescannt_am)
-            setSelectedTicker(paket.ergebnisse[0]?.ticker ?? null)
-          }
-        }
-        // Gespeicherte Kaufempfehlung für aktuellen Monat laden
-        const empRes = await fetch('/api/portfolio-analyse/nachkaeufe/kaufempfehlung')
-        if (empRes.ok) {
-          const { daten } = await empRes.json()
-          if (daten?.ki_text) {
-            setKaufempfehlungText(daten.ki_text)
-            setKaufempfehlungAllokation(daten.basis_allokation ?? [])
-            setVerkaufAllokation(daten.verkauf_allokation ?? [])
-          }
-        }
-
-        const perfRes = await fetch('/api/portfolio-analyse/nachkaeufe/performance')
-        if (perfRes.ok) {
-          const perf = await perfRes.json()
-          if (perf.ok && perf.daten) setPerformance(perf.daten as NachkaufPerformanceUebersicht)
-        }
-      } catch {
-        // ignorieren — leerer Zustand wird angezeigt
-      } finally {
-        setLaden(false)
-      }
+    const paket = ergebnisseQuery.data
+    if (!paket) return
+    if (typeof paket.gesamtAnzahl === 'number') setGesamtAnzahl(paket.gesamtAnzahl)
+    if (paket.ausstehend != null) setAusstehend(paket.ausstehend)
+    if (paket.ergebnisse.length > 0) {
+      setErgebnisse(paket.ergebnisse)
+      setMonatsEmpfehlung(paket.monatsEmpfehlung)
+      setGescannt_am(paket.gescannt_am)
+      setSelectedTicker((prev) => prev ?? paket.ergebnisse[0]?.ticker ?? null)
     }
-    void init()
-  }, [])
+  }, [ergebnisseQuery.data])
 
   useEffect(() => {
-    void fetch('/api/portfolio-analyse/nachkaeufe/performance')
-      .then((r) => r.json())
-      .then((j) => {
-        if (j.ok && j.daten) setPerformance(j.daten as NachkaufPerformanceUebersicht)
-      })
-      .catch(() => {})
-  }, [kaufempfehlungText])
+    const daten = kaufempfehlungQuery.data
+    if (!daten?.ki_text) return
+    setKaufempfehlungText(daten.ki_text)
+    setKaufempfehlungAllokation((daten.basis_allokation as SparplanPosten[]) ?? [])
+    setVerkaufAllokation((daten.verkauf_allokation as VerkaufPosten[]) ?? [])
+  }, [kaufempfehlungQuery.data])
+
+  useEffect(() => {
+    if (performanceQuery.data) setPerformance(performanceQuery.data)
+  }, [performanceQuery.data])
+
+  useEffect(() => {
+    setLaden(ergebnisseQuery.isLoading && !ergebnisseQuery.data)
+  }, [ergebnisseQuery.isLoading, ergebnisseQuery.data])
 
   async function starteKaufempfehlung() {
     setKaufempfehlungLaeuft(true)
@@ -1880,12 +1869,8 @@ export function NachkaufRadarClient() {
       if (daten.trackingFehler && (daten.basisAllokation?.length ?? 0) > 0) {
         console.warn('[Nachkauf] Performance-Tracking:', daten.trackingFehler)
       }
-      const perfRes = await fetch('/api/portfolio-analyse/nachkaeufe/performance')
-      if (perfRes.ok) {
-        const perf = await perfRes.json()
-        if (perf.ok && perf.daten) setPerformance(perf.daten as NachkaufPerformanceUebersicht)
-      }
       setVerkaufAllokation(daten.basisVerkaufAllokation ?? [])
+      await invalidateNachkauf()
     } catch (e) {
       setKaufempfehlungText(`Fehler: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
@@ -1961,16 +1946,10 @@ export function NachkaufRadarClient() {
             setAusstehend(paket.ausstehend ?? 0)
             setSelectedTicker((prev) => prev ?? paket.ergebnisse[0]?.ticker ?? null)
           }
-        } else {
-          const fresh = await fetch('/api/portfolio-analyse/nachkaeufe/ergebnisse')
-          if (fresh.ok) {
-            const paket = (await fresh.json()) as NachkaufErgebnissePaket
-            if (paket.ergebnisse.length > 0) {
-              setErgebnisse(paket.ergebnisse)
-              setMonatsEmpfehlung(paket.monatsEmpfehlung)
-            }
-          }
         }
+        await invalidateNachkauf()
+      } else {
+        await invalidateNachkauf()
       }
     } catch (e) {
       setFehler(String(e))
@@ -1979,7 +1958,7 @@ export function NachkaufRadarClient() {
       setScanFortschritt(null)
       scanRef.current = false
     }
-  }, [])
+  }, [invalidateNachkauf])
 
   // Deep Research
   const starteDeepResearch = useCallback(async (eintrag: NachkaufScanEintrag) => {
@@ -2020,15 +1999,7 @@ export function NachkaufRadarClient() {
         body: JSON.stringify({ isin: eintrag.isin }),
       })
       if (res.ok) {
-        // Ergebnisse neu laden
-        const fresh = await fetch('/api/portfolio-analyse/nachkaeufe/ergebnisse')
-        if (fresh.ok) {
-          const paket = (await fresh.json()) as NachkaufErgebnissePaket
-          if (paket.ergebnisse.length > 0) {
-            setErgebnisse(paket.ergebnisse)
-            setMonatsEmpfehlung(paket.monatsEmpfehlung)
-          }
-        }
+        await invalidateNachkauf()
       } else {
         const d = await res.json() as { fehler?: string }
         setFehler(d.fehler ?? 'Rescan fehlgeschlagen.')
@@ -2038,7 +2009,7 @@ export function NachkaufRadarClient() {
     } finally {
       setRescanTicker(null)
     }
-  }, [rescanTicker])
+  }, [rescanTicker, invalidateNachkauf])
 
   // Notiz speichern
   const speichereNotiz = useCallback(async (ticker: string, notiz: string) => {

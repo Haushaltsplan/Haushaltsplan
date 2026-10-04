@@ -259,6 +259,48 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
     const context = snapshot ? { ...snapshot, vermoegen: vermoegen ?? snapshot.vermoegen ?? null } : { vermoegen }
 
     try {
+      // Streaming (AI SDK) bevorzugen — Fallback auf klassischen JSON-Endpunkt
+      const streamRes = await fetch('/api/finance-coach/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: next, context }),
+      })
+
+      if (streamRes.ok && streamRes.body) {
+        setMessages((p) => [...p, { role: 'assistant', content: '' }])
+        const reader = streamRes.body.getReader()
+        const decoder = new TextDecoder()
+        let acc = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          acc += decoder.decode(value, { stream: true })
+          const text = acc
+          setMessages((p) => {
+            const copy = [...p]
+            const lastIdx = copy.length - 1
+            if (lastIdx >= 0 && copy[lastIdx]?.role === 'assistant') {
+              copy[lastIdx] = { role: 'assistant', content: text }
+            }
+            return copy
+          })
+        }
+        if (!acc.trim()) {
+          toast.error('Leere KI-Antwort.')
+          setMessages((p) => p.slice(0, -1))
+        }
+        return
+      }
+
+      if (streamRes.status !== 501) {
+        const errData = await streamRes.json().catch(() => ({}))
+        if (streamRes.status >= 400 && streamRes.status !== 501) {
+          toast.error(typeof errData.error === 'string' ? errData.error : 'KI-Anfrage fehlgeschlagen.')
+          setMessages((p) => p.slice(0, -1))
+          return
+        }
+      }
+
       const res = await fetch('/api/finance-coach', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

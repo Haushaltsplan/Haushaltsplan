@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import 'server-only'
 
+import { parseJsonBody } from '@/lib/api/parse-json-body'
+import { nachkaufKaufempfehlungBodySchema } from '@/lib/api/schemas/nachkauf'
 import {
   ladeNachkaufScanAusCloud,
   ladeAlleDeepResearch,
@@ -21,11 +23,12 @@ export const maxDuration = 120
 export async function POST(req: Request) {
   return jsonMitOwner(req, async () => {
   try {
-    let budgetEur = 500
-    try {
-      const body = await req.json()
-      if (typeof body.budget === 'number' && body.budget >= 100) budgetEur = body.budget
-    } catch { /* Standardwert */ }
+    const parsed = await parseJsonBody(req, nachkaufKaufempfehlungBodySchema, {
+      fallback: { budget: 500 },
+      fehlerPrefix: 'Ungültiges Budget',
+    })
+    if (!parsed.ok) return parsed.response
+    const budgetEur = parsed.data.budget
 
     let ergebnisse = await ladeNachkaufScanAusCloud()
     if (ergebnisse.length === 0) {

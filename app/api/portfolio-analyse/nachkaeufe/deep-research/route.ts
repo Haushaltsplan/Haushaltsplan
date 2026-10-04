@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { parseJsonBody } from '@/lib/api/parse-json-body'
+import { nachkaufDeepResearchBodySchema } from '@/lib/api/schemas/nachkauf'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { fuhreDeepResearchDurch } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-deep-research-server'
 import { ladeNachkaufScanAusCloud } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
@@ -10,23 +12,16 @@ export const maxDuration = 300
 
 export async function POST(req: Request) {
   return jsonMitOwner(req, async () => {
-  let body: unknown
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ ok: false, fehler: 'Kein gültiges JSON.' }, { status: 400 })
-  }
+  const parsed = await parseJsonBody(req, nachkaufDeepResearchBodySchema, {
+    fehlerPrefix: 'Deep Research ungültig',
+  })
+  if (!parsed.ok) return parsed.response
 
-  const row = (body ?? {}) as Record<string, unknown>
-  const ticker = row.ticker != null ? String(row.ticker).trim() : ''
-  if (!ticker) {
-    return NextResponse.json({ ok: false, fehler: 'ticker fehlt.' }, { status: 400 })
-  }
-
+  const ticker = parsed.data.ticker
   const anfrage: NachkaufDeepResearchAnfrage = {
     ticker,
-    isin: row.isin != null ? String(row.isin).trim() || null : null,
-    name: row.name != null ? String(row.name).trim() || null : null,
+    isin: parsed.data.isin ?? null,
+    name: parsed.data.name ?? null,
   }
 
   let scanEintrag: NachkaufScanEintrag | null = null

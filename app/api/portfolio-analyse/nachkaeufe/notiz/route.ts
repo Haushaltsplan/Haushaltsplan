@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { parseJsonBody } from '@/lib/api/parse-json-body'
+import { nachkaufNotizBodySchema } from '@/lib/api/schemas/nachkauf'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { ladeNotizen, speichereNotiz } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 
@@ -19,11 +21,9 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   return jsonMitOwner(req, async () => {
     try {
-      const body = (await req.json()) as { ticker?: string; notiz?: string }
-      if (!body.ticker?.trim()) {
-        return NextResponse.json({ ok: false, fehler: 'ticker fehlt' }, { status: 400 })
-      }
-      await speichereNotiz(body.ticker.trim(), body.notiz ?? '')
+      const parsed = await parseJsonBody(req, nachkaufNotizBodySchema, { fehlerPrefix: 'Notiz ungültig' })
+      if (!parsed.ok) return parsed.response
+      await speichereNotiz(parsed.data.ticker, parsed.data.notiz)
       return NextResponse.json({ ok: true })
     } catch (e) {
       return NextResponse.json({ ok: false, fehler: String(e) }, { status: 500 })

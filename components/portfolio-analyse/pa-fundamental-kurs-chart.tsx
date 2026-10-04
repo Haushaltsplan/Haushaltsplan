@@ -1,5 +1,6 @@
 'use client'
 
+import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { chartHoverFromClientX, clientToSvgViewBox } from '@/components/portfolio-analyse/chart-hover'
 import {
@@ -58,6 +59,7 @@ function vonDatumFuerZeitraum(z: KursZeitraum): string {
     case '1m':
       d.setMonth(d.getMonth() - 1)
       break
+    case '3m':
       d.setMonth(d.getMonth() - 3)
       break
     case '6m':
@@ -180,56 +182,45 @@ function KursChartBody({
   const ddGradId = useId()
   const [modus, setModus] = useState<KursChartModus>('kurs')
   const [zeitraum, setZeitraum] = useState<KursZeitraum>('1yr')
-  const [punkte, setPunkte] = useState<KursPunkt[]>([])
-  const [laden, setLaden] = useState(false)
   const [range, setRange] = useState<[number, number]>([0, 100])
   const containerRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const vollbild = useChartAnalyseVollbild()
 
+  const kursQuery = useQuery({
+    queryKey: ['portfolio', 'kurse-historie', symbolYahoo, zeitraum],
+    enabled: Boolean(symbolYahoo),
+    staleTime: 60_000,
+    queryFn: async (): Promise<KursPunkt[]> => {
+      const sym = symbolYahoo!
+      const von = vonDatumFuerZeitraum(zeitraum)
+      const bis = new Date().toISOString().slice(0, 10)
+      const interval = intervallFuerZeitraum(zeitraum)
+      const res = await fetch('/api/portfolio-analyse/kurse/historie', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbols: [sym],
+          vonDatum: von,
+          bisDatum: bis,
+          interval: interval === '1d' ? '1d' : interval,
+        }),
+      })
+      const j = (await res.json()) as { ok?: boolean; serien?: Record<string, Record<string, number>> }
+      const serie = j.serien?.[sym] ?? j.serien?.[sym.toUpperCase()] ?? {}
+      return Object.entries(serie)
+        .map(([datum, kurs]) => ({ datum, kurs }))
+        .sort((a, b) => a.datum.localeCompare(b.datum))
+    },
+  })
+
+  const punkte = kursQuery.data ?? []
+  const laden = kursQuery.isFetching
+
   useEffect(() => {
-    if (!symbolYahoo) {
-      setPunkte([])
-      return
-    }
-    const sym = symbolYahoo
-    let cancelled = false
-    async function run() {
-      setLaden(true)
-      try {
-        const von = vonDatumFuerZeitraum(zeitraum)
-        const bis = new Date().toISOString().slice(0, 10)
-        const interval = intervallFuerZeitraum(zeitraum)
-        const res = await fetch('/api/portfolio-analyse/kurse/historie', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            symbols: [sym],
-            vonDatum: von,
-            bisDatum: bis,
-            interval: interval === '1d' ? '1d' : interval,
-          }),
-        })
-        const j = (await res.json()) as { ok?: boolean; serien?: Record<string, Record<string, number>> }
-        if (cancelled) return
-        const serie = j.serien?.[sym] ?? j.serien?.[sym.toUpperCase()] ?? {}
-        const pts = Object.entries(serie)
-          .map(([datum, kurs]) => ({ datum, kurs }))
-          .sort((a, b) => a.datum.localeCompare(b.datum))
-        setPunkte(pts)
-        setRange([0, 100])
-      } catch {
-        if (!cancelled) setPunkte([])
-      } finally {
-        if (!cancelled) setLaden(false)
-      }
-    }
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [symbolYahoo, zeitraum])
+    setRange([0, 100])
+  }, [symbolYahoo, zeitraum, kursQuery.dataUpdatedAt])
 
   const gefiltert = useMemo(() => {
     if (punkte.length === 0) return []

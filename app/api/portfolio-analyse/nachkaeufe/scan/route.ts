@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { parseJsonBody } from '@/lib/api/parse-json-body'
+import { nachkaufScanBodySchema } from '@/lib/api/schemas/nachkauf'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { laufeScan } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-scan-server'
 import type { NachkaufScanAnfrage } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
@@ -7,23 +9,20 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 export async function POST(req: Request) {
-  let body: unknown
-  try {
-    body = await req.json()
-  } catch {
-    body = {}
-  }
+  const parsed = await parseJsonBody(req, nachkaufScanBodySchema, {
+    fallback: { erzwingen: false, nurFehlende: false, offset: 0, abschliessen: false },
+  })
+  if (!parsed.ok) return parsed.response
 
-  const row = (body ?? {}) as Record<string, unknown>
   const anfrage: NachkaufScanAnfrage = {
-    ticker: row.ticker != null ? String(row.ticker).trim() || null : null,
-    erzwingen: row.erzwingen === true,
-    nurFehlende: row.nurFehlende === true,
-    offset: typeof row.offset === 'number' ? row.offset : Number(row.offset) || 0,
+    ticker: parsed.data.ticker ?? null,
+    erzwingen: parsed.data.erzwingen,
+    nurFehlende: parsed.data.nurFehlende,
+    offset: parsed.data.offset,
     maxProAufruf: 1,
     zeitBudgetMs: 110_000,
-    leicht: row.abschliessen !== true,
-    abschliessen: row.abschliessen === true,
+    leicht: !parsed.data.abschliessen,
+    abschliessen: parsed.data.abschliessen,
   }
 
   try {

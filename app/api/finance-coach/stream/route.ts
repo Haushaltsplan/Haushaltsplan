@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server'
+import type { ModelMessage } from 'ai'
 import { parseJsonBody } from '@/lib/api/parse-json-body'
 import { financeCoachBodySchema } from '@/lib/api/schemas/finance-coach'
-import {
-  geminiApiKeyFreeConfigured,
-  geminiFreeTierFlashModelKandidaten,
-  prepareCoachMessages,
-  resolveCoachProvider,
-  resolveGeminiFreeTierProvider,
-  runCoachCompletion,
-} from '@/lib/ki-coach-backend'
+import { prepareCoachMessages, resolveGeminiFreeTierProvider, resolveCoachProvider } from '@/lib/ki-coach-backend'
+import { streamGeminiText } from '@/lib/ki/ai-sdk-gemini'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 120
 
 function resolveFinanceCoachProvider() {
   return resolveGeminiFreeTierProvider() ?? resolveCoachProvider()
@@ -42,69 +38,44 @@ Antworte auf Deutsch, gut lesbar: kurze \`## \`-Abschnitte, Aufzählungen mit \`
 Standardlänge: 2–5 knappe Abschnitte (ca. 15–22 Sätze). Mehr nur, wenn ausdrücklich nach Tiefe gefragt wird.${contextBlock}`
 }
 
-export async function GET() {
-  const resolved = resolveFinanceCoachProvider()
-  const isVercel = Boolean(process.env.VERCEL)
-  return NextResponse.json({
-    configured: Boolean(resolved),
-    provider: resolved?.provider,
-    ...(!resolved && isVercel
-      ? {
-          hostedNote:
-            'Auf Vercel: Project Settings → Environment Variables → GEMINI_API_KEY_FREE (oder GEMINI_API_KEY / OPENAI_API_KEY) für Production setzen, Deployment neu bauen. .env.local wird nicht mit deployt.',
-        }
-      : {}),
-  })
-}
-
 export async function POST(req: Request) {
   const resolved = resolveFinanceCoachProvider()
-  if (!resolved) {
+  if (!resolved || resolved.provider !== 'gemini') {
     return NextResponse.json(
       {
         error:
-          'KI ist nicht konfiguriert: Lege in .env.local im Projektroot einen API-Schlüssel an, speichere, starte den Dev-Server neu (npm run dev). ' +
-          'Option A — Gemini (Google AI Studio): GEMINI_API_KEY_FREE=… oder GEMINI_API_KEY=…. ' +
-          'Option B — OpenAI: OPENAI_API_KEY=… (oder AI_API_KEY). ' +
-          'Optional: FINANCE_COACH_PROVIDER=auto|gemini|openai (Standard: auto = Gemini bevorzugt, falls Schlüssel da).',
+          'Streaming benötigt Gemini (GEMINI_API_KEY_FREE). OpenAI bitte über /api/finance-coach nutzen.',
       },
       { status: 501 },
     )
   }
 
-  const parsed = await parseJsonBody(req, financeCoachBodySchema, { fehlerPrefix: 'Ungültige Anfrage' })
+  const parsed = await parseJsonBody(req, financeCoachBodySchema)
   if (!parsed.ok) return parsed.response
 
   const userMessages = prepareCoachMessages(parsed.data.messages)
   const last = userMessages[userMessages.length - 1]
   const lastHasText = last?.role === 'user' && typeof last.content === 'string' && last.content.trim().length > 0
   if (!userMessages.length || last?.role !== 'user' || !lastHasText) {
-    return NextResponse.json(
-      { error: 'Bitte eine Frage oder einen kurzen Text eingeben.' },
-      { status: 400 },
-    )
+    return NextResponse.json({ error: 'Bitte eine Frage oder einen kurzen Text eingeben.' }, { status: 400 })
   }
 
-  const systemText = buildSystemPrompt(parsed.data.context)
+  const messages: ModelMessage[] = userMessages.map((m) => ({
+    role: m.role,
+    content: m.content,
+  }))
 
   try {
-    const result = await runCoachCompletion(resolved.provider, resolved.apiKey, systemText, userMessages, {
+    const result = await streamGeminiText({
+      system: buildSystemPrompt(parsed.data.context),
+      messages,
+      mode: 'free',
       temperature: 0.5,
-      geminiModels: resolved.provider === 'gemini' ? geminiFreeTierFlashModelKandidaten() : undefined,
-      geminiForceFreeApiKey: resolved.provider === 'gemini' && geminiApiKeyFreeConfigured(),
       maxOutputTokens: 4096,
-      thinkingMinimal: true,
     })
-
-    if (!result.ok) {
-      return NextResponse.json(
-        { error: `KI-Dienst antwortete mit ${result.status}. ${result.hint}` },
-        { status: 502 },
-      )
-    }
-    return NextResponse.json({ reply: result.reply })
+    return result.toTextStreamResponse()
   } catch (e) {
-    console.error('finance-coach', e)
-    return NextResponse.json({ error: 'Verbindung zum KI-Dienst fehlgeschlagen.' }, { status: 502 })
+    console.error('finance-coach/stream', e)
+    return NextResponse.json({ error: 'Streaming fehlgeschlagen.' }, { status: 502 })
   }
 }
