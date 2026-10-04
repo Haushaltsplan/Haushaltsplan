@@ -192,7 +192,7 @@ export function defaultEtsyVorlage(): EtsyListingVorlage {
     standortText: ETSY_DEFAULT_STANDORT,
     finishText: ETSY_DEFAULT_FINISH,
     whoMade: 'i_did',
-    /** Fertige Unikate (handgedreht) — nicht Auftragfertigung. */
+    /** Fertige Unikate (handgedrechselt) — nicht Auftragfertigung. */
     whenMade: '2020_2026',
   }
 }

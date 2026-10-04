@@ -21,6 +21,10 @@ import {
   marktSeedsFuerListing,
 } from '@/lib/etsy/etsy-scraping'
 import { mitEtsyGeminiQueue } from '@/lib/etsy/etsy-gemini-queue'
+import {
+  normalisiereDrechselSprache,
+  normalisiereDrechselTags,
+} from '@/lib/etsy/etsy-drechsel-sprache'
 import { marktIssues, pruefeListingRegeln, pruefeMarktAbdeckung } from '@/lib/etsy/etsy-seo-regeln'
 import {
   geminiFreeTierFlashModelKandidaten,
@@ -76,7 +80,7 @@ function normalisiereTags(raw: unknown): string[] {
     if (out.length >= TAG_COUNT) break
   }
   const fallbacks = [
-    'handgedrehte schale',
+    'gedrechselte schale',
     'holzschale unikat',
     'obstschale holz',
     'drechselarbeit',
@@ -156,13 +160,19 @@ function validiereAudit(raw: Record<string, unknown>): EtsySeoAuditResult {
     raw.suggestions && typeof raw.suggestions === 'object'
       ? (raw.suggestions as Record<string, unknown>)
       : {}
-  let optimized_title = String(sugRaw.optimized_title || '').trim().replace(/\s+/g, ' ')
+  let optimized_title = normalisiereDrechselSprache(
+    String(sugRaw.optimized_title || '').trim().replace(/\s+/g, ' '),
+  )
   if (optimized_title.length > TITLE_MAX) optimized_title = optimized_title.slice(0, TITLE_MAX).trim()
-  const optimized_tags = normalisiereTags(sugRaw.optimized_tags)
-  const optimized_description_intro = String(sugRaw.optimized_description_intro || '').trim()
+  const optimized_tags = normalisiereDrechselTags(normalisiereTags(sugRaw.optimized_tags), {
+    aufDreizehn: true,
+  })
+  const optimized_description_intro = normalisiereDrechselSprache(
+    String(sugRaw.optimized_description_intro || '').trim(),
+  )
   const optDesc =
     typeof sugRaw.optimized_description === 'string' && sugRaw.optimized_description.trim()
-      ? sugRaw.optimized_description.trim()
+      ? normalisiereDrechselSprache(sugRaw.optimized_description.trim())
       : null
 
   if (!optimized_title) throw new Error('Audit ohne optimized_title.')

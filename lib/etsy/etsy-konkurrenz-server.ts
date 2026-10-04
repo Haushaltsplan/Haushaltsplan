@@ -27,7 +27,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 export const KONKURRENZ_SUCHBEGRIFFE = [
   'gedrechselte schale',
   'holzschale gedrechselt',
-  'handgedrehte holzschale',
+  'handgedrechselte holzschale',
   'holzschüssel gedrechselt',
   'drechselarbeit',
   'holzschale unikat',
@@ -48,7 +48,7 @@ const ENTDECKUNG_ALLE_MS = 7 * 24 * 60 * 60 * 1000
 
 const SCHALE_RE = /(schale|schälchen|schaelchen|schüssel|schuessel|\bbowls?\b)/
 const HOLZ_RE =
-  /(holz|wood|gedrechselt|handgedreht|gedreht|drechsel|turned|eiche|buche|nuss|ahorn|esche|kirsch|olive|birke|erle|linde|ulme|zwetschg|pflaume|apfel|birn|robinie|akazie|zirbe|platane|walnut|oak|maple|cherry)/
+  /(holz|wood|gedrechselt|handgedrechselt|handgedreht|gedreht|drechsel|turned|eiche|buche|nuss|ahorn|esche|kirsch|olive|birke|erle|linde|ulme|zwetschg|pflaume|apfel|birn|robinie|akazie|zirbe|platane|walnut|oak|maple|cherry)/
 /** Titel mit diesen Materialien/Produkten zählen nicht als gedrechselte Holzschale. */
 const NICHT_GEDRECHSELT_RE =
   /(epoxid|resin|\bharz|beton|keramik|\bton\b|porzellan|steingut|glas|silikon|gie(ß|ss)form|kunststoff|metall|messing|kupfer|filz|häkel|makramee|kerze|seife|papier|leder|stoff|textil|brandmalerei|lasergravur|laser)/

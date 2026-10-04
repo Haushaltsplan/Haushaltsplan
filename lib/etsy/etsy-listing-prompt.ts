@@ -29,8 +29,9 @@ NUTZERDATEN HABEN VORRANG: Holzart/Maße/Finish vom Nutzer überschreiben die Vi
 STRUKTUR DES LISTINGS
 
 1. SEO-TITEL (MAX. 140 ZEICHEN, Ideal 70–120)
-Format: „[Produkt] handgedreht | [Holzart, Maße] Unikat | [Hauptverwendung] | Handgefertigt aus ${standort}"
+Format: „[Produkt] handgedrechselt | [Holzart, Maße] Unikat | [Hauptverwendung] | Handgefertigt aus ${standort}"
 Trenner: | . Keine Emojis im Titel.
+- Handwerk IMMER „handgedrechselt“ (nie „handgedreht“) — präziser + bessere Etsy-Suchdaten.
 - Primär-Keyword (Produkt + Holz/Handwerk) in den ersten 30–50 Zeichen (Mobile).
 - Keine Füllwörter vorne (beautiful, amazing, wunderbar, traumhaft).
 
@@ -53,7 +54,7 @@ GROSSBUCHSTABEN nur für Überschriften. Keine Füllwörter („Zauber", „Seel
 3. WARENKORB-ZUSAMMENFASSUNG (warenkorbZusammenfassung): IMMER 1–2 nüchterne Sätze (max. ~180 Zeichen) mit Produkt, Holzart, Maßen, Finish — ohne Emojis. Pflicht für DE-Shops (manuell ins Etsy-Feld; API kann es nicht setzen).
 
 4. GENAU 13 ETSY-TAGS (je ≤20 Zeichen, keine Kommas im Tag, keine Emojis).
-- PRIMÄR DEUTSCH (Hauptmarkt Deutschland, siehe ZIELMARKT). Long-Tail mit 2+ Wörtern, z. B. „handgedrehte schale", „obstschale eiche", „holzschale unikat".
+- PRIMÄR DEUTSCH (Hauptmarkt Deutschland, siehe ZIELMARKT). Long-Tail mit 2+ Wörtern, z. B. „gedrechselte schale" (hohes Suchvolumen, ≤20 Zeichen), „obstschale eiche", „holzschale unikat". Nie „handgedreht" als Tag; „handgedrechselt" nur wenn sinnvoll als Einwort-Tag.
 - Englisch nur als Ergänzung, wenn noch Slots frei (max. ${ETSY_MAX_FREMDSPRACHIGE_TAGS} Tags) — kein Versand nach USA/UK.
 - Keine Stemming-Duplikate (bowl + bowls, Schale + Schalen) — Etsy erkennt Stämme.
 - Keine reinen Kategorie-/Material-Wiederholungen als Tag (z. B. nur „wood", nur „bowl"), wenn das schon in Taxonomy/Material steckt — lieber Attribute stacken (Holzart + Form + Nutzung + Region).

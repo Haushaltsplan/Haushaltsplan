@@ -82,6 +82,8 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
   const [batchBusy, setBatchBusy] = useState(false)
   const [batchProgress, setBatchProgress] = useState('')
   const [tagsReparaturBusy, setTagsReparaturBusy] = useState(false)
+  const [handwerkBusy, setHandwerkBusy] = useState(false)
+  const [handgedrehtAnzahl, setHandgedrehtAnzahl] = useState(0)
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
@@ -178,6 +180,17 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     })
   }, [listing, editTitle, editTags, editIntro])
 
+  const ladeHandgedrehtStand = useCallback(async () => {
+    if (!verbunden) return
+    try {
+      const res = await fetch('/api/etsy/listings/handwerk-sprache', { cache: 'no-store' })
+      const j = (await res.json()) as { betroffen?: number }
+      if (res.ok) setHandgedrehtAnzahl(j.betroffen ?? 0)
+    } catch {
+      /* optional */
+    }
+  }, [verbunden])
+
   const ladeListings = useCallback(async () => {
     if (!verbunden) return
     setLoadingList(true)
@@ -190,13 +203,21 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
         toast.error(j.error ?? 'Listings laden fehlgeschlagen.')
         return
       }
-      setListings(j.listings ?? [])
+      const rows = j.listings ?? []
+      setListings(rows)
+      // Schnellschätzung aus Titel/Tags; genauer Stand inkl. Beschreibung nachgeladen
+      const lokal = rows.filter(
+        (l) =>
+          /handgedreht/i.test(l.title) || (l.tags ?? []).some((t) => /handgedreht/i.test(t)),
+      ).length
+      setHandgedrehtAnzahl((prev) => Math.max(prev, lokal))
+      void ladeHandgedrehtStand()
     } catch {
       toast.error('Listings laden fehlgeschlagen.')
     } finally {
       setLoadingList(false)
     }
-  }, [verbunden, stateFilter])
+  }, [verbunden, stateFilter, ladeHandgedrehtStand])
 
   useEffect(() => {
     void ladeListings()
@@ -437,6 +458,50 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     }
   }
 
+  async function schreibeHandwerkSpracheUm() {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `„handgedreht“ → „handgedrechselt“ auf Etsy umschreiben?\n\nPrüft alle ${stateFilter === 'active' ? 'aktiven' : ''} Listings (Titel, Beschreibung, Tags) und schreibt nur geänderte Felder. Dauert je Listing ein paar Sekunden.`,
+      )
+    ) {
+      return
+    }
+    setHandwerkBusy(true)
+    setBatchProgress('Schreibe Handwerk-Sprache um (handgedreht → handgedrechselt)…')
+    try {
+      const res = await fetch('/api/etsy/listings/handwerk-sprache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: stateFilter }),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        umgeschrieben?: number
+        fehlgeschlagen?: number
+        betroffen?: number
+        geprueft?: number
+        unveraendert?: number
+      }
+      if (!res.ok) {
+        toast.error(j.error ?? 'Umschreibung fehlgeschlagen.')
+        return
+      }
+      toast.success(
+        `${j.umgeschrieben ?? 0} Listing${(j.umgeschrieben ?? 0) === 1 ? '' : 's'} umgeschrieben` +
+          (j.unveraendert ? ` · ${j.unveraendert} schon ok` : '') +
+          (j.fehlgeschlagen ? ` · ${j.fehlgeschlagen} Fehler` : ''),
+      )
+      setHandgedrehtAnzahl(0)
+      void ladeListings()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Umschreibung fehlgeschlagen')
+    } finally {
+      setHandwerkBusy(false)
+      setBatchProgress('')
+    }
+  }
+
   async function pushUpdate(kind: 'title' | 'tags' | 'intro' | 'all') {
     if (!selectedId || !listing) return
     if (confirmPush !== kind) {
@@ -634,7 +699,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </select>
             <button
               type="button"
-              disabled={loadingList || batchBusy || tagsReparaturBusy}
+              disabled={loadingList || batchBusy || tagsReparaturBusy || handwerkBusy}
               onClick={() => void ladeListings()}
               className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm"
             >
@@ -642,7 +707,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </button>
             <button
               type="button"
-              disabled={batchBusy || tagsReparaturBusy}
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
               onClick={() => void batchScan(false)}
               className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
             >
@@ -650,16 +715,28 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </button>
             <button
               type="button"
-              disabled={batchBusy || tagsReparaturBusy}
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
               onClick={() => void batchScan(true)}
               className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm disabled:opacity-50"
             >
               Force-Rescan
             </button>
+            {(handgedrehtAnzahl > 0 || handwerkBusy) && (
+              <button
+                type="button"
+                disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
+                onClick={() => void schreibeHandwerkSpracheUm()}
+                className="rounded-xl bg-amber-700 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+              >
+                {handwerkBusy
+                  ? 'Schreibe um…'
+                  : `${handgedrehtAnzahl}× handgedreht → handgedrechselt`}
+              </button>
+            )}
             {scoreStats.tagsFehlen > 0 && (
               <button
                 type="button"
-                disabled={batchBusy || tagsReparaturBusy}
+                disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
                 onClick={() => void repariereAlleTags()}
                 className="rounded-xl bg-rose-700 px-3 py-2 text-sm font-medium text-white hover:bg-rose-600 disabled:opacity-50"
               >
@@ -669,6 +746,17 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
               </button>
             )}
           </div>
+          {handgedrehtAnzahl > 0 && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100">
+              <p className="font-medium">
+                {handgedrehtAnzahl} Listing{handgedrehtAnzahl === 1 ? '' : 's'} nutzen noch „handgedreht“.
+              </p>
+              <p className="mt-1 text-xs text-amber-200/90">
+                Ein Klick ersetzt auf Etsy in Titel, Beschreibung und Tags durch „handgedrechselt“ (Tags: z. B.
+                „gedrechselte schale“). Kein KI-Lauf nötig.
+              </p>
+            </div>
+          )}
           {scoreStats.tagsFehlen > 0 && (
             <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2.5 text-sm text-rose-100">
               <p className="font-medium">

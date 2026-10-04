@@ -62,6 +62,7 @@ const FREMD_WOERTER = new Set([
 
 const DEUTSCH_WOERTER = new Set([
   'schale', 'schalen', 'holz', 'holzschale', 'deko', 'geschenk', 'handgemacht', 'handgedreht', 'handgedrehte',
+  'handgedrechselt', 'handgedrechselte',
   'unikat', 'massivholz', 'obstschale', 'schussel', 'drechselarbeit', 'natur', 'naturrand', 'rustikal',
   'rustikale', 'hochzeit', 'holzhochzeit', 'kuche', 'tisch', 'esstisch', 'wohnzimmer', 'dekoschale', 'aus',
   'mit', 'fur', 'und', 'gedrechselt', 'gedrechselte', 'holzdeko', 'holzgeschenk',

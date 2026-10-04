@@ -14,6 +14,10 @@ import {
   marktSeedsFuerListing,
 } from '@/lib/etsy/etsy-scraping'
 import {
+  normalisiereDrechselSprache,
+  normalisiereDrechselTags,
+} from '@/lib/etsy/etsy-drechsel-sprache'
+import {
   berechneEtsyDraftSeoGeoScore,
   haerteEtsyListingFuerScore,
   pruefeMarktAbdeckung,
@@ -77,7 +81,7 @@ function normalisiereTags(raw: unknown): string[] {
     if (out.length >= TAG_COUNT) break
   }
   const fallbacks = [
-    'handgedrehte schale',
+    'gedrechselte schale',
     'holzschale unikat',
     'obstschale holz',
     'drechselarbeit',
@@ -170,11 +174,15 @@ function normalisiereGeoInsights(raw: unknown): EtsyListingGeoInsights | undefin
 }
 
 function validiereListing(raw: Record<string, unknown>, imageCount: number): EtsyGeneratedListing {
-  let title = typeof raw.title === 'string' ? raw.title.trim().replace(/\s+/g, ' ') : ''
+  let title =
+    typeof raw.title === 'string'
+      ? normalisiereDrechselSprache(raw.title.trim().replace(/\s+/g, ' '))
+      : ''
   if (title.length > TITLE_MAX) title = title.slice(0, TITLE_MAX).trim()
   if (!title) throw new Error('KI lieferte keinen gültigen Titel.')
 
-  let description = typeof raw.description === 'string' ? raw.description.trim() : ''
+  let description =
+    typeof raw.description === 'string' ? normalisiereDrechselSprache(raw.description.trim()) : ''
 
   const tax = normalisiereTaxonomy(
     typeof raw.produktForm === 'string' ? raw.produktForm : 'Schale',
@@ -188,10 +196,12 @@ function validiereListing(raw: Record<string, unknown>, imageCount: number): Ets
   }
 
   let warenkorb =
-    typeof raw.warenkorbZusammenfassung === 'string' ? raw.warenkorbZusammenfassung.trim() : ''
+    typeof raw.warenkorbZusammenfassung === 'string'
+      ? normalisiereDrechselSprache(raw.warenkorbZusammenfassung.trim())
+      : ''
   if (!warenkorb) {
     warenkorb = [
-      `Handgedrehte ${tax.produktForm}`,
+      `Handgedrechselte ${tax.produktForm}`,
       'Unikat aus Massivholz',
       'Finish Walnussöl',
     ].join(' · ')
@@ -201,7 +211,7 @@ function validiereListing(raw: Record<string, unknown>, imageCount: number): Ets
   }
   if (!description) throw new Error('KI lieferte keine Beschreibung.')
 
-  const tags = normalisiereTags(raw.tags)
+  const tags = normalisiereDrechselTags(normalisiereTags(raw.tags), { aufDreizehn: true })
   if (tags.length < TAG_COUNT) {
     throw new Error(`KI lieferte nur ${tags.length} Tags — ${TAG_COUNT} erforderlich.`)
   }

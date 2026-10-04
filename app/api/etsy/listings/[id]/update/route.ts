@@ -1,3 +1,7 @@
+import {
+  normalisiereDrechselSprache,
+  normalisiereDrechselTags,
+} from '@/lib/etsy/etsy-drechsel-sprache'
 import { ladeEtsyListingDetail, updateEtsyListing } from '@/lib/etsy/etsy-listings-server'
 import { beschreibeAenderung, protokolliereEtsyAenderung } from '@/lib/etsy/etsy-statistik-server'
 import {
@@ -45,16 +49,21 @@ export async function POST(req: Request, ctx: Ctx) {
     return NextResponse.json({ error: 'Ungültiger JSON-Body.' }, { status: 400 })
   }
 
-  let description = typeof body.description === 'string' ? body.description : undefined
+  let description =
+    typeof body.description === 'string' ? normalisiereDrechselSprache(body.description) : undefined
   if (body.prependIntro && body.optimizedIntro?.trim()) {
-    const intro = body.optimizedIntro.trim()
-    const rest = (body.existingDescription || description || '').trim()
+    const intro = normalisiereDrechselSprache(body.optimizedIntro.trim())
+    const rest = normalisiereDrechselSprache((body.existingDescription || description || '').trim())
     description = rest.startsWith(intro) ? rest : `${intro}\n\n${rest}`.trim()
   }
 
-  const title = typeof body.title === 'string' ? body.title.trim() : undefined
+  const title =
+    typeof body.title === 'string' ? normalisiereDrechselSprache(body.title.trim()) : undefined
   const tags = Array.isArray(body.tags)
-    ? body.tags.map(String).map((t) => t.trim()).filter(Boolean).slice(0, ETSY_SEO_TAG_COUNT)
+    ? normalisiereDrechselTags(
+        body.tags.map(String).map((t) => t.trim()).filter(Boolean).slice(0, ETSY_SEO_TAG_COUNT),
+        { aufDreizehn: true },
+      )
     : undefined
 
   if (title != null) {

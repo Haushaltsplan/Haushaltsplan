@@ -292,7 +292,7 @@ export function baueWarenkorbZusammenfassung(opts: {
   const preis =
     opts.preisEur != null && opts.preisEur > 0 ? `${Math.round(opts.preisEur)} €` : null
   const teile = [
-    `Handgedrehte ${form} aus ${holz}`,
+    `Handgedrechselte ${form} aus ${holz}`,
     masse,
     'Finish: lebensmittelechtes Walnussöl',
     'Unikat, hergestellt in Niederbayern',

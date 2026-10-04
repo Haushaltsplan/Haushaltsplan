@@ -441,7 +441,7 @@ export function EtsyKiAgentClient({
       tags,
       warenkorbZusammenfassung:
         draftListing.warenkorbZusammenfassung?.trim() ||
-        `Handgedrehte ${produktForm} · ${holzart.trim() || 'Holz'} · ${masse.trim() || ''}`.slice(
+        `Handgedrechselte ${produktForm} · ${holzart.trim() || 'Holz'} · ${masse.trim() || ''}`.slice(
           0,
           200,
         ),
@@ -771,7 +771,7 @@ export function EtsyKiAgentClient({
                 onChange={(e) => setWhoMade(e.target.value as EtsyWhoMade)}
                 className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
               >
-                <option value="i_did">Ich (handgedreht)</option>
+                <option value="i_did">Ich (handgedrechselt)</option>
                 <option value="collective">Kollektiv / mit anderen</option>
                 <option value="someone_else">Jemand anderes</option>
               </select>

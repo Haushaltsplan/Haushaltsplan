@@ -47,7 +47,7 @@ const BROWSER_HEADERS: Record<string, string> = {
 }
 
 const DOMAIN_SEEDS = [
-  'handgedrehte schale',
+  'gedrechselte schale',
   'holzschale unikat',
   'obstschale holz',
   'holzschale deko',
@@ -770,7 +770,9 @@ export function marktSeedsFuerBasis(opts: { holzart?: string; produktForm?: stri
   const holzForm = form.includes('schale') ? 'holzschale' : `holz ${form}`
   return [
     ...new Set(
-      [holz ? `${form} ${holz}` : '', holzForm, `handgedrehte ${form}`].filter((s) => s.length >= 3),
+      [holz ? `${form} ${holz}` : '', holzForm, `gedrechselte ${form}`, `handgedrechselte ${form}`].filter(
+        (s) => s.length >= 3,
+      ),
     ),
   ].slice(0, 3)
 }

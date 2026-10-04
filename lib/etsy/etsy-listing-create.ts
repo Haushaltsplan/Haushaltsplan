@@ -308,7 +308,7 @@ export async function legeEtsyDraftAn(opts: {
     console.warn('[etsy] attribute set:', e instanceof Error ? e.message : e)
   }
 
-  const altBasis = [materials[0], 'Schale handgedreht', masseRaw, 'Unikat']
+  const altBasis = [materials[0], 'Schale handgedrechselt', masseRaw, 'Unikat']
     .filter(Boolean)
     .join(' · ')
     .slice(0, 250)
@@ -322,7 +322,7 @@ export async function legeEtsyDraftAn(opts: {
     const altText =
       rank === 1
         ? altBasis
-        : `${materials[0]} Detail Maserung · handgedrehte Schale`.slice(0, 250)
+        : `${materials[0]} Detail Maserung · handgedrechselte Schale`.slice(0, 250)
     try {
       await uploadMitRetry({
         accessToken: tokens.accessToken,

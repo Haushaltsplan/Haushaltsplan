@@ -4,6 +4,11 @@
  * (siehe etsy_seo_guidelines_ruleset).
  */
 
+import {
+  enthaeltVeraltetesHandgedreht,
+  normalisiereDrechselSprache,
+  normalisiereDrechselTags,
+} from '@/lib/etsy/etsy-drechsel-sprache'
 import type { EtsyMarktAbdeckung } from '@/lib/etsy/etsy-markt-types'
 import type { EtsySeoIssue, EtsyShopListingDetail } from '@/lib/etsy/etsy-seo-audit-types'
 import { ETSY_FORM_TAXONOMY } from '@/lib/etsy/etsy-types'
@@ -44,6 +49,8 @@ const FRONTLOAD_KEYWORDS = [
   'turned',
   'gedreht',
   'handgedreht',
+  'handgedrechselt',
+  'gedrechselt',
   'unikat',
 ]
 
@@ -365,6 +372,16 @@ export function pruefeEtsySeoRegeln(input: {
       scorePenalty += 4
     }
 
+    if (enthaeltVeraltetesHandgedreht(`${title}\n${description}\n${tags.join(' ')}`)) {
+      issues.push({
+        severity: 'warning',
+        field: 'title',
+        message:
+          '„handgedreht“ statt „handgedrechselt“ — schwächere Etsy-Suche; Audit ersetzt das automatisch in den Vorschlägen.',
+      })
+      scorePenalty += 3
+    }
+
     // Stop-Wort-Cluster vorne kosten Front-Load-Platz und verwässern Query Matching.
     const frontTokens = norm(title.slice(0, ETSY_SEO_TITLE_FRONTLOAD))
       .split(/[^a-z0-9]+/)
@@ -570,6 +587,8 @@ export function pruefeEtsySeoRegeln(input: {
   // Exact Match: relevante Titel-Keywords in Tags (Maße, Standort, Prozess-Füllwörter auslassen)
   const TITLE_TAG_SKIP = new Set([
     'handgedreht',
+    'handgedrechselt',
+    'gedrechselt',
     'handgefertigt',
     'unikat',
     'niederbayern',
@@ -793,7 +812,7 @@ export function berechneEtsyDraftSeoGeoScore(input: {
   const longtailCount = tags.filter((t) => istTagLongtail(t)).length
 
   const hasWhat =
-    /(schale|schüssel|schuessel|dose|vase|teller|stab|unikat|holz|esche|eiche|ahorn|walnuss|birne|handgedreht|gedreht|naturrand|holzware)/i.test(
+    /(schale|schüssel|schuessel|dose|vase|teller|stab|unikat|holz|esche|eiche|ahorn|walnuss|birne|handgedrechselt|handgedreht|gedrechselt|gedreht|naturrand|holzware)/i.test(
       `${intro} ${titleLower}`,
     )
   const verwendungMatch = /verwendung\s*:\s*([^\n🪵📏✨💎]+)/i.exec(desc)
@@ -813,6 +832,8 @@ export function berechneEtsyDraftSeoGeoScore(input: {
 
   const TITLE_TAG_SKIP = new Set([
     'handgedreht',
+    'handgedrechselt',
+    'gedrechselt',
     'handgefertigt',
     'unikat',
     'niederbayern',
@@ -983,7 +1004,7 @@ export function haerteEtsyListingFuerScore(input: {
   holzart?: string
   produktForm?: string
 }): { title: string; tags: string[]; description: string } {
-  const title = input.title.trim().slice(0, ETSY_SEO_TITLE_MAX)
+  const title = normalisiereDrechselSprache(input.title.trim()).slice(0, ETSY_SEO_TITLE_MAX)
   const holz = (input.holzart || '').trim()
   const form = (input.produktForm || 'Schale').trim() || 'Schale'
 
@@ -998,7 +1019,7 @@ export function haerteEtsyListingFuerScore(input: {
     tags.push(t)
   }
 
-  for (const t of input.tags) pushTag(t)
+  for (const t of normalisiereDrechselTags(input.tags, { aufDreizehn: true })) pushTag(t)
 
   // Schwache Kurz-Tags zu Phrasen erweitern
   for (let i = 0; i < tags.length; i++) {
@@ -1017,7 +1038,7 @@ export function haerteEtsyListingFuerScore(input: {
 
   const extras = [
     holz ? `${holz} holzschale` : 'holzschale unikat',
-    'handgedrehte schale',
+    'gedrechselte schale',
     `${form.toLowerCase()} naturrand`.slice(0, ETSY_SEO_TAG_MAX),
     'rustikale holzdeko',
     'holzgeschenk unikat',
@@ -1039,7 +1060,7 @@ export function haerteEtsyListingFuerScore(input: {
     pushTag(extras[pad++]!)
   }
 
-  let description = input.description.trim()
+  let description = normalisiereDrechselSprache(input.description.trim())
   const lower = description.toLowerCase()
   const needsWho =
     !/(sammler|geschenk|küche|kueche|obst|deko|tisch|sideboard|verwendung|sammlerstück|obstschale|esstisch)/i.test(
