@@ -2,7 +2,8 @@
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { PaAktienSucheInput } from '@/components/portfolio-analyse/pa-aktien-suche-input'
+import { PaAktienSucheInput, type AktienSucheAuswahl } from '@/components/portfolio-analyse/pa-aktien-suche-input'
+import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import {
   PaBadge,
@@ -27,9 +28,16 @@ import {
   ladeFundamentaldatenClient,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import { formatFundamentalWert } from '@/lib/portfolio-analyse/fundamentaldaten-format'
-import { dcfHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
+import {
+  dcfHref,
+  type FundamentalKandidat,
+} from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import type { FundamentaldatenAnfrage, FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import {
+  ladeWatchlist,
+  WATCHLIST_CHANGED_EVENT,
+} from '@/lib/portfolio-analyse/watchlist-client'
 
 function fmtUsd(v: number | null | undefined, einheit: 'waehrung_usd' | 'waehrung_usd_aktie' = 'waehrung_usd') {
   return formatFundamentalWert(v, einheit)
@@ -119,6 +127,7 @@ export function PortfolioDcfClient() {
   const isinParam = searchParams.get('isin')
   const symbolParam = searchParams.get('symbol')
   const nameParam = searchParams.get('name')
+  const { live, meta } = usePortfolioAnalyse()
 
   const [paket, setPaket] = useState<FundamentaldatenPaket | null>(null)
   const [inputs, setInputs] = useState<DcfPaketInputs | null>(null)
@@ -127,8 +136,80 @@ export function PortfolioDcfClient() {
   const [szenario, setSzenario] = useState<DcfSzenarioId>('base')
   const [laden, setLaden] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
+  const [sucheFehler, setSucheFehler] = useState<string | null>(null)
   const [detailsOffen, setDetailsOffen] = useState(false)
   const [waccDetailsOffen, setWaccDetailsOffen] = useState(false)
+  const [watchlistVersion, setWatchlistVersion] = useState(0)
+
+  useEffect(() => {
+    const bump = () => setWatchlistVersion((v) => v + 1)
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'pa-watchlist-v1') bump()
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener(WATCHLIST_CHANGED_EVENT, bump)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener(WATCHLIST_CHANGED_EVENT, bump)
+    }
+  }, [])
+
+  const kandidaten = useMemo<FundamentalKandidat[]>(() => {
+    const depotIsins = new Set<string>()
+    const depot: FundamentalKandidat[] = (live?.positionen ?? [])
+      .filter((p) => p.stueck > 0 && p.assetKlasse === 'aktie')
+      .map((p) => {
+        const isinRaw = p.isin?.trim().toUpperCase() ?? ''
+        if (isinRaw) depotIsins.add(isinRaw)
+        const k = isinRaw ? isinKenntnis(isinRaw) : undefined
+        const m = isinRaw ? meta.get(isinRaw) : undefined
+        return {
+          isin: isinRaw || null,
+          name: p.name ?? k?.name ?? m?.name ?? 'Unbekannt',
+          symbolYahoo: p.symbolYahoo ?? k?.symbolYahoo ?? m?.symbolYahoo ?? null,
+          symbolCandidates: [...(k?.symbolCandidates ?? []), ...(m?.symbolYahoo ? [m.symbolYahoo] : [])],
+          quelle: 'depot' as const,
+        }
+      })
+
+    void watchlistVersion
+    const watchlist: FundamentalKandidat[] = ladeWatchlist()
+      .filter((w) => !w.isin || !depotIsins.has(w.isin.toUpperCase()))
+      .map((w) => ({
+        isin: w.isin,
+        name: w.name,
+        symbolYahoo: w.symbolYahoo,
+        symbolCandidates: w.symbolCandidates,
+        quelle: 'watchlist' as const,
+      }))
+
+    return [...depot, ...watchlist]
+  }, [live?.positionen, meta, watchlistVersion])
+
+  const navigiereZu = useCallback(
+    (opts: { isin?: string | null; symbol?: string | null; name?: string | null }) => {
+      const isin = opts.isin?.trim().toUpperCase() || null
+      const symbol = opts.symbol?.trim() || null
+      if (!isin && !symbol) {
+        setSucheFehler('Kein Ticker für diesen Treffer.')
+        return
+      }
+      setSucheFehler(null)
+      router.replace(dcfHref({ isin, symbol, name: opts.name }))
+    },
+    [router],
+  )
+
+  const onSucheAuswahl = useCallback(
+    (a: AktienSucheAuswahl) => {
+      navigiereZu({
+        isin: a.isin,
+        symbol: a.meta.symbolYahoo,
+        name: a.meta.name,
+      })
+    },
+    [navigiereZu],
+  )
 
   const isin = isinParam?.trim().toUpperCase() || null
   const symbol = symbolParam?.trim() || null
@@ -234,33 +315,85 @@ export function PortfolioDcfClient() {
 
   const titelName = inputs?.name || paket?.firmenname || nameParam || symbolParam || 'DCF-Rechner'
 
+  const depotAnzahl = kandidaten.filter((k) => k.quelle === 'depot').length
+  const watchlistAnzahl = kandidaten.filter((k) => k.quelle === 'watchlist').length
+  const selectValue = useMemo(() => {
+    if (!hatTitel) return ''
+    const idx = kandidaten.findIndex(
+      (k) =>
+        (isin && k.isin === isin) ||
+        (symbol && k.symbolYahoo?.toUpperCase() === symbol.toUpperCase()),
+    )
+    return idx >= 0 ? String(idx) : ''
+  }, [kandidaten, hatTitel, isin, symbol])
+
   return (
     <PortfolioAnalyseShell
       title="DCF-Rechner"
       description="Intrinsic Value aus Free Cashflows — Annahmen, Szenarien, Sensitivität."
+      ohneDepotErlaubt
     >
       <div className="space-y-6">
-        <PaCard className="px-4 py-4 sm:px-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="min-w-0 flex-1">
+        {/* overflow-visible: Such-Dropdown darf aus der Card ragen (app-section-shell clippt sonst) */}
+        <PaCard className="!overflow-visible px-4 py-4 sm:px-6">
+          <div className="flex flex-col gap-4">
+            <div className="min-w-0">
               <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">
-                Aktie wählen
+                Aktie suchen
               </p>
               <PaAktienSucheInput
-                nurSuche
                 kompakt
+                fehler={sucheFehler}
+                onFehler={setSucheFehler}
                 placeholder="Ticker, Name oder ISIN…"
-                onAuswahl={(a) => {
-                  router.replace(
-                    dcfHref({
-                      isin: a.isin,
-                      symbol: a.meta.symbolYahoo,
-                      name: a.meta.name,
-                    }),
-                  )
-                }}
+                onAuswahl={onSucheAuswahl}
               />
             </div>
+            {kandidaten.length > 0 ? (
+              <div className="min-w-0">
+                <label className="mb-1.5 block text-[11px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">
+                  Oder aus Depot / Watchlist
+                </label>
+                <select
+                  value={selectValue}
+                  onChange={(e) => {
+                    const idx = Number(e.target.value)
+                    const k = kandidaten[idx]
+                    if (!k) return
+                    navigiereZu({ isin: k.isin, symbol: k.symbolYahoo, name: k.name })
+                  }}
+                  className="w-full rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)]"
+                >
+                  <option value="">Aktie wählen…</option>
+                  {depotAnzahl > 0 ? (
+                    <optgroup label="Depot">
+                      {kandidaten
+                        .map((p, i) => ({ p, i }))
+                        .filter(({ p }) => p.quelle === 'depot')
+                        .map(({ p, i }) => (
+                          <option key={`depot-${p.isin ?? p.name}-${i}`} value={i}>
+                            {p.name}
+                            {p.symbolYahoo ? ` (${p.symbolYahoo})` : ''}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ) : null}
+                  {watchlistAnzahl > 0 ? (
+                    <optgroup label="Watchlist">
+                      {kandidaten
+                        .map((p, i) => ({ p, i }))
+                        .filter(({ p }) => p.quelle === 'watchlist')
+                        .map(({ p, i }) => (
+                          <option key={`watch-${p.isin ?? p.name}-${i}`} value={i}>
+                            {p.name}
+                            {p.symbolYahoo ? ` (${p.symbolYahoo})` : ''}
+                          </option>
+                        ))}
+                    </optgroup>
+                  ) : null}
+                </select>
+              </div>
+            ) : null}
             {hatTitel ? (
               <p className="text-sm text-[var(--app-text-muted)]">
                 {laden ? 'Lade Fundamentaldaten…' : titelName}
@@ -273,11 +406,11 @@ export function PortfolioDcfClient() {
         </PaCard>
 
         {!hatTitel ? (
-          <PaCard className="px-6 py-16 text-center sm:px-10">
-            <p className="text-lg font-semibold tracking-tight text-[var(--app-text)]">Aktie suchen</p>
+          <PaCard className="px-6 py-12 text-center sm:px-10">
+            <p className="text-lg font-semibold tracking-tight text-[var(--app-text)]">Aktie wählen</p>
             <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-[var(--app-text-muted)]">
-              FCFF-DCF mit Reported FCF, optionalem Wachstums-Fade, Gordon oder Exit-Multiple, Margin of Safety und
-              Reverse-DCF.
+              Suche nach Ticker/Name/ISIN oder wähle eine Position aus Depot bzw. Watchlist. Kein Portfolio-Import
+              nötig.
             </p>
           </PaCard>
         ) : null}

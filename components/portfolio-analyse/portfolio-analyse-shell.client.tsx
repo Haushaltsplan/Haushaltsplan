@@ -11,10 +11,13 @@ export function PortfolioAnalyseShell({
   children,
   title,
   description,
+  /** Seiten wie DCF/Screener funktionieren ohne Parqet-Import — kein „Keine Daten“-Banner. */
+  ohneDepotErlaubt = false,
 }: {
   children: ReactNode
   title: string
   description?: ReactNode
+  ohneDepotErlaubt?: boolean
 }) {
   const { schemaFehlt, dbFehler, buchungenLimit, hatDaten, laden } = usePortfolioAnalyse()
 
@@ -75,7 +78,7 @@ export function PortfolioAnalyseShell({
         </PageSection>
       ) : null}
 
-      {!hatDaten && !laden && !schemaFehlt ? (
+      {!ohneDepotErlaubt && !hatDaten && !laden && !schemaFehlt ? (
         <PageSection titleId="pa-leer-heading" title="Keine Daten">
           <PageSectionPanel>
             <p className="text-sm text-[var(--app-text-muted)]">
