@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { PaAktienSucheInput, type AktienSucheAuswahl } from '@/components/portfolio-analyse/pa-aktien-suche-input'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PaInfoHint, type PaInfoHintInhalt } from '@/components/portfolio-analyse/pa-info-hint'
@@ -208,7 +208,8 @@ export function PortfolioDcfClient() {
   const hatTitel = Boolean(isin || symbol)
   /** Stabile Auswahl-ID — steuert Laden/Reset beim Titelwechsel. */
   const selectionKey = `${isin ?? ''}|${(symbol ?? '').toUpperCase()}`
-  const loadGenRef = useRef(0)
+  /** Erzwingt Neu-Laden (z. B. gleicher Titel nach Hänger). */
+  const [loadToken, setLoadToken] = useState(0)
 
   const resetTitelState = useCallback(() => {
     setPaket(null)
@@ -221,34 +222,51 @@ export function PortfolioDcfClient() {
     setWaccDetailsOffen(false)
   }, [])
 
+  const applyPaket = useCallback((p: FundamentaldatenPaket) => {
+    const inp = dcfInputsAusPaket(p)
+    const exitMultiple = defaultExitMultipleFuerPaket(p)
+    const base = annahmenAusPaketInputs(inp, { exitMultiple })
+    setPaket(p)
+    setInputs(inp)
+    setBaseAnnahmen(base)
+    setAnnahmen(base)
+    setSzenario('base')
+    setFehler(
+      base
+        ? null
+        : inp.fcf0Usd == null || !(inp.fcf0Usd > 0)
+          ? 'Kein positiver Reported FCF im Paket — DCF nicht möglich.'
+          : 'Keine gültige Aktienanzahl — DCF nicht möglich.',
+    )
+  }, [])
+
   const navigiereZu = useCallback(
     (opts: { isin?: string | null; symbol?: string | null; name?: string | null }) => {
       const nextIsin = opts.isin?.trim().toUpperCase() || null
-      const nextSymbolRaw = opts.symbol?.trim() || null
-      const nextSymbol = nextSymbolRaw
+      const nextSymbol = opts.symbol?.trim() || null
       if (!nextIsin && !nextSymbol) {
         setSucheFehler('Kein Ticker für diesen Treffer.')
         return
       }
 
-      const gleicherTitel =
-        (nextIsin != null && isin != null && nextIsin === isin) ||
-        (nextSymbol != null &&
-          symbol != null &&
-          nextSymbol.toUpperCase() === symbol.toUpperCase() &&
-          (nextIsin == null || isin == null || nextIsin === isin))
+      const nextKey = `${nextIsin ?? ''}|${(nextSymbol ?? '').toUpperCase()}`
+      setSucheFehler(null)
 
-      if (gleicherTitel) {
-        setSucheFehler(null)
+      // Gleicher Titel: nur überspringen, wenn schon Daten da sind.
+      // Sonst (Hänger / leerer Screen) → hart neu laden.
+      if (nextKey === selectionKey) {
+        if (annahmen) return
+        resetTitelState()
+        setLaden(true)
+        setLoadToken((t) => t + 1)
         return
       }
 
-      setSucheFehler(null)
       resetTitelState()
       setLaden(true)
       router.push(dcfHref({ isin: nextIsin, symbol: nextSymbol, name: opts.name }))
     },
-    [router, isin, symbol, resetTitelState],
+    [router, selectionKey, annahmen, resetTitelState],
   )
 
   const onSucheAuswahl = useCallback(
@@ -269,7 +287,6 @@ export function PortfolioDcfClient() {
       return
     }
 
-    const gen = ++loadGenRef.current
     const k = isin ? isinKenntnis(isin) : undefined
     const symbolYahoo = symbol || k?.symbolYahoo || null
     const req: FundamentaldatenAnfrage = {
@@ -284,56 +301,61 @@ export function PortfolioDcfClient() {
       frequenz: 'jahr',
     }
 
-    function nochAktuell() {
-      return loadGenRef.current === gen
-    }
+    const ac = new AbortController()
+    let cancelled = false
+    let timedOut = false
+    // Harte Obergrenze — verhindert endlose Spinner; Titelwechsel abortet separat via Cleanup.
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true
+      ac.abort()
+    }, 180_000)
 
-    function applyPaket(p: FundamentaldatenPaket) {
-      if (!nochAktuell()) return
-      const inp = dcfInputsAusPaket(p)
-      const exitMultiple = defaultExitMultipleFuerPaket(p)
-      const base = annahmenAusPaketInputs(inp, { exitMultiple })
-      setPaket(p)
-      setInputs(inp)
-      setBaseAnnahmen(base)
-      setAnnahmen(base)
-      setSzenario('base')
-      setFehler(
-        base
-          ? null
-          : inp.fcf0Usd == null || !(inp.fcf0Usd > 0)
-            ? 'Kein positiver Reported FCF im Paket — DCF nicht möglich.'
-            : 'Keine gültige Aktienanzahl — DCF nicht möglich.',
-      )
+    const cached = ladeFundamentaldatenAusLocalCache(req)
+    if (cached?.ok) {
+      applyPaket(cached)
+      setLaden(false)
+    } else {
+      setLaden(true)
+      setFehler(null)
     }
 
     async function run() {
-      setLaden(true)
-      setFehler(null)
-      const cached = ladeFundamentaldatenAusLocalCache(req)
-      if (cached?.ok && nochAktuell()) {
-        applyPaket(cached)
-      }
       try {
-        // Kein AbortSignal: Aborts wurden als „Laden fehlgeschlagen“ angezeigt.
-        // Veraltete Antworten werden über loadGenRef verworfen.
-        const live = await ladeFundamentaldatenClient(req)
-        if (!nochAktuell()) return
+        const live = await ladeFundamentaldatenClient(req, { signal: ac.signal })
+        if (cancelled) return
         applyPaket(live)
+        setFehler(null)
       } catch (e) {
-        if (!nochAktuell()) return
+        if (cancelled) return
+        const isAbort =
+          (e instanceof DOMException && e.name === 'AbortError') ||
+          (e instanceof Error && /abort/i.test(e.message))
+        if (isAbort) {
+          // Nur Timeout (nicht Titelwechsel-Cleanup) und kein Cache → Fehler
+          if (timedOut && !cached?.ok) {
+            setFehler('Laden dauert zu lange. Bitte erneut versuchen oder zuerst unter Fundamentaldaten öffnen.')
+            resetTitelState()
+          }
+          return
+        }
         const msg = e instanceof Error ? e.message : 'Laden fehlgeschlagen.'
-        // Abort/Cancel nie als User-Fehler zeigen
-        if (/abort/i.test(msg)) return
         setFehler(msg)
         if (!cached?.ok) resetTitelState()
       } finally {
-        if (nochAktuell()) setLaden(false)
+        window.clearTimeout(timeoutId)
+        if (!cancelled) setLaden(false)
       }
     }
 
     void run()
-  }, [selectionKey, hatTitel, isin, symbol, name, resetTitelState])
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+      ac.abort()
+    }
+    // name absichtlich nicht in deps: sonst Abort-Loops wenn nur das Label in der URL wechselt
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectionKey bündelt isin/symbol
+  }, [selectionKey, loadToken, hatTitel, applyPaket, resetTitelState])
 
   const patchAnnahmen = useCallback((patch: Partial<DcfAnnahmen>) => {
     setAnnahmen((prev) => (prev ? { ...prev, ...patch } : prev))
@@ -434,12 +456,27 @@ export function PortfolioDcfClient() {
               </div>
             ) : null}
             {hatTitel ? (
-              <p className="text-sm text-[var(--app-text-muted)]">
-                {laden ? 'Lade Fundamentaldaten…' : titelName}
-                {inputs?.ticker ? (
-                  <span className="ml-2 tabular-nums text-[var(--app-text)]">{inputs.ticker}</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-sm text-[var(--app-text-muted)]">
+                  {laden ? 'Lade Fundamentaldaten…' : titelName}
+                  {inputs?.ticker ? (
+                    <span className="ml-2 tabular-nums text-[var(--app-text)]">{inputs.ticker}</span>
+                  ) : null}
+                </p>
+                {(fehler || (!laden && !annahmen)) && hatTitel ? (
+                  <button
+                    type="button"
+                    className="rounded-md border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-xs text-[var(--app-text)] hover:bg-[var(--app-surface)]"
+                    onClick={() => {
+                      resetTitelState()
+                      setLaden(true)
+                      setLoadToken((t) => t + 1)
+                    }}
+                  >
+                    Erneut laden
+                  </button>
                 ) : null}
-              </p>
+              </div>
             ) : null}
           </div>
         </PaCard>
