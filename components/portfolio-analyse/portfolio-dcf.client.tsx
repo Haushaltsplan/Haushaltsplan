@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { PaAktienSucheInput, type AktienSucheAuswahl } from '@/components/portfolio-analyse/pa-aktien-suche-input'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
+import { PaInfoHint, type PaInfoHintInhalt } from '@/components/portfolio-analyse/pa-info-hint'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import {
   PaBadge,
@@ -16,6 +17,7 @@ import {
 } from '@/components/portfolio-analyse/pa-ui'
 import { appTableScrollClassName } from '@/components/page-shell'
 import { berechneDcf, reverseDcfWachstum, sensitivitaetsMatrix } from '@/lib/portfolio-analyse/dcf/dcf-engine'
+import { DCF_INFO } from '@/lib/portfolio-analyse/dcf/dcf-info'
 import {
   annahmenAusPaketInputs,
   dcfInputsAusPaket,
@@ -48,19 +50,33 @@ function fmtPct(v: number | null | undefined, digits = 1) {
   return `${v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits })} %`
 }
 
+function StatLabel({ text, info }: { text: string; info: PaInfoHintInhalt }) {
+  return (
+    <>
+      <span>{text}</span>
+      <PaInfoHint info={info} label={`Erklärung: ${text}`} />
+    </>
+  )
+}
+
 function AssumptionRow({
   label,
   hint,
+  info,
   children,
 }: {
   label: string
   hint?: string
+  info?: PaInfoHintInhalt
   children: ReactNode
 }) {
   return (
     <div className="grid gap-2 border-b border-[var(--app-border)]/60 py-3 last:border-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] sm:items-center sm:gap-4">
       <div className="min-w-0">
-        <p className="text-[13px] text-[var(--app-text)]">{label}</p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-[13px] text-[var(--app-text)]">{label}</p>
+          {info ? <PaInfoHint info={info} label={`Erklärung: ${label}`} /> : null}
+        </div>
         {hint ? <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">{hint}</p> : null}
       </div>
       <div className="min-w-0">{children}</div>
@@ -443,6 +459,7 @@ export function PortfolioDcfClient() {
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
               <PaHeroKpi
                 label="Fair Value / Aktie"
+                info={<PaInfoHint info={DCF_INFO.fairValue} label="Erklärung: Fair Value" />}
                 value={ergebnis.ok ? fmtUsd(ergebnis.fairValuePerShare, 'waehrung_usd_aktie') : '–'}
                 sub={
                   ergebnis.ok
@@ -459,16 +476,22 @@ export function PortfolioDcfClient() {
                 }
               />
               <PaCard className="px-4 py-3 sm:px-5">
-                <PaStatRow label="Aktueller Kurs" value={fmtUsd(annahmen.kursUsd, 'waehrung_usd_aktie')} />
                 <PaStatRow
-                  label="Reported FCF (Basis)"
+                  label={<StatLabel text="Aktueller Kurs" info={DCF_INFO.kurs} />}
+                  value={fmtUsd(annahmen.kursUsd, 'waehrung_usd_aktie')}
+                />
+                <PaStatRow
+                  label={<StatLabel text="Reported FCF (Basis)" info={DCF_INFO.fcfBasis} />}
                   value={fmtUsd(annahmen.fcf0Usd)}
                   sub={inputs.fcf0Quelle === 'ttm' ? 'TTM' : inputs.fcf0Quelle === 'gj' ? 'letztes GJ' : undefined}
                 />
-                <PaStatRow label="Net Debt" value={fmtUsd(annahmen.netDebtUsd)} />
-                <PaStatRow label="WACC" value={fmtPct(annahmen.waccPct)} />
                 <PaStatRow
-                  label="Aktien (Start)"
+                  label={<StatLabel text="Net Debt" info={DCF_INFO.netDebt} />}
+                  value={fmtUsd(annahmen.netDebtUsd)}
+                />
+                <PaStatRow label={<StatLabel text="WACC" info={DCF_INFO.wacc} />} value={fmtPct(annahmen.waccPct)} />
+                <PaStatRow
+                  label={<StatLabel text="Aktien (Start)" info={DCF_INFO.shares} />}
                   value={
                     annahmen.sharesOutstanding >= 1_000_000
                       ? `${(annahmen.sharesOutstanding / 1_000_000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mio.`
@@ -480,7 +503,11 @@ export function PortfolioDcfClient() {
 
             <PaCard className="px-4 py-4 sm:px-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <PaSectionTitle title="Szenario" description="Bear / Base / Bull relativ zu den Paket-Defaults." />
+                <PaSectionTitle
+                  title="Szenario"
+                  description="Bear / Base / Bull relativ zu den Paket-Defaults."
+                  info={<PaInfoHint info={DCF_INFO.szenario} label="Erklärung: Szenario" />}
+                />
                 <div className="inline-flex rounded-lg border border-[var(--app-border)] p-0.5">
                   {(['bear', 'base', 'bull'] as const).map((id) => (
                     <button
@@ -500,7 +527,7 @@ export function PortfolioDcfClient() {
               </div>
 
               <div className="mt-4">
-                <AssumptionRow label="Prognosejahre" hint="High-Growth-Phase">
+                <AssumptionRow label="Prognosejahre" hint="High-Growth-Phase" info={DCF_INFO.prognosejahre}>
                   <div className="flex flex-wrap gap-2">
                     {[5, 7, 10].map((n) => (
                       <button
@@ -521,6 +548,7 @@ export function PortfolioDcfClient() {
 
                 <AssumptionRow
                   label="FCF-Wachstum (Start)"
+                  info={DCF_INFO.gStart}
                   hint={`Quelle: ${
                     inputs.gStartQuelle === 'fcf_forecast'
                       ? 'FCF-Forecast (StockAnalysis, ggf. via Umsatz-Consensus ergänzt)'
@@ -543,6 +571,7 @@ export function PortfolioDcfClient() {
                 <AssumptionRow
                   label="Linearer Fade"
                   hint="g startet bei Wachstum Start und fällt linear auf Terminal-g."
+                  info={DCF_INFO.fade}
                 >
                   <button
                     type="button"
@@ -557,7 +586,11 @@ export function PortfolioDcfClient() {
                   </button>
                 </AssumptionRow>
 
-                <AssumptionRow label="Terminalwachstum g" hint="Gordon Growth / Fade-Ziel">
+                <AssumptionRow
+                  label="Terminalwachstum g"
+                  hint="Gordon Growth / Fade-Ziel"
+                  info={DCF_INFO.gTerminal}
+                >
                   <NumSlider
                     value={annahmen.gTerminalPct}
                     onChange={(v) => patchAnnahmen({ gTerminalPct: v })}
@@ -568,7 +601,7 @@ export function PortfolioDcfClient() {
                   />
                 </AssumptionRow>
 
-                <AssumptionRow label="WACC" hint="Override der CAPM-Schätzung">
+                <AssumptionRow label="WACC" hint="Override der CAPM-Schätzung" info={DCF_INFO.wacc}>
                   <NumSlider
                     value={annahmen.waccPct}
                     onChange={(v) => patchAnnahmen({ waccPct: v })}
@@ -578,7 +611,7 @@ export function PortfolioDcfClient() {
                   />
                 </AssumptionRow>
 
-                <AssumptionRow label="Terminal-Methode">
+                <AssumptionRow label="Terminal-Methode" info={DCF_INFO.terminalMethode}>
                   <div className="inline-flex rounded-lg border border-[var(--app-border)] p-0.5">
                     {(
                       [
@@ -603,7 +636,7 @@ export function PortfolioDcfClient() {
                 </AssumptionRow>
 
                 {annahmen.terminalMethode === 'exit_multiple' ? (
-                  <AssumptionRow label="Exit Multiple" hint="TV = FCF_n × Multiple">
+                  <AssumptionRow label="Exit Multiple" hint="TV = FCF_n × Multiple" info={DCF_INFO.exitMultiple}>
                     <NumSlider
                       value={annahmen.exitMultiple}
                       onChange={(v) => patchAnnahmen({ exitMultiple: v })}
@@ -615,7 +648,7 @@ export function PortfolioDcfClient() {
                   </AssumptionRow>
                 ) : null}
 
-                <AssumptionRow label="Margin of Safety">
+                <AssumptionRow label="Margin of Safety" info={DCF_INFO.mos}>
                   <NumSlider
                     value={annahmen.mosPct}
                     onChange={(v) => patchAnnahmen({ mosPct: v })}
@@ -625,7 +658,11 @@ export function PortfolioDcfClient() {
                   />
                 </AssumptionRow>
 
-                <AssumptionRow label="Share-Count CAGR" hint="Wirkt nur auf den Nenner (FV/Aktie)">
+                <AssumptionRow
+                  label="Share-Count CAGR"
+                  hint="Wirkt nur auf den Nenner (FV/Aktie)"
+                  info={DCF_INFO.shareCagr}
+                >
                   <NumSlider
                     value={annahmen.shareCagrPct}
                     onChange={(v) => patchAnnahmen({ shareCagrPct: v })}
@@ -635,7 +672,11 @@ export function PortfolioDcfClient() {
                   />
                 </AssumptionRow>
 
-                <AssumptionRow label="Minorities / NCI" hint="Default 0 — manuell überschreiben">
+                <AssumptionRow
+                  label="Minorities / NCI"
+                  hint="Default 0 — manuell überschreiben"
+                  info={DCF_INFO.minorities}
+                >
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -648,7 +689,7 @@ export function PortfolioDcfClient() {
                   </div>
                 </AssumptionRow>
 
-                <AssumptionRow label="Net Debt Override">
+                <AssumptionRow label="Net Debt Override" info={DCF_INFO.netDebt}>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -661,7 +702,7 @@ export function PortfolioDcfClient() {
                   </div>
                 </AssumptionRow>
 
-                <AssumptionRow label="FCF-Basis Override">
+                <AssumptionRow label="FCF-Basis Override" info={DCF_INFO.fcfOverride}>
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -709,6 +750,7 @@ export function PortfolioDcfClient() {
               >
                 <PaSectionTitle
                   title="Zwischenschritte"
+                  info={<PaInfoHint info={DCF_INFO.zwischenschritte} label="Erklärung: Zwischenschritte" />}
                   description={
                     ergebnis.ok
                       ? `Σ PV(FCF) ${fmtUsd(ergebnis.summePvFcfUsd)} · PV(TV) ${fmtUsd(ergebnis.pvTerminalUsd)} · TV-Anteil ${fmtPct(ergebnis.tvAnteilPct)}`
@@ -780,6 +822,7 @@ export function PortfolioDcfClient() {
               <PaCard className="px-4 py-4 sm:px-6">
                 <PaSectionTitle
                   title="Sensitivität"
+                  info={<PaInfoHint info={DCF_INFO.sensitivitaet} label="Erklärung: Sensitivität" />}
                   description={
                     matrix.yIstExitMultiple
                       ? 'Zeilen: Exit Multiple · Spalten: WACC · Farbe vs. Kurs'
@@ -843,6 +886,7 @@ export function PortfolioDcfClient() {
             <PaCard className="px-4 py-4 sm:px-6">
               <PaSectionTitle
                 title="Reverse DCF"
+                info={<PaInfoHint info={DCF_INFO.reverseDcf} label="Erklärung: Reverse DCF" />}
                 description="Welches FCF-Wachstum (gStart) ist im aktuellen Kurs eingepreist?"
               />
               <div className="mt-3 flex flex-wrap items-end gap-6">

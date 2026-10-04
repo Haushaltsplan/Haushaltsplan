@@ -276,7 +276,7 @@ export function PaStatRow({
   sub,
   badge,
 }: {
-  label: string
+  label: ReactNode
   value: ReactNode
   sub?: ReactNode
   badge?: ReactNode
@@ -284,7 +284,7 @@ export function PaStatRow({
   return (
     <div className="flex items-start justify-between gap-4 py-2.5">
       <div className="min-w-0">
-        <p className="text-[13px] text-[var(--app-text-muted)]">{label}</p>
+        <div className="flex items-center gap-1.5 text-[13px] text-[var(--app-text-muted)]">{label}</div>
         {sub ? <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">{sub}</p> : null}
       </div>
       <div className="shrink-0 text-right">
@@ -299,15 +299,21 @@ export function PaSectionTitle({
   title,
   description,
   action,
+  info,
 }: {
   title: string
   description?: string
   action?: ReactNode
+  /** Optionales „i“-Icon rechts vom Titel (z. B. PaInfoHint). */
+  info?: ReactNode
 }) {
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight text-[var(--app-text)]">{title}</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-lg font-semibold tracking-tight text-[var(--app-text)]">{title}</h2>
+          {info}
+        </div>
         {description ? (
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--app-text-muted)]">{description}</p>
         ) : null}
@@ -322,16 +328,21 @@ export function PaHeroKpi({
   value,
   sub,
   trend,
+  info,
 }: {
   label: string
   value: ReactNode
   sub?: ReactNode
   trend?: ReactNode
+  info?: ReactNode
 }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[var(--app-surface-muted)] via-[var(--app-surface-muted)] to-black/50 p-6 ring-1 ring-white/[0.04]">
       <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-teal-500/10 blur-3xl" />
-      <p className="text-xs font-medium uppercase tracking-widest text-[var(--app-text-muted)]">{label}</p>
+      <div className="flex items-center gap-1.5">
+        <p className="text-xs font-medium uppercase tracking-widest text-[var(--app-text-muted)]">{label}</p>
+        {info}
+      </div>
       <div className="mt-2 flex flex-wrap items-end gap-3">
         <p className="text-3xl font-semibold tabular-nums tracking-tight text-white sm:text-4xl">{value}</p>
         {trend}
