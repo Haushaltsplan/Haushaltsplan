@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PaFundamentalQuartalszahlen } from '@/components/portfolio-analyse/pa-fundamental-quartalszahlen'
 import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundamental-mantra'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
+import { PaFundamentalAktienanalyse } from '@/components/portfolio-analyse/pa-fundamental-aktienanalyse'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
 import { PaFundamentalYoutubeLeiste } from '@/components/portfolio-analyse/pa-fundamental-youtube-leiste'
 import { PaFundamentalStruktur } from '@/components/portfolio-analyse/pa-fundamental-struktur'
@@ -62,6 +63,7 @@ const UNTER_TABS = [
   { id: 'struktur' as const, label: 'Struktur' },
   { id: 'quartalszahlen' as const, label: 'Quartalszahlen', shortLabel: 'Quartal' },
   { id: 'news' as const, label: 'News' },
+  { id: 'aktienanalyse' as const, label: 'Aktienanalyse', shortLabel: 'Analyse' },
 ]
 
 export function PaFundamentalInhalt({
@@ -588,6 +590,10 @@ export function PaFundamentalInhalt({
           ) : null}
 
           {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
+
+          {unterTab === 'aktienanalyse' ? (
+            <PaFundamentalAktienanalyse paket={daten} anfrage={anfrage} />
+          ) : null}
 
           {unterTab === 'kennzahlen' ? (
             <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] ring-1 ring-white/[0.03]">
