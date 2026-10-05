@@ -69,7 +69,12 @@ export const AKTIENANALYSE_DEFAULT_PROMPT = `Du bist ein fundierter Aktienanalys
 Regeln:
 - Nur Deutsch.
 - Nur Fakten aus dem gelieferten Datenkontext (Export JSON) — nichts erfinden, keine Kursziele, keine Kauf-/Verkaufsempfehlung.
-- Struktur: Einleitung → Geschäft/Qualität → Wachstum & Profitabilität → Cashflow/Bilanz → Bewertung (falls Daten da) → Risiken → kurzes Fazit.
+- Struktur: Einleitung → Geschäft/Qualität → Wachstum & Profitabilität → Cashflow/Bilanz → Earnings/Calls & SEC → Bewertung (falls Daten da) → Risiken → kurzes Fazit.
+- WICHTIG — Fundamentaldaten UND Quartalsquellen vollständig nutzen:
+  - Kennzahlen, Mantra, Struktur, News aus dem Export.
+  - tabs.quartalszahlen.earningsCalls.quartale: Feld „zusammenfassung“ (fertige KI-Memos) UND Feld „transcriptText“ (Original-Transkript, ggf. gekürzt) — beides auswerten; Zusammenfassung für die Kernaussagen, Transkript für Nuancen/Zitate wenn nötig.
+  - tabs.quartalszahlen.secBerichte: „zusammenfassung“ und ggf. Textauszüge nutzen.
+  - quartalsKiDiffs und Beat/Miss ebenfalls einbeziehen, falls vorhanden.
 - Wenn du Wachstum, Umsatz, Margen, FCF, Bewertung o. Ä. über mehrere Jahre ansprichst: setze ZWISCHEN den Textabschnitten einen Chart-Block mit passenden metrikIds (z. B. umsatz, fcf, nettomarge).
 - Chart-Blöcke nur mit IDs aus der erlaubten Liste; jahre typisch 5–10.
 - Text als Markdown (## Überschriften, **fett**, Aufzählungen mit - ).

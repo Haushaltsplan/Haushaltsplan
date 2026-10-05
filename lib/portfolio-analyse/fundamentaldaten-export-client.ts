@@ -80,7 +80,9 @@ export type FundamentaldatenExportPayload = {
       peerVergleich: unknown | null
     }
     quartalszahlen: {
+      /** Earnings inkl. zusammenfassung + transcriptText (Server-Cache angereichert) */
       earningsCalls: unknown | null
+      /** SEC inkl. KI-zusammenfassung */
       secBerichte: unknown | null
       beatMiss: unknown | null
       quartalsKiDiffs: unknown[]
@@ -194,8 +196,8 @@ export async function baueFundamentaldatenExportVollstaendig(
     isin,
   }
 
-  // --- Parallel: Tab-Satelliten nachladen ---
-  const [capAllocRes, insiderRes, peerRes, beatMissRes] = await Promise.all([
+  // --- Parallel: Tab-Satelliten + Server-Anreicherung (Transkripte + KI) ---
+  const [capAllocRes, insiderRes, peerRes, beatMissRes, anreicherRes] = await Promise.all([
     fetchJson('/api/portfolio-analyse/capital-allocation', { ticker, symbolYahoo }, 60_000),
     fetchJson(
       '/api/portfolio-analyse/insider-transaktionen',
@@ -208,12 +210,14 @@ export async function baueFundamentaldatenExportVollstaendig(
       { ticker, symbolYahoo, isin, limit: 8 },
       60_000,
     ),
+    fetchJson('/api/portfolio-analyse/fundamentaldaten/export-anreichern', { ticker }, 90_000),
   ])
 
   if (!capAllocRes.ok) hinweise.push(`Capital Allocation: ${capAllocRes.fehler}`)
   if (!insiderRes.ok) hinweise.push(`Insider: ${insiderRes.fehler}`)
   if (!peerRes.ok) hinweise.push(`Peer: ${peerRes.fehler}`)
   if (!beatMissRes.ok) hinweise.push(`Beat/Miss: ${beatMissRes.fehler}`)
+  if (!anreicherRes.ok) hinweise.push(`Earnings/SEC-Volltext: ${anreicherRes.fehler}`)
 
   // Earnings Call: Cache → sonst API
   let earningsCalls: unknown | null = null
@@ -264,6 +268,23 @@ export async function baueFundamentaldatenExportVollstaendig(
 
   if (!paket.mantra) hinweise.push('Mantra fehlt im Paket')
   if (!paket.erweitert) hinweise.push('Struktur/erweitert fehlt im Paket — Seite neu laden')
+
+  // Server-Volltext/KI hat Vorrang; Client-Cache als Fallback
+  const anreicher =
+    anreicherRes.ok && anreicherRes.data && typeof anreicherRes.data === 'object'
+      ? (anreicherRes.data as {
+          earningsCalls?: unknown
+          secBerichte?: unknown
+        })
+      : null
+  if (anreicher?.earningsCalls) {
+    earningsCalls = anreicher.earningsCalls
+    hinweise.push('Earnings: Transkripte + KI-Zusammenfassungen aus Server-Cache übernommen')
+  }
+  if (anreicher?.secBerichte) {
+    secBerichte = anreicher.secBerichte
+    hinweise.push('SEC: KI-Zusammenfassungen aus Server-Cache übernommen')
+  }
 
   const bewertungZeilen = filterZeilen(paket.zeilen ?? [], BEWERTUNG_GRUPPEN)
   const finanzZeilen = filterZeilen(paket.zeilen ?? [], FINANZ_GRUPPEN)

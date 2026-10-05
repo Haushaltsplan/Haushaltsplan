@@ -17,7 +17,176 @@ import { requireOwnerUserId } from '@/lib/request-owner'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 const TABLE = 'portfolio_aktienanalyse'
-const MAX_KONTEXT_CHARS = 90_000
+const MAX_KONTEXT_CHARS = 140_000
+const MAX_TRANSCRIPT_CHARS_PRO_QUARTAL = 18_000
+const MAX_ZUSAMMENFASSUNG_CHARS = 6_000
+const MAX_EARNINGS_QUARTALE = 6
+
+/** Behält Fundamentaldaten + Earnings-Zusammenfassungen + Transkripte (gekürzt). */
+export function kuerzeExportFuerAktienanalyse(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object') return payload
+  let root: Record<string, unknown>
+  try {
+    root = structuredClone(payload) as Record<string, unknown>
+  } catch {
+    root = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>
+  }
+
+  const tabs = root.tabs
+  if (tabs && typeof tabs === 'object') {
+    const t = tabs as Record<string, unknown>
+    const q = t.quartalszahlen
+    if (q && typeof q === 'object') {
+      const qq = q as Record<string, unknown>
+      qq.earningsCalls = kompaktEarningsMitTranskript(qq.earningsCalls)
+      qq.secBerichte = kompaktSecMitZusammenfassung(qq.secBerichte)
+      qq.quartalsKiDiffs = kuerzeListe(qq.quartalsKiDiffs, 4, 1_500)
+    }
+    if (Array.isArray(t.news)) {
+      t.news = (t.news as unknown[]).slice(0, 12).map((n) => {
+        if (!n || typeof n !== 'object') return n
+        const o = { ...(n as Record<string, unknown>) }
+        delete o.raw
+        if (typeof o.zusammenfassung === 'string' && o.zusammenfassung.length > 500) {
+          o.zusammenfassung = o.zusammenfassung.slice(0, 500) + '…'
+        }
+        return o
+      })
+    }
+  }
+
+  // Rohpaket redundant zu tabs — weglassen spart Tokens
+  delete root.fundamentaldatenRoh
+
+  // Bei Überlänge: Transkripte weiter kürzen, Zusammenfassungen behalten
+  if (JSON.stringify(root).length > MAX_KONTEXT_CHARS && root.tabs && typeof root.tabs === 'object') {
+    const t = root.tabs as Record<string, unknown>
+    const q = t.quartalszahlen
+    if (q && typeof q === 'object') {
+      const qq = q as Record<string, unknown>
+      qq.earningsCalls = kompaktEarningsMitTranskript(qq.earningsCalls, {
+        maxQuartale: 4,
+        maxTranscript: 8_000,
+      })
+    }
+    delete t.news
+  }
+
+  return root
+}
+
+function kompaktEarningsMitTranskript(
+  raw: unknown,
+  opts?: { maxQuartale?: number; maxTranscript?: number },
+): unknown {
+  if (!raw) return null
+  const maxQ = opts?.maxQuartale ?? MAX_EARNINGS_QUARTALE
+  const maxT = opts?.maxTranscript ?? MAX_TRANSCRIPT_CHARS_PRO_QUARTAL
+
+  const pakete = Array.isArray(raw) ? raw : [raw]
+  return pakete
+    .map((p) => {
+      if (!p || typeof p !== 'object') return p
+      const o = p as Record<string, unknown>
+      const quartaleRaw = Array.isArray(o.quartale) ? o.quartale : []
+      const quartale = quartaleRaw.slice(0, maxQ).map((q) => {
+        if (!q || typeof q !== 'object') return q
+        const z = q as Record<string, unknown>
+        const zusammenfassung =
+          typeof z.zusammenfassung === 'string'
+            ? z.zusammenfassung.slice(0, MAX_ZUSAMMENFASSUNG_CHARS)
+            : z.zusammenfassung ?? null
+        let transcriptText =
+          typeof z.transcriptText === 'string'
+            ? z.transcriptText
+            : typeof z.text === 'string'
+              ? z.text
+              : null
+        if (transcriptText && transcriptText.length > maxT) {
+          transcriptText = transcriptText.slice(0, maxT) + '\n\n[… Transkript gekürzt …]'
+        }
+        return {
+          id: z.id ?? null,
+          label: z.label ?? z.titel ?? null,
+          jahr: z.jahr ?? null,
+          quartal: z.quartal ?? null,
+          callDatum: z.callDatum ?? null,
+          transcriptUrl: z.transcriptUrl ?? null,
+          quelle: z.quelle ?? null,
+          sentimentScore: z.sentimentScore ?? null,
+          zusammenfassung,
+          transcriptText,
+          transcriptZeichen:
+            z.transcriptZeichen ?? (typeof transcriptText === 'string' ? transcriptText.length : null),
+        }
+      })
+      return {
+        ticker: o.ticker ?? null,
+        firmenname: o.firmenname ?? null,
+        quelle: o.quelle ?? null,
+        hinweis:
+          o.hinweis ??
+          'Zusammenfassungen + Transkripte (Transkripte ggf. gekürzt für Token-Limit).',
+        quartale,
+      }
+    })
+    .filter(Boolean)
+}
+
+function kompaktSecMitZusammenfassung(raw: unknown): unknown {
+  if (!raw) return null
+  const pakete = Array.isArray(raw) ? raw : [raw]
+  return pakete.map((p) => {
+    if (!p || typeof p !== 'object') return p
+    const o = p as Record<string, unknown>
+    const berichteRaw = Array.isArray(o.berichte) ? o.berichte : []
+    const berichte = berichteRaw.slice(0, 8).map((b) => {
+      if (!b || typeof b !== 'object') return b
+      const z = b as Record<string, unknown>
+      const zusammenfassung =
+        typeof z.zusammenfassung === 'string'
+          ? z.zusammenfassung.slice(0, MAX_ZUSAMMENFASSUNG_CHARS)
+          : z.zusammenfassung ?? null
+      let textAuszug =
+        typeof z.textAuszug === 'string'
+          ? z.textAuszug
+          : typeof z.text === 'string'
+            ? z.text
+            : null
+      if (textAuszug && textAuszug.length > 8_000) {
+        textAuszug = textAuszug.slice(0, 8_000) + '…'
+      }
+      return {
+        id: z.id ?? null,
+        formular: z.formular ?? z.form ?? null,
+        label: z.label ?? null,
+        filingDatum: z.filingDatum ?? z.filingDate ?? null,
+        accession: z.accession ?? null,
+        zusammenfassung,
+        textAuszug,
+      }
+    })
+    return {
+      ticker: o.ticker ?? null,
+      hinweis: o.hinweis ?? 'SEC-KI-Zusammenfassungen (+ Textauszug falls vorhanden).',
+      berichte,
+    }
+  })
+}
+
+function kuerzeListe(raw: unknown, maxItems: number, maxText: number): unknown {
+  if (!Array.isArray(raw)) return raw
+  return raw.slice(0, maxItems).map((item) => {
+    if (!item || typeof item !== 'object') return item
+    const o = { ...(item as Record<string, unknown>) }
+    for (const key of Object.keys(o)) {
+      if (typeof o[key] === 'string' && String(o[key]).length > maxText) {
+        o[key] = String(o[key]).slice(0, maxText) + '…'
+      }
+    }
+    return o
+  })
+}
 
 function istKonfiguriert() {
   return Boolean(
@@ -34,61 +203,6 @@ function mapRow(row: Record<string, unknown>): AktienanalyseEintrag {
     bericht: normalisiereAktienanalyseBericht(row.bericht_json),
     createdAt: String(row.created_at ?? ''),
   }
-}
-
-/** Kürzt riesige Export-Payloads für Free-Gemini (SEC/Earnings-Rohtexte). */
-export function kuerzeExportFuerAktienanalyse(payload: unknown): unknown {
-  if (!payload || typeof payload !== 'object') return payload
-  let root: Record<string, unknown>
-  try {
-    root = structuredClone(payload) as Record<string, unknown>
-  } catch {
-    root = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>
-  }
-
-  const tabs = root.tabs
-  if (tabs && typeof tabs === 'object') {
-    const t = tabs as Record<string, unknown>
-    const q = t.quartalszahlen
-    if (q && typeof q === 'object') {
-      const qq = q as Record<string, unknown>
-      qq.earningsCalls = kuerzeListe(qq.earningsCalls, 4, 1_200)
-      qq.secBerichte = kuerzeListe(qq.secBerichte, 4, 1_200)
-      qq.quartalsKiDiffs = kuerzeListe(qq.quartalsKiDiffs, 3, 800)
-    }
-    if (Array.isArray(t.news)) {
-      t.news = (t.news as unknown[]).slice(0, 15)
-    }
-  }
-
-  if (JSON.stringify(root).length > MAX_KONTEXT_CHARS) {
-    delete root.fundamentaldatenRoh
-  }
-  if (JSON.stringify(root).length > MAX_KONTEXT_CHARS && root.tabs && typeof root.tabs === 'object') {
-    const t = root.tabs as Record<string, unknown>
-    delete t.news
-    if (t.quartalszahlen && typeof t.quartalszahlen === 'object') {
-      const qq = t.quartalszahlen as Record<string, unknown>
-      qq.earningsCalls = kuerzeListe(qq.earningsCalls, 2, 600)
-      qq.secBerichte = kuerzeListe(qq.secBerichte, 2, 600)
-    }
-  }
-
-  return root
-}
-
-function kuerzeListe(raw: unknown, maxItems: number, maxText: number): unknown {
-  if (!Array.isArray(raw)) return raw
-  return raw.slice(0, maxItems).map((item) => {
-    if (!item || typeof item !== 'object') return item
-    const o = { ...(item as Record<string, unknown>) }
-    for (const key of Object.keys(o)) {
-      if (typeof o[key] === 'string' && String(o[key]).length > maxText) {
-        o[key] = String(o[key]).slice(0, maxText) + '…'
-      }
-    }
-    return o
-  })
 }
 
 export async function ladeAktienanalyseEintraege(ticker: string): Promise<AktienanalyseEintrag[]> {
