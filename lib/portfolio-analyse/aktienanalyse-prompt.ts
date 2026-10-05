@@ -2,7 +2,19 @@
  * Aktienanalyse — Prompt, Block-Typen und JSON-Schema für Gemini.
  */
 
-export const AKTIENANALYSE_PROMPT_LS = 'pa-aktienanalyse-prompt-v3'
+export const AKTIENANALYSE_PROMPT_LS = 'pa-aktienanalyse-prompt-v5'
+
+/** Alte LocalStorage-Keys — beim Laden löschen, damit kein veralteter Prompt hängen bleibt. */
+export const AKTIENANALYSE_PROMPT_LS_LEGACY = [
+  'pa-aktienanalyse-prompt',
+  'pa-aktienanalyse-prompt-v1',
+  'pa-aktienanalyse-prompt-v2',
+  'pa-aktienanalyse-prompt-v3',
+  'pa-aktienanalyse-prompt-v4',
+] as const
+
+/** Fingerprint: gespeicherter Prompt ohne diese Marker gilt als veraltet → Default. */
+export const AKTIENANALYSE_PROMPT_MARKER = 'Analysten-Schätzungen (PFLICHT)'
 
 export type AktienanalyseCoverTon = 'positiv' | 'neutral' | 'vorsichtig'
 
@@ -122,6 +134,12 @@ Die Ausgabe wird als hochwertiges Research-Magazin gerendert: nutze deshalb gezi
 
 3. Vollständige Datennutzung
    - Kennzahlen, Mantra, Struktur, News aus dem Export.
+   - Analysten-Schätzungen (PFLICHT, wenn vorhanden):
+     - tabs.finanzdaten.zeilen mit gruppe "schaetzungen" bzw. IDs umsatz_schaetzung, eps_schaetzung, ebitda_schaetzung, umsatz_wachstum_schaetzung, eps_wachstum_schaetzung
+     - Perioden mit Schätzungs-Jahren (FY1/FY2 bzw. istSchätzung) in tabs.finanzdaten.perioden
+     - Forward-/NTM-Bewertung: tabs.uebersicht.keyMetrics und tabs.bewertung (gruppe bewertung_ntm / bewertung_forward, z. B. ntm_pe, ntm_ev_ebitda, forward PE)
+     - Diese Schätzungen explizit in Kennzahl-Blöcken und im Szenario-Teil nutzen; Historie vs. Konsens gegenüberstellen.
+     - Schätzungen sind Konsens-/Marktdaten aus dem Export — keine eigenen Kursziele daraus ableiten.
    - tabs.quartalszahlen.earningsCalls.quartale:
      - zusammenfassung → Kernaussagen der fertigen Earnings-Memos
      - transcriptText → Nuancen, Zitate, Management-Tonfall (Original-Transkript, ggf. gekürzt)
@@ -157,6 +175,9 @@ Die Ausgabe wird als hochwertiges Research-Magazin gerendert: nutze deshalb gezi
 3. Wettbewerbsvorteil & Preissetzungsmacht
 4. Kritische Risiken & Earnings/SEC (+ zitat, callout risiko)
 5. Szenario-Prognose & Bewertungstrends (+ Bewertungs-Chart)
+   - Base / Bull / Bear an historischen Mustern UND an vorhandenen Analysten-Schätzungen (Umsatz/EPS/EBITDA, Wachstum) ausrichten.
+   - Wenn Schätzungen fehlen: nur Historie; nichts erfinden.
+   - Forward-Multiples (NTM/FY KGV, EV/EBITDA) aus keyMetrics/bewertung einordnen.
 6. Fazit (+ callout chance oder thesis)
 
 ---

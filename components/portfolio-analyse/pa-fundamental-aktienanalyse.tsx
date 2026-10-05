@@ -10,9 +10,10 @@ import {
   resetAktienanalysePrompt,
   speichereAktienanalysePrompt,
 } from '@/lib/portfolio-analyse/aktienanalyse-client'
-import type {
-  AktienanalyseBlock,
-  AktienanalyseEintrag,
+import {
+  AKTIENANALYSE_PROMPT_MARKER,
+  type AktienanalyseBlock,
+  type AktienanalyseEintrag,
 } from '@/lib/portfolio-analyse/aktienanalyse-prompt'
 import { thumbnailSvgAlsDataUrl } from '@/lib/portfolio-analyse/aktienanalyse-thumbnail'
 import { chartAnalyseSchluessel } from '@/lib/portfolio-analyse/chart-analyse-store'
@@ -349,6 +350,18 @@ export function PaFundamentalAktienanalyse({
     setPrompt(ladeAktienanalysePrompt())
   }, [])
 
+  useEffect(() => {
+    if (!prompt) return
+    if (
+      prompt.includes(AKTIENANALYSE_PROMPT_MARKER) &&
+      prompt.includes('Quality-Compounder') &&
+      prompt.includes('"type": "callout"')
+    ) {
+      return
+    }
+    setPrompt(resetAktienanalysePrompt())
+  }, [prompt])
+
   const ladeHist = useCallback(async () => {
     if (!ticker) return
     setLadenHist(true)
@@ -379,12 +392,19 @@ export function PaFundamentalAktienanalyse({
     setFehler(null)
     setFortschritt('Export-Daten werden vorbereitet …')
     try {
-      speichereAktienanalysePrompt(prompt)
+      const promptFuerKi =
+        prompt.includes(AKTIENANALYSE_PROMPT_MARKER) &&
+        prompt.includes('Quality-Compounder') &&
+        prompt.includes('"type": "callout"')
+          ? prompt
+          : resetAktienanalysePrompt()
+      if (promptFuerKi !== prompt) setPrompt(promptFuerKi)
+      speichereAktienanalysePrompt(promptFuerKi)
       const exportPayload = await baueFundamentaldatenExportVollstaendig(paket, anfrage)
       setFortschritt('KI analysiert (kann 1–3 Min. dauern) …')
       const eintrag = await generiereAktienanalyse({
         ticker,
-        prompt,
+        prompt: promptFuerKi,
         exportPayload,
       })
       setHistorie((prev) => [eintrag, ...prev.filter((e) => e.id !== eintrag.id)])

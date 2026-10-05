@@ -3,15 +3,38 @@
 import {
   AKTIENANALYSE_DEFAULT_PROMPT,
   AKTIENANALYSE_PROMPT_LS,
+  AKTIENANALYSE_PROMPT_LS_LEGACY,
+  AKTIENANALYSE_PROMPT_MARKER,
   type AktienanalyseEintrag,
 } from '@/lib/portfolio-analyse/aktienanalyse-prompt'
 import type { FundamentaldatenExportPayload } from '@/lib/portfolio-analyse/fundamentaldaten-export-client'
 
+function raeumeAltePromptKeys(): void {
+  if (typeof window === 'undefined') return
+  try {
+    for (const key of AKTIENANALYSE_PROMPT_LS_LEGACY) {
+      localStorage.removeItem(key)
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function istAktuellerPrompt(raw: string): boolean {
+  return (
+    raw.includes(AKTIENANALYSE_PROMPT_MARKER) &&
+    raw.includes('Quality-Compounder') &&
+    raw.includes('"type": "callout"')
+  )
+}
+
 export function ladeAktienanalysePrompt(): string {
   if (typeof window === 'undefined') return AKTIENANALYSE_DEFAULT_PROMPT
+  raeumeAltePromptKeys()
   try {
     const raw = localStorage.getItem(AKTIENANALYSE_PROMPT_LS)
-    if (raw && raw.trim().length > 40) return raw
+    if (raw && raw.trim().length > 40 && istAktuellerPrompt(raw)) return raw
+    if (raw) localStorage.removeItem(AKTIENANALYSE_PROMPT_LS)
   } catch {
     /* ignore */
   }
@@ -21,6 +44,10 @@ export function ladeAktienanalysePrompt(): string {
 export function speichereAktienanalysePrompt(prompt: string): void {
   if (typeof window === 'undefined') return
   try {
+    if (!istAktuellerPrompt(prompt)) {
+      localStorage.setItem(AKTIENANALYSE_PROMPT_LS, AKTIENANALYSE_DEFAULT_PROMPT)
+      return
+    }
     localStorage.setItem(AKTIENANALYSE_PROMPT_LS, prompt)
   } catch {
     /* quota */
@@ -30,6 +57,7 @@ export function speichereAktienanalysePrompt(prompt: string): void {
 export function resetAktienanalysePrompt(): string {
   if (typeof window !== 'undefined') {
     try {
+      raeumeAltePromptKeys()
       localStorage.removeItem(AKTIENANALYSE_PROMPT_LS)
     } catch {
       /* ignore */

@@ -235,19 +235,18 @@ export async function ladeAktienanalyseEintraege(ticker: string): Promise<Aktien
   const admin = createSupabaseAdmin()
   const owner = requireOwnerUserId()
   const t = ticker.trim().toUpperCase()
-  const base = () =>
-    admin
+
+  const tries = [SELECT_FULL, SELECT_MIT_THUMB, SELECT_BASIS]
+  for (const cols of tries) {
+    const res = await admin
       .from(TABLE)
+      .select(cols)
       .eq('owner_user_id', owner)
       .eq('ticker', t)
       .order('created_at', { ascending: false })
       .limit(40)
-
-  const tries = [SELECT_FULL, SELECT_MIT_THUMB, SELECT_BASIS]
-  for (const cols of tries) {
-    const res = await base().select(cols)
     if (!res.error && res.data) {
-      return res.data.map((r) => mapRow(r as Record<string, unknown>))
+      return res.data.map((r) => mapRow(r as unknown as Record<string, unknown>))
     }
   }
   return []
@@ -289,11 +288,11 @@ export async function speichereAktienanalyseEintrag(opts: {
   for (let i = 0; i < payloads.length; i++) {
     const res = await admin.from(TABLE).insert(payloads[i]!).select(selects[i]!).single()
     if (!res.error && res.data) {
+      const row = res.data as unknown as Record<string, unknown>
       return mapRow({
-        ...(res.data as Record<string, unknown>),
-        thumbnail_svg:
-          (res.data as Record<string, unknown>).thumbnail_svg ?? thumbnailSvg,
-        ki_modell: (res.data as Record<string, unknown>).ki_modell ?? kiModell,
+        ...row,
+        thumbnail_svg: row.thumbnail_svg ?? thumbnailSvg,
+        ki_modell: row.ki_modell ?? kiModell,
       })
     }
     lastError = res.error?.message || lastError
