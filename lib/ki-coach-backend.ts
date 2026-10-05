@@ -662,7 +662,9 @@ async function callGemini(
   forcePaidKey?: boolean,
   forceFreeKey?: boolean,
   totalBudgetMs?: number,
-): Promise<{ ok: true; reply: string } | { ok: false; status: number; hint: string }> {
+): Promise<
+  { ok: true; reply: string; model: string } | { ok: false; status: number; hint: string }
+> {
   const models = modelChain?.length ? modelChain : geminiModelKandidaten()
   if (!models.length) {
     return { ok: false, status: 501, hint: 'Kein Gemini-Modell konfiguriert (GEMINI_MODEL / FINANCE_COACH_GEMINI_MODEL).' }
@@ -754,7 +756,7 @@ async function callGemini(
       if (i > 0) {
         console.warn(`[ki-coach] Gemini: automatisch auf Modell „${model}“ gewechselt (${i} vorherige(r) Modell(e): Quota, Rate-Limit, 404, Timeout oder ähnlich).`)
       }
-      return { ok: true, reply: r.reply }
+      return { ok: true, reply: r.reply, model }
     }
     lastHint = r.hint
     lastHttp = r.httpStatus
@@ -829,7 +831,9 @@ export async function runCoachCompletion(
   systemText: string,
   userMessages: CoachMessage[],
   options?: RunCoachCompletionOptions,
-): Promise<{ ok: true; reply: string } | { ok: false; status: number; hint: string }> {
+): Promise<
+  { ok: true; reply: string; model?: string } | { ok: false; status: number; hint: string }
+> {
   const t = options?.temperature ?? 0.55
   const messages = options?.skipMessageTrim ? userMessages : prepareCoachMessages(userMessages)
   if (provider === 'gemini') {
@@ -865,10 +869,12 @@ export async function runCoachCompletion(
     if (kannOpenAiFallback) {
       console.warn('[ki-coach] Gemini fehlgeschlagen — Fallback auf OpenAI.')
       const openAi = await callOpenAI(oKey, systemText, messages, t, false)
-      if (openAi.ok) return openAi
+      if (openAi.ok) return { ...openAi, model: 'openai' }
     }
 
     return gemini
   }
-  return callOpenAI(apiKey, systemText, messages, t, Boolean(options?.jsonResponse))
+  const openAi = await callOpenAI(apiKey, systemText, messages, t, Boolean(options?.jsonResponse))
+  if (openAi.ok) return { ...openAi, model: 'openai' }
+  return openAi
 }

@@ -14,6 +14,7 @@ import type {
   AktienanalyseBlock,
   AktienanalyseEintrag,
 } from '@/lib/portfolio-analyse/aktienanalyse-prompt'
+import { thumbnailSvgAlsDataUrl } from '@/lib/portfolio-analyse/aktienanalyse-thumbnail'
 import { chartAnalyseSchluessel } from '@/lib/portfolio-analyse/chart-analyse-store'
 import {
   bewertungForwardChartPerioden,
@@ -27,7 +28,13 @@ import type {
   FundamentalMetrikZeile,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
-function KiMdText({ text }: { text: string }) {
+function thumbSrc(eintrag: AktienanalyseEintrag): string {
+  if (!eintrag.thumbnailSvg) return ''
+  if (eintrag.thumbnailSvg.startsWith('data:')) return eintrag.thumbnailSvg
+  return thumbnailSvgAlsDataUrl(eintrag.thumbnailSvg)
+}
+
+function KiMdText({ text, serif }: { text: string; serif?: boolean }) {
   function renderInline(line: string, key: number) {
     const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
     return (
@@ -35,7 +42,7 @@ function KiMdText({ text }: { text: string }) {
         {parts.map((part, i) => {
           if (part.startsWith('**') && part.endsWith('**'))
             return (
-              <strong key={i} className="font-semibold text-[var(--app-text)]">
+              <strong key={i} className="font-semibold text-teal-100/95">
                 {part.slice(2, -2)}
               </strong>
             )
@@ -57,40 +64,58 @@ function KiMdText({ text }: { text: string }) {
     const line = lines[i]!
     if (line.startsWith('### ')) {
       elements.push(
-        <h4 key={i} className="mt-4 mb-1 text-[11px] font-bold uppercase tracking-wider text-teal-400/90">
+        <h4
+          key={i}
+          className="mt-6 mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-teal-400/85"
+        >
           {line.slice(4)}
         </h4>,
       )
     } else if (line.startsWith('## ')) {
       elements.push(
-        <h3 key={i} className="mt-5 mb-1.5 text-sm font-semibold text-teal-200/95">
+        <h3
+          key={i}
+          className="mt-8 mb-3 border-l-2 border-teal-400/50 pl-3 text-[1.05rem] font-semibold tracking-tight text-[var(--app-text)]"
+          style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+        >
           {line.slice(3)}
         </h3>,
       )
     } else if (line.startsWith('# ')) {
       elements.push(
-        <h2 key={i} className="mt-5 mb-2 text-base font-semibold text-[var(--app-text)]">
+        <h2
+          key={i}
+          className="mt-8 mb-3 text-xl font-semibold tracking-tight text-[var(--app-text)]"
+          style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+        >
           {line.slice(2)}
         </h2>,
       )
     } else if (line.startsWith('- ') || line.startsWith('* ')) {
       elements.push(
-        <div key={i} className="flex gap-2 py-0.5">
-          <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-teal-500/80" />
-          <span>{renderInline(line.slice(2), i)}</span>
+        <div key={i} className="flex gap-2.5 py-1">
+          <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-teal-400/80" />
+          <span className="leading-relaxed">{renderInline(line.slice(2), i)}</span>
         </div>,
       )
     } else if (line.trim() === '') {
-      elements.push(<div key={i} className="h-2" />)
+      elements.push(<div key={i} className="h-3" />)
     } else {
       elements.push(
-        <p key={i} className="py-0.5 leading-relaxed">
+        <p key={i} className="py-1 leading-[1.75]">
           {renderInline(line, i)}
         </p>,
       )
     }
   }
-  return <div className="text-[13px] text-[var(--app-text)]">{elements}</div>
+  return (
+    <div
+      className={`text-[14.5px] text-[var(--app-text)]/92 ${serif ? '' : ''}`}
+      style={serif ? { fontFamily: 'Georgia, "Times New Roman", serif' } : undefined}
+    >
+      {elements}
+    </div>
+  )
 }
 
 function ChartBlock({
@@ -124,7 +149,7 @@ function ChartBlock({
 
   if (ids.length === 0) {
     return (
-      <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200/90">
+      <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200/90">
         Chart nicht verfügbar (Metriken: {block.metrikIds.join(', ')}).
       </p>
     )
@@ -133,7 +158,18 @@ function ChartBlock({
   const titel = block.titel || ids.join(' · ')
 
   return (
-    <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.02]">
+    <figure className="overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-transparent shadow-[0_0_0_1px_rgba(45,212,191,0.06)]">
+      <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] px-4 py-2.5">
+        <figcaption
+          className="text-[12px] font-semibold tracking-wide text-teal-100/90"
+          style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+        >
+          {titel}
+        </figcaption>
+        <span className="text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">
+          {block.jahre ?? 5} Jahre
+        </span>
+      </div>
       <PaFundamentalMetrikChart
         chartId={`aktienanalyse-${ticker}-${ids.join('-')}`}
         titel={titel}
@@ -150,7 +186,76 @@ function ChartBlock({
         analyseSchluessel={chartAnalyseSchluessel(ticker, `analyse-${ids.join('-')}`)}
         analyseTitel={`${ticker} · ${titel}`}
       />
+    </figure>
+  )
+}
+
+function KennzahlGruppe({ bloecke }: { bloecke: Extract<AktienanalyseBlock, { type: 'kennzahl' }>[] }) {
+  if (bloecke.length === 0) return null
+  return (
+    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      {bloecke.map((k, i) => (
+        <div
+          key={`${k.label}-${i}`}
+          className="rounded-2xl border border-white/[0.07] bg-white/[0.03] px-3.5 py-3.5"
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">
+            {k.label}
+          </p>
+          <p
+            className="mt-1.5 text-2xl font-semibold tracking-tight text-teal-100 tabular-nums"
+            style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+          >
+            {k.wert}
+          </p>
+          {k.kontext ? (
+            <p className="mt-1 text-[11px] leading-snug text-[var(--app-text-muted)]">{k.kontext}</p>
+          ) : null}
+        </div>
+      ))}
     </div>
+  )
+}
+
+function ZitatBlock({ block }: { block: Extract<AktienanalyseBlock, { type: 'zitat' }> }) {
+  return (
+    <blockquote className="relative overflow-hidden rounded-2xl border border-teal-500/15 bg-teal-500/[0.06] px-5 py-5 sm:px-7">
+      <span
+        className="pointer-events-none absolute -left-1 top-2 text-6xl leading-none text-teal-400/25"
+        aria-hidden
+        style={{ fontFamily: 'Georgia, serif' }}
+      >
+        “
+      </span>
+      <p
+        className="relative text-[15px] leading-relaxed text-[var(--app-text)]/95"
+        style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+      >
+        {block.text}
+      </p>
+      {block.quelle ? (
+        <footer className="relative mt-3 text-[11px] font-medium uppercase tracking-wider text-teal-300/70">
+          — {block.quelle}
+        </footer>
+      ) : null}
+    </blockquote>
+  )
+}
+
+function CalloutBlock({ block }: { block: Extract<AktienanalyseBlock, { type: 'callout' }> }) {
+  const v = block.variant ?? 'thesis'
+  const styles =
+    v === 'risiko'
+      ? 'border-amber-500/25 bg-amber-500/[0.07] text-amber-50/95'
+      : v === 'chance'
+        ? 'border-emerald-500/25 bg-emerald-500/[0.07] text-emerald-50/95'
+        : 'border-teal-500/25 bg-teal-500/[0.08] text-teal-50/95'
+  const label = v === 'risiko' ? 'Risiko' : v === 'chance' ? 'Chance' : 'Thesis'
+  return (
+    <aside className={`rounded-2xl border px-4 py-3.5 sm:px-5 ${styles}`}>
+      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-[0.16em] opacity-70">{label}</p>
+      <KiMdText text={block.markdown} />
+    </aside>
   )
 }
 
@@ -163,19 +268,63 @@ function BerichtRenderer({
   paket: FundamentaldatenPaket
   ticker: string
 }) {
-  return (
-    <div className="space-y-5">
-      {bloecke.map((b, i) =>
-        b.type === 'text' ? (
-          <div key={i} className="px-0.5">
-            <KiMdText text={b.markdown} />
-          </div>
-        ) : (
-          <ChartBlock key={i} block={b} paket={paket} ticker={ticker} />
-        ),
-      )}
-    </div>
-  )
+  const nodes: React.ReactNode[] = []
+  let i = 0
+  while (i < bloecke.length) {
+    const b = bloecke[i]!
+    if (b.type === 'kennzahl') {
+      const gruppe: Extract<AktienanalyseBlock, { type: 'kennzahl' }>[] = []
+      while (i < bloecke.length && bloecke[i]!.type === 'kennzahl') {
+        gruppe.push(bloecke[i] as Extract<AktienanalyseBlock, { type: 'kennzahl' }>)
+        i++
+      }
+      nodes.push(<KennzahlGruppe key={`kpi-${i}`} bloecke={gruppe} />)
+      continue
+    }
+    if (b.type === 'text') {
+      nodes.push(
+        <div key={i} className="px-0.5">
+          <KiMdText text={b.markdown} serif />
+        </div>,
+      )
+    } else if (b.type === 'chart') {
+      nodes.push(<ChartBlock key={i} block={b} paket={paket} ticker={ticker} />)
+    } else if (b.type === 'zitat') {
+      nodes.push(<ZitatBlock key={i} block={b} />)
+    } else if (b.type === 'callout') {
+      nodes.push(<CalloutBlock key={i} block={b} />)
+    }
+    i++
+  }
+  return <div className="space-y-6 sm:space-y-7">{nodes}</div>
+}
+
+function formatErstelltAm(iso: string): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleString('de-DE', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatKiModell(modell: string | null | undefined): string {
+  const m = (modell || '').trim()
+  if (!m || m === 'gemini' || m === 'openai') return m === 'openai' ? 'OpenAI' : 'Gemini'
+  // gemini-3.5-flash → Gemini 3.5 Flash
+  const kurz = m.replace(/^models\//, '').replace(/^gemini-/i, '')
+  if (!kurz || kurz === m) return `Gemini (${m})`
+  const pretty = kurz
+    .split('-')
+    .map((p) => (p === 'flash' || p === 'pro' || p === 'preview' ? p[0]!.toUpperCase() + p.slice(1) : p))
+    .join(' ')
+  return `Gemini ${pretty}`
+}
+
+function metaZeile(e: AktienanalyseEintrag): string {
+  return `Erstellt am ${formatErstelltAm(e.createdAt)} von ${formatKiModell(e.kiModell)}`
 }
 
 export function PaFundamentalAktienanalyse({
@@ -189,6 +338,7 @@ export function PaFundamentalAktienanalyse({
   const [prompt, setPrompt] = useState('')
   const [promptOffen, setPromptOffen] = useState(false)
   const [historie, setHistorie] = useState<AktienanalyseEintrag[]>([])
+  /** null = Zeitungsliste; gesetzt = geöffneter Artikel */
   const [aktivId, setAktivId] = useState<string | null>(null)
   const [ladenHist, setLadenHist] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -205,10 +355,7 @@ export function PaFundamentalAktienanalyse({
     try {
       const list = await ladeAktienanalyseHistorie(ticker)
       setHistorie(list)
-      setAktivId((prev) => {
-        if (prev && list.some((e) => e.id === prev)) return prev
-        return list[0]?.id ?? null
-      })
+      setAktivId((prev) => (prev && list.some((e) => e.id === prev) ? prev : null))
     } catch (e) {
       setFehler(e instanceof Error ? e.message : 'Historie fehlgeschlagen')
     } finally {
@@ -217,11 +364,12 @@ export function PaFundamentalAktienanalyse({
   }, [ticker])
 
   useEffect(() => {
+    setAktivId(null)
     void ladeHist()
   }, [ladeHist])
 
   const aktiv = useMemo(
-    () => historie.find((e) => e.id === aktivId) ?? historie[0] ?? null,
+    () => (aktivId ? historie.find((e) => e.id === aktivId) ?? null : null),
     [historie, aktivId],
   )
 
@@ -251,16 +399,25 @@ export function PaFundamentalAktienanalyse({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <PaCard variant="glass" className="space-y-3 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-[var(--app-text)]">Aktienanalyse</h3>
             <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
-              Globaler Prompt · KI mit Export-JSON-Kontext · Charts aus Fundamentaldaten · Historie bleibt erhalten
+              Zeitungsartikel mit Thumbnail · Klick öffnet die volle Analyse
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {aktiv ? (
+              <button
+                type="button"
+                onClick={() => setAktivId(null)}
+                className="rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-xs text-[var(--app-text-muted)] hover:text-[var(--app-text)]"
+              >
+                ← Zur Übersicht
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => setPromptOffen((v) => !v)}
@@ -309,9 +466,7 @@ export function PaFundamentalAktienanalyse({
           </div>
         ) : null}
 
-        {fortschritt ? (
-          <p className="text-xs text-teal-300/90">{fortschritt}</p>
-        ) : null}
+        {fortschritt ? <p className="text-xs text-teal-300/90">{fortschritt}</p> : null}
         {fehler ? (
           <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
             {fehler}
@@ -319,55 +474,96 @@ export function PaFundamentalAktienanalyse({
         ) : null}
       </PaCard>
 
-      {historie.length > 0 ? (
-        <div className="flex flex-wrap gap-1.5">
+      {aktiv ? (
+        <article className="overflow-hidden rounded-2xl border border-white/[0.08] bg-[var(--app-bg)] shadow-[0_20px_60px_-30px_rgba(0,0,0,0.55)]">
+          <div className="relative aspect-[16/7] min-h-[11rem] overflow-hidden sm:aspect-[16/6]">
+            {thumbSrc(aktiv) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={thumbSrc(aktiv)}
+                alt=""
+                className="h-full w-full object-cover object-left"
+              />
+            ) : null}
+            <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[var(--app-bg)] via-transparent to-transparent" />
+          </div>
+
+          <div className="relative -mt-8 space-y-6 px-4 pb-8 pt-2 sm:px-7 sm:pb-10">
+            <header className="space-y-2 border-b border-white/[0.06] pb-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md border border-teal-400/30 bg-teal-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-teal-200">
+                  {aktiv.bericht.cover?.stichwort || 'Research'}
+                </span>
+              </div>
+              <h2
+                className="text-xl font-semibold tracking-tight text-[var(--app-text)] sm:text-2xl"
+                style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+              >
+                {aktiv.titel}
+              </h2>
+              {aktiv.bericht.cover?.untertitel ? (
+                <p className="max-w-2xl text-sm leading-relaxed text-[var(--app-text-muted)]">
+                  {aktiv.bericht.cover.untertitel}
+                </p>
+              ) : null}
+              <p className="pt-1 text-[11px] text-[var(--app-text-muted)]">{metaZeile(aktiv)}</p>
+            </header>
+
+            <BerichtRenderer bloecke={aktiv.bericht.bloecke} paket={paket} ticker={ticker} />
+          </div>
+        </article>
+      ) : historie.length > 0 ? (
+        <div className="space-y-3">
           {historie.map((e) => {
-            const aktivBtn = e.id === (aktiv?.id ?? '')
-            const datum = e.createdAt
-              ? new Date(e.createdAt).toLocaleString('de-DE', {
-                  day: '2-digit',
-                  month: '2-digit',
-                  year: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : ''
+            const src = thumbSrc(e)
             return (
               <button
                 key={e.id}
                 type="button"
                 onClick={() => setAktivId(e.id)}
-                className={`rounded-lg px-2.5 py-1.5 text-left text-[11px] transition ${
-                  aktivBtn
-                    ? 'bg-teal-700 text-white'
-                    : 'border border-[var(--app-border)] text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
-                }`}
-                title={e.titel}
+                className="group flex w-full gap-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-2.5 text-left transition hover:border-teal-500/35 hover:bg-teal-500/[0.05] sm:gap-4 sm:p-3"
               >
-                <span className="font-medium">{datum || '—'}</span>
-                <span className="mt-0.5 block max-w-[14rem] truncate opacity-80">{e.titel}</span>
+                <div className="h-[4.75rem] w-[8.5rem] shrink-0 overflow-hidden rounded-xl bg-[#0b1220] sm:h-[5.5rem] sm:w-[10rem]">
+                  {src ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={src} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-xs text-slate-400">
+                      {e.ticker}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 self-center py-0.5">
+                  {e.bericht.cover?.stichwort ? (
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.14em] text-teal-400/80">
+                      {e.bericht.cover.stichwort}
+                    </p>
+                  ) : null}
+                  <h4
+                    className="text-[15px] font-semibold leading-snug tracking-tight text-[var(--app-text)] group-hover:text-teal-50 sm:text-base"
+                    style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+                  >
+                    {e.titel}
+                  </h4>
+                  {e.bericht.cover?.untertitel ? (
+                    <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-[var(--app-text-muted)]">
+                      {e.bericht.cover.untertitel}
+                    </p>
+                  ) : null}
+                  <p className="mt-2 text-[11px] text-[var(--app-text-muted)]/90">{metaZeile(e)}</p>
+                </div>
               </button>
             )
           })}
           {ladenHist ? (
-            <span className="px-2 py-1.5 text-[11px] text-[var(--app-text-muted)]">Lädt …</span>
+            <p className="px-1 text-[11px] text-[var(--app-text-muted)]">Lädt …</p>
           ) : null}
         </div>
-      ) : null}
-
-      {aktiv ? (
-        <PaCard variant="glass" className="space-y-4 p-4 sm:p-5">
-          <div className="border-b border-white/[0.06] pb-3">
-            <h2 className="text-base font-semibold text-[var(--app-text)]">{aktiv.titel}</h2>
-            <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
-              {new Date(aktiv.createdAt).toLocaleString('de-DE')} · Gemini Free · gespeicherte Version
-            </p>
-          </div>
-          <BerichtRenderer bloecke={aktiv.bericht.bloecke} paket={paket} ticker={ticker} />
-        </PaCard>
       ) : (
         <PaCard className="p-8 text-center text-sm text-[var(--app-text-muted)]">
-          Noch keine Analyse. Prompt prüfen und „Analyse generieren“ starten.
+          {ladenHist
+            ? 'Lädt …'
+            : 'Noch keine Analyse. Prompt prüfen und „Analyse generieren“ starten.'}
         </PaCard>
       )}
     </div>

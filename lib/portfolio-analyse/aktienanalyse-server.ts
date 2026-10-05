@@ -8,6 +8,7 @@ import {
   type AktienanalyseBericht,
   type AktienanalyseEintrag,
 } from '@/lib/portfolio-analyse/aktienanalyse-prompt'
+import { baueAktienanalyseThumbnailSvg } from '@/lib/portfolio-analyse/aktienanalyse-thumbnail'
 import {
   geminiFreeTierFlashModelKandidaten,
   resolveGeminiFreeTierProvider,
@@ -195,27 +196,61 @@ function istKonfiguriert() {
 }
 
 function mapRow(row: Record<string, unknown>): AktienanalyseEintrag {
+  const bericht = normalisiereAktienanalyseBericht(row.bericht_json)
+  const ticker = String(row.ticker ?? '')
+  const createdAt = String(row.created_at ?? '')
+  const stored = typeof row.thumbnail_svg === 'string' ? row.thumbnail_svg.trim() : ''
+  const thumbnailSvg =
+    stored ||
+    baueAktienanalyseThumbnailSvg({
+      ticker,
+      titel: String(row.titel ?? bericht.titel),
+      cover: bericht.cover,
+      createdAt,
+    })
+  const kiModell =
+    typeof row.ki_modell === 'string' && row.ki_modell.trim()
+      ? row.ki_modell.trim().slice(0, 80)
+      : null
   return {
     id: String(row.id),
-    ticker: String(row.ticker ?? ''),
+    ticker,
     titel: String(row.titel ?? ''),
     promptSnapshot: String(row.prompt_snapshot ?? ''),
-    bericht: normalisiereAktienanalyseBericht(row.bericht_json),
-    createdAt: String(row.created_at ?? ''),
+    bericht,
+    thumbnailSvg,
+    kiModell,
+    createdAt,
   }
 }
 
+const SELECT_FULL =
+  'id, ticker, titel, prompt_snapshot, bericht_json, thumbnail_svg, ki_modell, created_at'
+const SELECT_MIT_THUMB =
+  'id, ticker, titel, prompt_snapshot, bericht_json, thumbnail_svg, created_at'
+const SELECT_BASIS = 'id, ticker, titel, prompt_snapshot, bericht_json, created_at'
+
 export async function ladeAktienanalyseEintraege(ticker: string): Promise<AktienanalyseEintrag[]> {
   if (!istKonfiguriert()) return []
-  const { data, error } = await createSupabaseAdmin()
-    .from(TABLE)
-    .select('id, ticker, titel, prompt_snapshot, bericht_json, created_at')
-    .eq('owner_user_id', requireOwnerUserId())
-    .eq('ticker', ticker.trim().toUpperCase())
-    .order('created_at', { ascending: false })
-    .limit(40)
-  if (error || !data) return []
-  return data.map((r) => mapRow(r as Record<string, unknown>))
+  const admin = createSupabaseAdmin()
+  const owner = requireOwnerUserId()
+  const t = ticker.trim().toUpperCase()
+  const base = () =>
+    admin
+      .from(TABLE)
+      .eq('owner_user_id', owner)
+      .eq('ticker', t)
+      .order('created_at', { ascending: false })
+      .limit(40)
+
+  const tries = [SELECT_FULL, SELECT_MIT_THUMB, SELECT_BASIS]
+  for (const cols of tries) {
+    const res = await base().select(cols)
+    if (!res.error && res.data) {
+      return res.data.map((r) => mapRow(r as Record<string, unknown>))
+    }
+  }
+  return []
 }
 
 export async function speichereAktienanalyseEintrag(opts: {
@@ -223,29 +258,54 @@ export async function speichereAktienanalyseEintrag(opts: {
   titel: string
   promptSnapshot: string
   bericht: AktienanalyseBericht
+  kiModell?: string | null
 }): Promise<AktienanalyseEintrag> {
   if (!istKonfiguriert()) throw new Error('Supabase nicht konfiguriert')
   const owner = requireOwnerUserId()
-  const { data, error } = await createSupabaseAdmin()
-    .from(TABLE)
-    .insert({
-      owner_user_id: owner,
-      ticker: opts.ticker.trim().toUpperCase(),
-      titel: opts.titel.slice(0, 200),
-      prompt_snapshot: opts.promptSnapshot.slice(0, 20_000),
-      bericht_json: opts.bericht,
-    })
-    .select('id, ticker, titel, prompt_snapshot, bericht_json, created_at')
-    .single()
-  if (error || !data) throw new Error(error?.message || 'Speichern fehlgeschlagen')
-  return mapRow(data as Record<string, unknown>)
+  const ticker = opts.ticker.trim().toUpperCase()
+  const thumbnailSvg = baueAktienanalyseThumbnailSvg({
+    ticker,
+    titel: opts.titel,
+    cover: opts.bericht.cover,
+  })
+  const kiModell = (opts.kiModell || '').trim().slice(0, 80) || null
+  const admin = createSupabaseAdmin()
+  const baseRow = {
+    owner_user_id: owner,
+    ticker,
+    titel: opts.titel.slice(0, 200),
+    prompt_snapshot: opts.promptSnapshot.slice(0, 20_000),
+    bericht_json: opts.bericht,
+  }
+
+  const payloads: Record<string, unknown>[] = [
+    { ...baseRow, thumbnail_svg: thumbnailSvg.slice(0, 40_000), ki_modell: kiModell },
+    { ...baseRow, thumbnail_svg: thumbnailSvg.slice(0, 40_000) },
+    { ...baseRow },
+  ]
+  const selects = [SELECT_FULL, SELECT_MIT_THUMB, SELECT_BASIS]
+
+  let lastError = 'Speichern fehlgeschlagen'
+  for (let i = 0; i < payloads.length; i++) {
+    const res = await admin.from(TABLE).insert(payloads[i]!).select(selects[i]!).single()
+    if (!res.error && res.data) {
+      return mapRow({
+        ...(res.data as Record<string, unknown>),
+        thumbnail_svg:
+          (res.data as Record<string, unknown>).thumbnail_svg ?? thumbnailSvg,
+        ki_modell: (res.data as Record<string, unknown>).ki_modell ?? kiModell,
+      })
+    }
+    lastError = res.error?.message || lastError
+  }
+  throw new Error(lastError)
 }
 
 export async function generiereAktienanalyseBericht(opts: {
   ticker: string
   prompt: string
   exportPayload: unknown
-}): Promise<AktienanalyseBericht> {
+}): Promise<{ bericht: AktienanalyseBericht; kiModell: string }> {
   const provider = resolveGeminiFreeTierProvider()
   if (!provider) {
     throw new Error('GEMINI_API_KEY_FREE fehlt — Aktienanalyse nutzt den Free-Key.')
@@ -262,7 +322,7 @@ export async function generiereAktienanalyseBericht(opts: {
     'DATENKONTEXT (Export JSON, ggf. gekürzt):',
     JSON.stringify(kontext),
     '',
-    'Erzeuge jetzt die Analyse als JSON mit titel und bloecke (text/chart).',
+    'Erzeuge jetzt die Analyse als JSON mit titel, cover und bloecke (text/chart/kennzahl/zitat/callout).',
   ].join('\n')
 
   const models = geminiFreeTierFlashModelKandidaten({
@@ -300,5 +360,8 @@ export async function generiereAktienanalyseBericht(opts: {
     parsed = JSON.parse(m[0])
   }
 
-  return normalisiereAktienanalyseBericht(parsed)
+  return {
+    bericht: normalisiereAktienanalyseBericht(parsed),
+    kiModell: result.model || models[0] || 'gemini',
+  }
 }

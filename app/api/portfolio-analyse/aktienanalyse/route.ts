@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     }
 
     try {
-      const bericht = await generiereAktienanalyseBericht({
+      const { bericht, kiModell } = await generiereAktienanalyseBericht({
         ticker,
         prompt,
         exportPayload,
@@ -53,6 +53,7 @@ export async function POST(req: Request) {
         titel: bericht.titel,
         promptSnapshot: prompt,
         bericht,
+        kiModell,
       })
       return { ok: true, eintrag }
     } catch (e) {
