@@ -18,12 +18,15 @@ import { requireOwnerUserId } from '@/lib/request-owner'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 const TABLE = 'portfolio_aktienanalyse'
-const MAX_KONTEXT_CHARS = 140_000
+/** Reichhaltiger Kontext ist gewollt — Tokens ok, Ergebnis muss kommen. */
+const MAX_KONTEXT_CHARS = 160_000
 const MAX_TRANSCRIPT_CHARS_PRO_QUARTAL = 18_000
 const MAX_ZUSAMMENFASSUNG_CHARS = 6_000
+const MAX_SEC_AUSZUG_CHARS = 8_000
 const MAX_EARNINGS_QUARTALE = 6
+const MAX_SEC_BERICHTE = 8
 
-/** Behält Fundamentaldaten + Earnings-Zusammenfassungen + Transkripte (gekürzt). */
+/** Behält Fundamentaldaten + Earnings-Zusammenfassungen + Transkripte (bei Überlänge gestuft kürzen). */
 export function kuerzeExportFuerAktienanalyse(payload: unknown): unknown {
   if (!payload || typeof payload !== 'object') return payload
   let root: Record<string, unknown>
@@ -32,6 +35,8 @@ export function kuerzeExportFuerAktienanalyse(payload: unknown): unknown {
   } catch {
     root = JSON.parse(JSON.stringify(payload)) as Record<string, unknown>
   }
+
+  delete root.fundamentaldatenRoh
 
   const tabs = root.tabs
   if (tabs && typeof tabs === 'object') {
@@ -56,10 +61,7 @@ export function kuerzeExportFuerAktienanalyse(payload: unknown): unknown {
     }
   }
 
-  // Rohpaket redundant zu tabs — weglassen spart Tokens
-  delete root.fundamentaldatenRoh
-
-  // Bei Überlänge: Transkripte weiter kürzen, Zusammenfassungen behalten
+  // Nur bei Extrem-Überlänge: Transkripte kürzen, Summaries behalten
   if (JSON.stringify(root).length > MAX_KONTEXT_CHARS && root.tabs && typeof root.tabs === 'object') {
     const t = root.tabs as Record<string, unknown>
     const q = t.quartalszahlen
@@ -67,10 +69,10 @@ export function kuerzeExportFuerAktienanalyse(payload: unknown): unknown {
       const qq = q as Record<string, unknown>
       qq.earningsCalls = kompaktEarningsMitTranskript(qq.earningsCalls, {
         maxQuartale: 4,
-        maxTranscript: 8_000,
+        maxTranscript: 10_000,
       })
+      qq.secBerichte = kompaktSecMitZusammenfassung(qq.secBerichte, { maxAuszug: 4_000 })
     }
-    delete t.news
   }
 
   return root
@@ -97,15 +99,16 @@ function kompaktEarningsMitTranskript(
           typeof z.zusammenfassung === 'string'
             ? z.zusammenfassung.slice(0, MAX_ZUSAMMENFASSUNG_CHARS)
             : z.zusammenfassung ?? null
-        let transcriptText =
+        let transcriptText: string | null =
           typeof z.transcriptText === 'string'
             ? z.transcriptText
             : typeof z.text === 'string'
               ? z.text
               : null
-        if (transcriptText && transcriptText.length > maxT) {
+        if (transcriptText && maxT > 0 && transcriptText.length > maxT) {
           transcriptText = transcriptText.slice(0, maxT) + '\n\n[… Transkript gekürzt …]'
         }
+        if (maxT <= 0) transcriptText = null
         return {
           id: z.id ?? null,
           label: z.label ?? z.titel ?? null,
@@ -134,29 +137,34 @@ function kompaktEarningsMitTranskript(
     .filter(Boolean)
 }
 
-function kompaktSecMitZusammenfassung(raw: unknown): unknown {
+function kompaktSecMitZusammenfassung(
+  raw: unknown,
+  opts?: { maxAuszug?: number },
+): unknown {
   if (!raw) return null
+  const maxAuszug = opts?.maxAuszug ?? MAX_SEC_AUSZUG_CHARS
   const pakete = Array.isArray(raw) ? raw : [raw]
   return pakete.map((p) => {
     if (!p || typeof p !== 'object') return p
     const o = p as Record<string, unknown>
     const berichteRaw = Array.isArray(o.berichte) ? o.berichte : []
-    const berichte = berichteRaw.slice(0, 8).map((b) => {
+    const berichte = berichteRaw.slice(0, MAX_SEC_BERICHTE).map((b) => {
       if (!b || typeof b !== 'object') return b
       const z = b as Record<string, unknown>
       const zusammenfassung =
         typeof z.zusammenfassung === 'string'
           ? z.zusammenfassung.slice(0, MAX_ZUSAMMENFASSUNG_CHARS)
           : z.zusammenfassung ?? null
-      let textAuszug =
+      let textAuszug: string | null =
         typeof z.textAuszug === 'string'
           ? z.textAuszug
           : typeof z.text === 'string'
             ? z.text
             : null
-      if (textAuszug && textAuszug.length > 8_000) {
-        textAuszug = textAuszug.slice(0, 8_000) + '…'
+      if (textAuszug && maxAuszug > 0 && textAuszug.length > maxAuszug) {
+        textAuszug = textAuszug.slice(0, maxAuszug) + '…'
       }
+      if (maxAuszug <= 0) textAuszug = null
       return {
         id: z.id ?? null,
         formular: z.formular ?? z.form ?? null,
@@ -300,6 +308,94 @@ export async function speichereAktienanalyseEintrag(opts: {
   throw new Error(lastError)
 }
 
+/** Robustes JSON-Parsing inkl. abgeschnittener Antworten. */
+function parseAktienanalyseJson(reply: string): unknown | null {
+  const cleaned = reply
+    .replace(/^\uFEFF/, '')
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+  if (!cleaned) return null
+
+  try {
+    return JSON.parse(cleaned)
+  } catch {
+    /* weiter */
+  }
+
+  const start = cleaned.indexOf('{')
+  if (start < 0) return null
+  const end = cleaned.lastIndexOf('}')
+  if (end > start) {
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1))
+    } catch {
+      /* truncated / broken */
+    }
+  }
+
+  // Abgeschnittenes JSON: offene Strings/Klammern schließen
+  const repariert = repariereAbgeschnittenesJson(cleaned.slice(start))
+  if (repariert) {
+    try {
+      return JSON.parse(repariert)
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+function repariereAbgeschnittenesJson(fragment: string): string | null {
+  if (!fragment.startsWith('{')) return null
+  let s = fragment.trim()
+  // Offenen String schließen
+  let inString = false
+  let escape = false
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!
+    if (inString) {
+      if (escape) escape = false
+      else if (ch === '\\') escape = true
+      else if (ch === '"') inString = false
+    } else if (ch === '"') {
+      inString = true
+    }
+  }
+  if (inString) s += '"'
+
+  // Trailing Komma entfernen
+  s = s.replace(/,\s*$/, '')
+
+  let brace = 0
+  let bracket = 0
+  inString = false
+  escape = false
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i]!
+    if (inString) {
+      if (escape) escape = false
+      else if (ch === '\\') escape = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '{') brace++
+    else if (ch === '}') brace--
+    else if (ch === '[') bracket++
+    else if (ch === ']') bracket--
+  }
+  while (bracket > 0) {
+    s += ']'
+    bracket--
+  }
+  while (brace > 0) {
+    s += '}'
+    brace--
+  }
+  return s
+}
+
 export async function generiereAktienanalyseBericht(opts: {
   ticker: string
   prompt: string
@@ -311,6 +407,7 @@ export async function generiereAktienanalyseBericht(opts: {
   }
 
   const kontext = kuerzeExportFuerAktienanalyse(opts.exportPayload)
+  const kontextJson = JSON.stringify(kontext)
   const system =
     opts.prompt.trim().slice(0, 12_000) ||
     'Erstelle eine fundierte Aktienanalyse als JSON (titel + bloecke).'
@@ -318,10 +415,10 @@ export async function generiereAktienanalyseBericht(opts: {
   const userText = [
     `Ticker: ${opts.ticker.trim().toUpperCase()}`,
     '',
-    'DATENKONTEXT (Export JSON, ggf. gekürzt):',
-    JSON.stringify(kontext),
+    'DATENKONTEXT (Export JSON, ggf. leicht gekürzt):',
+    kontextJson,
     '',
-    'Erzeuge jetzt die Analyse als JSON mit titel, cover und bloecke (text/chart/kennzahl/zitat/callout).',
+    'Antworte NUR mit gültigem, vollständigem JSON (titel, cover, bloecke). Keine Markdown-Fence. Nicht mittendrin abbrechen.',
   ].join('\n')
 
   const models = geminiFreeTierFlashModelKandidaten({
@@ -334,14 +431,15 @@ export async function generiereAktienanalyseBericht(opts: {
     system,
     [{ role: 'user', content: userText }],
     {
-      temperature: 0.35,
+      temperature: 0.25,
       geminiModels: models,
       geminiForceFreeApiKey: true,
       jsonResponse: { schema: AKTIENANALYSE_JSON_SCHEMA },
-      maxOutputTokens: 8192,
+      // Genug Platz für lange Magazin-Analyse (vorher 8k → oft abgeschnitten)
+      maxOutputTokens: 24_576,
       thinkingMinimal: true,
-      timeoutMs: 120_000,
-      geminiTotalBudgetMs: 240_000,
+      timeoutMs: 180_000,
+      geminiTotalBudgetMs: 300_000,
       skipMessageTrim: true,
     },
   )
@@ -350,17 +448,58 @@ export async function generiereAktienanalyseBericht(opts: {
     throw new Error(result.hint || 'KI-Analyse fehlgeschlagen')
   }
 
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(result.reply)
-  } catch {
-    const m = result.reply.match(/\{[\s\S]*\}/)
-    if (!m) throw new Error('KI lieferte kein gültiges JSON.')
-    parsed = JSON.parse(m[0])
+  let parsed = parseAktienanalyseJson(result.reply)
+  let usedModel = result.model || models[0] || 'gemini'
+
+  // Günstiger Repair-Retry: nur die kaputte Antwort, KEIN Export-Kontext nochmal
+  if (!parsed && result.reply.trim().length > 80) {
+    console.warn(
+      `[aktienanalyse] JSON kaputt (${result.reply.length} Zeichen) — Repair ohne Re-Export …`,
+    )
+    const repair = await runCoachCompletion(
+      provider.provider,
+      provider.apiKey,
+      'Du reparierst kaputtes JSON. Gib NUR ein gültiges JSON-Objekt zurück mit den Feldern titel (string), cover (object: untertitel, stichwort, ton), bloecke (array). Kein Markdown, kein Kommentar.',
+      [
+        {
+          role: 'user',
+          content: [
+            'Repariere die folgende Antwort zu gültigem JSON (Aktienanalyse-Schema).',
+            'Wenn abgeschnitten: schließe Blöcke sinnvoll, erfinde keine neuen Fakten.',
+            '',
+            result.reply.slice(0, 60_000),
+          ].join('\n'),
+        },
+      ],
+      {
+        temperature: 0.1,
+        geminiModels: models,
+        geminiForceFreeApiKey: true,
+        jsonResponse: { schema: AKTIENANALYSE_JSON_SCHEMA },
+        maxOutputTokens: 24_576,
+        thinkingMinimal: true,
+        timeoutMs: 120_000,
+        geminiTotalBudgetMs: 180_000,
+        skipMessageTrim: true,
+      },
+    )
+    if (repair.ok) {
+      parsed = parseAktienanalyseJson(repair.reply)
+      if (repair.model) usedModel = repair.model
+    }
+  }
+
+  if (!parsed) {
+    const preview = result.reply.trim().slice(0, 120).replace(/\s+/g, ' ')
+    throw new Error(
+      preview
+        ? `KI-Antwort war kein gültiges JSON (vermutlich abgeschnitten). Vorschau: „${preview}…“ — bitte erneut versuchen.`
+        : 'KI lieferte eine leere Antwort. Bitte erneut versuchen.',
+    )
   }
 
   return {
     bericht: normalisiereAktienanalyseBericht(parsed),
-    kiModell: result.model || models[0] || 'gemini',
+    kiModell: usedModel,
   }
 }
