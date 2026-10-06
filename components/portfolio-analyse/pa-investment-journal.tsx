@@ -278,12 +278,30 @@ export function PaInvestmentJournal({
       const res = await fetch('/api/portfolio-analyse/journal/auto-fill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(scoped && ticker ? { ticker } : {}),
+        body: JSON.stringify(
+          scoped && ticker
+            ? { ticker, isin: isin ?? undefined, name: name ?? undefined }
+            : {},
+        ),
         signal: AbortSignal.timeout(290_000),
       })
-      const j = (await res.json()) as { ok?: boolean; zusammenfassung?: string; message?: string }
+      const j = (await res.json()) as {
+        ok?: boolean
+        zusammenfassung?: string
+        message?: string
+        ergebnisse?: Array<{ ticker?: string; status?: string; message?: string }>
+      }
       if (!res.ok || !j.ok) throw new Error(j.message || 'Auto-Fill fehlgeschlagen')
-      setFortschritt(j.zusammenfassung ?? 'Fertig')
+      const fehlerZeilen = (j.ergebnisse ?? []).filter((e) => e.status === 'fehler')
+      if (fehlerZeilen.length > 0) {
+        const details = fehlerZeilen
+          .map((e) => `${e.ticker ?? '?'}: ${e.message || 'unbekannter Fehler'}`)
+          .join(' · ')
+        setFehler(details)
+        setFortschritt(j.zusammenfassung ?? null)
+      } else {
+        setFortschritt(j.zusammenfassung ?? 'Fertig')
+      }
       await ladenDaten()
     } catch (e) {
       setFehler(e instanceof Error ? e.message : 'Auto-Fill fehlgeschlagen')
@@ -304,8 +322,25 @@ export function PaInvestmentJournal({
         body: JSON.stringify(scoped && ticker ? { ticker } : {}),
         signal: AbortSignal.timeout(290_000),
       })
-      const j = (await res.json()) as { ok?: boolean; zusammenfassung?: string; message?: string }
+      const j = (await res.json()) as {
+        ok?: boolean
+        zusammenfassung?: string
+        message?: string
+        ergebnisse?: Array<{ ticker?: string; status?: string; message?: string }>
+      }
       if (!res.ok || !j.ok) throw new Error(j.message || 'Gegenprüfung fehlgeschlagen')
+      const fehlerZeilen = (j.ergebnisse ?? []).filter((e) => e.status === 'fehler')
+      const skipZeilen = (j.ergebnisse ?? []).filter((e) => e.status === 'uebersprungen')
+      if (fehlerZeilen.length > 0) {
+        setFehler(
+          fehlerZeilen.map((e) => `${e.ticker ?? '?'}: ${e.message || 'Fehler'}`).join(' · '),
+        )
+      } else if (
+        skipZeilen.length > 0 &&
+        (j.ergebnisse ?? []).every((e) => e.status !== 'geprueft')
+      ) {
+        setFehler(skipZeilen.map((e) => `${e.ticker ?? '?'}: ${e.message || 'übersprungen'}`).join(' · '))
+      }
       setFortschritt(j.zusammenfassung ?? 'Fertig')
       await ladenDaten()
     } catch (e) {

@@ -9,14 +9,18 @@ export const maxDuration = 300
 export async function POST(req: Request) {
   const out = await jsonMitOwner(req, async () => {
     let ticker: string | undefined
+    let isin: string | undefined
+    let name: string | undefined
     try {
-      const body = (await req.json()) as { ticker?: string }
+      const body = (await req.json()) as { ticker?: string; isin?: string; name?: string }
       ticker = body.ticker?.trim() || undefined
+      isin = body.isin?.trim() || undefined
+      name = body.name?.trim() || undefined
     } catch {
       /* kein Body = alle Depot-Titel */
     }
     try {
-      const result = await batchJournalAutoFill({ ticker })
+      const result = await batchJournalAutoFill({ ticker, isin, name })
       return { ok: true, ...result }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Auto-Fill fehlgeschlagen'

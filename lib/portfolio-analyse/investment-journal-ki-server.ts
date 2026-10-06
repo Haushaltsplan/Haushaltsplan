@@ -343,8 +343,14 @@ export async function generiereJournalFelder(opts: {
   const kaufgrund = String(parsed.kaufgrund ?? '').trim()
   const watchpoints = normalisiereWatchpoints(String(parsed.watchpoints ?? '').trim())
 
+  // Teilweise Antworten trotzdem nutzen (besser als Totalausfall)
+  if (!these && !kaufgrund && !watchpoints) {
+    throw new Error('KI-Fill: leere Antwort')
+  }
   if (!these || !kaufgrund || !watchpoints) {
-    throw new Error('KI-Fill: unvollständige Felder')
+    console.warn(
+      `[journal/fill] ${opts.ticker}: unvollständig these=${these.length} kg=${kaufgrund.length} wp=${watchpoints.length}`,
+    )
   }
 
   return {
@@ -452,17 +458,38 @@ export async function generiereJournalGegenpruefung(opts: {
 
 export async function batchJournalAutoFill(opts?: {
   ticker?: string
+  isin?: string
+  name?: string
 }): Promise<{ ergebnisse: JournalAutoFillErgebnis[]; zusammenfassung: string }> {
   const depot = await ladeDepotRadarAktien()
   const filterTicker = opts?.ticker?.trim().toUpperCase()
-  const kandidaten = depot
-    .map((d) => ({
-      isin: d.isin,
-      name: d.name,
-      symbolYahoo: d.symbolYahoo,
-      ticker: tickerAusDepot(d.symbolYahoo, d.symbolCandidates, d.isin),
-    }))
-    .filter((d) => (filterTicker ? d.ticker === filterTicker || d.isin === filterTicker : true))
+  const filterIsin = opts?.isin?.trim().toUpperCase()
+
+  let kandidaten = depot.map((d) => ({
+    isin: d.isin,
+    name: d.name,
+    symbolYahoo: d.symbolYahoo,
+    ticker: tickerAusDepot(d.symbolYahoo, d.symbolCandidates, d.isin),
+  }))
+
+  if (filterTicker || filterIsin) {
+    kandidaten = kandidaten.filter(
+      (d) =>
+        (filterTicker && (d.ticker === filterTicker || d.isin === filterTicker)) ||
+        (filterIsin && d.isin === filterIsin),
+    )
+    // Scoped-Fill auch ohne Depot-Treffer (Übersicht einzelner Titel)
+    if (kandidaten.length === 0 && filterTicker) {
+      kandidaten = [
+        {
+          isin: filterIsin || filterTicker,
+          name: opts?.name?.trim() || filterTicker,
+          symbolYahoo: filterTicker,
+          ticker: filterTicker,
+        },
+      ]
+    }
+  }
 
   const ergebnisse: JournalAutoFillErgebnis[] = []
 
@@ -495,6 +522,9 @@ export async function batchJournalAutoFill(opts?: {
         name: k.name,
         kontext,
       })
+      if (!felder.these.trim() && !felder.kaufgrund.trim() && !felder.watchpoints.trim()) {
+        throw new Error('KI lieferte leere Felder')
+      }
       const eintrag = await speichereJournalEintrag({
         id: bestehend?.id,
         ticker: k.ticker,
@@ -511,11 +541,13 @@ export async function batchJournalAutoFill(opts?: {
         eintrag: eintrag ?? undefined,
       })
     } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      console.error(`[journal/auto-fill] ${k.ticker}:`, msg)
       ergebnisse.push({
         ticker: k.ticker,
         name: k.name,
         status: 'fehler',
-        message: e instanceof Error ? e.message : String(e),
+        message: msg,
       })
     }
     if (i < kandidaten.length - 1) await sleep(PAUSE_MS)
