@@ -13,7 +13,6 @@ import { PaFundamentalMetrikTabelle } from '@/components/portfolio-analyse/pa-fu
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
 import { PaFundamentalScorecard } from '@/components/portfolio-analyse/pa-fundamental-scorecard'
 import { PaFundamentalGewinnfluss } from '@/components/portfolio-analyse/pa-fundamental-gewinnfluss'
-import { PaInvestmentJournal } from '@/components/portfolio-analyse/pa-investment-journal'
 import {
   PaFundamentalChartWahl,
   PaFundamentalQualitaetsCharts,
@@ -537,6 +536,7 @@ export function PaFundamentalInhalt({
                 symbolYahoo={daten.symbolYahoo}
                 ticker={daten.ticker}
                 firmenname={daten.firmenname}
+                isin={anfrage?.isin}
                 metriken={daten.keyMetrics}
                 onMetricClick={navigiereZuMetrik}
                 verfuegbareZeilenIds={verfuegbareZeilenIds}
@@ -551,13 +551,6 @@ export function PaFundamentalInhalt({
                 symbolYahoo={daten.symbolYahoo}
                 selectionKey={selectionKey}
               />
-              <div className="mt-4">
-                <PaInvestmentJournal
-                  ticker={daten.ticker}
-                  isin={anfrage?.isin}
-                  name={daten.firmenname}
-                />
-              </div>
             </>
           ) : null}
 

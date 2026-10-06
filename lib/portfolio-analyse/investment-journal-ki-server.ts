@@ -1,6 +1,6 @@
 /**
  * Investment-Journal KI: Auto-Fill (leere Felder) + Quartals-Gegenprüfung.
- * Nutzt GEMINI_API_KEY_FREE — kein Billing-Flag.
+ * GEMINI_API_KEY_FREE — kein Billing-Flag.
  */
 
 import 'server-only'
@@ -13,12 +13,20 @@ import {
 import { ladeDepotRadarAktien } from '@/lib/portfolio-analyse/depot-gewichte-server'
 import { ladeEarningsCallKiCacheFuerTicker } from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
 import { ladeFundamentaldatenPaketCacheFuerAnfrage } from '@/lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
+import type { FundamentalKeyMetric, FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import {
   ladeAktivenJournalEintrag,
   ladeJournalEintraege,
   speichereJournalEintrag,
   speichereJournalGegenpruefung,
 } from '@/lib/portfolio-analyse/investment-journal-server'
+import {
+  JOURNAL_FILL_JSON_SCHEMA,
+  JOURNAL_FILL_SYSTEM_PROMPT,
+  JOURNAL_GEGENPRUEFUNG_JSON_SCHEMA,
+  JOURNAL_GEGENPRUEFUNG_SYSTEM_PROMPT,
+  JOURNAL_PRIORITAET_METRIC_IDS,
+} from '@/lib/portfolio-analyse/investment-journal-prompts'
 import type {
   JournalAutoFillErgebnis,
   JournalEintrag,
@@ -29,28 +37,6 @@ import { ladeAlleQuartalsKiDiffAusCloud } from '@/lib/portfolio-analyse/quartals
 import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
 
 const PAUSE_MS = 900
-
-const FILL_SCHEMA: Record<string, unknown> = {
-  type: 'OBJECT',
-  properties: {
-    these: { type: 'STRING' },
-    kaufgrund: { type: 'STRING' },
-    watchpoints: { type: 'STRING' },
-  },
-  required: ['these', 'kaufgrund', 'watchpoints'],
-}
-
-const GP_SCHEMA: Record<string, unknown> = {
-  type: 'OBJECT',
-  properties: {
-    status: { type: 'STRING' },
-    fazit: { type: 'STRING' },
-    quartalLabel: { type: 'STRING' },
-    watchpointTreffer: { type: 'ARRAY', items: { type: 'STRING' } },
-    belege: { type: 'ARRAY', items: { type: 'STRING' } },
-  },
-  required: ['status', 'fazit', 'quartalLabel'],
-}
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
@@ -84,6 +70,96 @@ function parseJsonObject(reply: string): Record<string, unknown> | null {
   }
 }
 
+function formatMetricWert(m: FundamentalKeyMetric): string {
+  if (m.zahl != null && Number.isFinite(m.zahl)) {
+    return m.wert?.trim() || m.zahl.toLocaleString('de-DE', { maximumFractionDigits: 2 })
+  }
+  if (m.wert != null && String(m.wert).trim() !== '') return String(m.wert)
+  return '—'
+}
+
+function priorisiereKeyMetrics(metriken: FundamentalKeyMetric[]): FundamentalKeyMetric[] {
+  const prio = new Map(JOURNAL_PRIORITAET_METRIC_IDS.map((id, i) => [id, i]))
+  const scored = metriken
+    .filter((m) => (m.wert != null && String(m.wert).trim() !== '') || m.zahl != null)
+    .map((m, idx) => {
+      const id = String(m.id ?? '').toLowerCase()
+      let rank = prio.get(id as (typeof JOURNAL_PRIORITAET_METRIC_IDS)[number])
+      if (rank == null) {
+        for (const [pid, r] of prio) {
+          if (id.includes(pid) || id.includes(pid.replace(/_/g, ''))) {
+            rank = r + 50
+            break
+          }
+        }
+      }
+      return { m, rank: rank ?? 200 + idx }
+    })
+  scored.sort((a, b) => a.rank - b.rank)
+  const top = scored.slice(0, 28).map((x) => x.m)
+  if (top.length < 12) {
+    for (const m of metriken) {
+      if (top.length >= 20) break
+      if (!top.some((t) => t.id === m.id) && (m.wert != null || m.zahl != null)) top.push(m)
+    }
+  }
+  return top
+}
+
+function keyMetricsBlock(metriken: FundamentalKeyMetric[]): string {
+  const top = priorisiereKeyMetrics(metriken)
+  if (!top.length) return ''
+  const zeilen = top.map((m) => {
+    const gruppe = m.gruppe ? ` [${m.gruppe}]` : ''
+    return `- ${m.label ?? m.id}${gruppe}: ${formatMetricWert(m)} (id=${m.id})`
+  })
+  return `### Key Metrics (Anker — exakt so zitieren)\n${zeilen.join('\n')}`
+}
+
+function mantraBlock(paket: FundamentaldatenPaket): string {
+  const mantra = paket.mantra
+  if (!mantra) return ''
+  const z = mantra.zusammenfassung
+  const teile = [
+    `### Mantra / Quality-Audit`,
+    `Anker: ${mantra.anker ?? '—'}`,
+    `Ampel: ${mantra.ampel ?? '—'} (${mantra.ampelHinweis ?? '—'})`,
+    z
+      ? `Scorecard: erfüllt ${z.erfuellt}, nicht erfüllt ${z.nichtErfuellt}, keine Daten ${z.keineDaten}, qualitativ ${z.qualitativ}`
+      : null,
+  ].filter(Boolean) as string[]
+
+  const checks = [...(mantra.standard ?? []), ...(mantra.sektor ?? [])]
+    .filter((c) => c.status === 'erfuellt' || c.status === 'nicht_erfuellt')
+    .slice(0, 10)
+  for (const c of checks) {
+    teile.push(
+      `- [${c.status}] ${c.kennzahl}: ${c.istWert ?? '—'} (Ziel ${c.zielwert}) — ${(c.hinweis ?? '').slice(0, 180)}`,
+    )
+  }
+  return teile.join('\n')
+}
+
+async function ladePaket(opts: {
+  ticker: string
+  isin: string
+  name: string
+  symbolYahoo: string | null
+}): Promise<FundamentaldatenPaket | null> {
+  try {
+    const hit = await ladeFundamentaldatenPaketCacheFuerAnfrage({
+      isin: opts.isin,
+      symbolYahoo: opts.symbolYahoo ?? opts.ticker,
+      name: opts.name,
+      frequenz: 'jahr',
+      tickerOverride: opts.ticker,
+    })
+    return hit?.paket ?? null
+  } catch {
+    return null
+  }
+}
+
 async function baueFillKontext(opts: {
   ticker: string
   isin: string
@@ -91,39 +167,52 @@ async function baueFillKontext(opts: {
   symbolYahoo: string | null
 }): Promise<string> {
   const teile: string[] = [
+    `### Stammdaten`,
     `Ticker: ${opts.ticker}`,
     `Name: ${opts.name}`,
     `ISIN: ${opts.isin}`,
   ]
-  try {
-    const hit = await ladeFundamentaldatenPaketCacheFuerAnfrage({
-      isin: opts.isin,
-      symbolYahoo: opts.symbolYahoo ?? opts.ticker,
-      name: opts.name,
-      frequenz: 'jahr',
-    })
-    const p = hit?.paket
-    if (p) {
-      teile.push(`Branche: ${p.branche ?? '—'} · Sektor: ${p.sektor ?? '—'}`)
-      if (p.beschreibung) teile.push(`Profil: ${p.beschreibung.slice(0, 800)}`)
-      const km = (p.keyMetrics ?? []).slice(0, 24).map((m) => `${m.label ?? m.id}: ${m.wert ?? '—'}`)
-      if (km.length) teile.push(`Key Metrics:\n- ${km.join('\n- ')}`)
-      if (p.mantra) {
-        const z = p.mantra.zusammenfassung
-        if (z) {
-          teile.push(
-            `Mantra: erfüllt ${z.erfuellt ?? '?'} / nicht ${z.nichtErfuellt ?? '?'} / keine Daten ${z.keineDaten ?? '?'}`,
-          )
-        }
-      }
+
+  const p = await ladePaket(opts)
+  if (p) {
+    teile.push(`Branche: ${p.branche ?? '—'} · Sektor: ${p.sektor ?? '—'}`)
+    if (p.beschreibung) teile.push(`### Profil\n${p.beschreibung.slice(0, 1_200)}`)
+    const km = keyMetricsBlock(p.keyMetrics ?? [])
+    if (km) teile.push(km)
+    const man = mantraBlock(p)
+    if (man) teile.push(man)
+
+    // Wichtige Jahreszeilen als Zusatz-Anker
+    const zeilen = (p.zeilen ?? []).filter((z) =>
+      /^(umsatz|eps|fcf|ebit|roic|bruttomarge|ebit_marge|fcf_marge)$/i.test(z.id),
+    )
+    if (zeilen.length && p.perioden?.length) {
+      const letzte = p.perioden.filter((per) => !per.istSchaetzung && !per.istNtm).slice(-4)
+      const kompakt = zeilen.slice(0, 8).map((z) => {
+        const vals = letzte
+          .map((per) => {
+            const key = per.iso
+            const v = z.werte?.[key]
+            return v != null ? `${per.label}=${Number(v).toLocaleString('de-DE', { maximumFractionDigits: 2 })}` : null
+          })
+          .filter(Boolean)
+        return vals.length ? `- ${z.label ?? z.id}: ${vals.join(', ')}` : null
+      })
+      const lines = kompakt.filter(Boolean)
+      if (lines.length) teile.push(`### Historische Reihe (letzte Jahre)\n${lines.join('\n')}`)
     }
-  } catch {
-    /* ohne Cache weiter */
+  } else {
+    teile.push('Hinweis: Kein Fundamentaldaten-Cache — nur Stammdaten. Nur schreiben, was belegbar ist.')
   }
-  return teile.join('\n')
+
+  return teile.join('\n\n')
 }
 
-async function baueGegenpruefungKontext(ticker: string): Promise<{
+async function baueGegenpruefungKontext(opts: {
+  ticker: string
+  isin: string | null
+  name: string
+}): Promise<{
   text: string
   quartalHint: string
   hatDaten: boolean
@@ -132,8 +221,23 @@ async function baueGegenpruefungKontext(ticker: string): Promise<{
   let quartalHint = ''
   let hatDaten = false
 
+  // Aktuelle Key Metrics zum Zahlenvergleich (Anker vs. jetzt)
+  const paket = await ladePaket({
+    ticker: opts.ticker,
+    isin: opts.isin || '',
+    name: opts.name,
+    symbolYahoo: opts.ticker,
+  })
+  if (paket) {
+    const km = keyMetricsBlock(paket.keyMetrics ?? [])
+    if (km) {
+      hatDaten = true
+      teile.push(`### Aktuelle Key Metrics (Vergleichsbasis zum Journal)\n${km.replace('### Key Metrics (Anker — exakt so zitieren)\n', '')}`)
+    }
+  }
+
   try {
-    const earn = await ladeEarningsCallKiCacheFuerTicker(ticker)
+    const earn = await ladeEarningsCallKiCacheFuerTicker(opts.ticker)
     const rows = [...earn.entries()].sort((a, b) =>
       String(b[1].aktualisiertAm).localeCompare(String(a[1].aktualisiertAm)),
     )
@@ -141,7 +245,7 @@ async function baueGegenpruefungKontext(ticker: string): Promise<{
       hatDaten = true
       if (!quartalHint) quartalHint = id
       teile.push(
-        `### Earnings ${id}\nSentiment: ${row.sentimentScore ?? '—'}\n${row.zusammenfassung.slice(0, 4_500)}`,
+        `### Earnings ${id}\nAktualisiert: ${row.aktualisiertAm}\nSentiment: ${row.sentimentScore ?? '—'}\n${row.zusammenfassung.slice(0, 5_500)}`,
       )
     }
   } catch {
@@ -149,13 +253,13 @@ async function baueGegenpruefungKontext(ticker: string): Promise<{
   }
 
   try {
-    const sec = await ladeSecBerichtKiCacheFuerTicker(ticker)
+    const sec = await ladeSecBerichtKiCacheFuerTicker(opts.ticker)
     const rows = [...sec.entries()].sort((a, b) =>
       String(b[1].aktualisiertAm).localeCompare(String(a[1].aktualisiertAm)),
     )
     for (const [id, row] of rows.slice(0, 2)) {
       hatDaten = true
-      teile.push(`### SEC/IR ${id}\n${row.zusammenfassung.slice(0, 3_000)}`)
+      teile.push(`### SEC/IR ${id}\n${row.zusammenfassung.slice(0, 3_500)}`)
     }
   } catch {
     /* ignore */
@@ -163,12 +267,12 @@ async function baueGegenpruefungKontext(ticker: string): Promise<{
 
   try {
     const diffs = (await ladeAlleQuartalsKiDiffAusCloud())
-      .filter((d) => d.ticker.trim().toUpperCase() === ticker.trim().toUpperCase())
+      .filter((d) => d.ticker.trim().toUpperCase() === opts.ticker.trim().toUpperCase())
       .sort((a, b) => String(b.aktualisiertAm).localeCompare(String(a.aktualisiertAm)))
-    for (const d of diffs.slice(0, 2)) {
+    for (const d of diffs.slice(0, 3)) {
       hatDaten = true
       teile.push(
-        `### Quartals-Diff ${d.typ} ${d.aktuellId} vs ${d.vorherId}\n${d.diff.slice(0, 2_500)}`,
+        `### Quartals-Diff ${d.typ} · ${d.aktuellId} vs ${d.vorherId}\n${d.diff.slice(0, 3_000)}`,
       )
     }
   } catch {
@@ -176,10 +280,19 @@ async function baueGegenpruefungKontext(ticker: string): Promise<{
   }
 
   return {
-    text: teile.join('\n\n') || 'Keine Earnings-/SEC-/Diff-Daten im Cache.',
+    text: teile.join('\n\n') || 'Keine Earnings-/SEC-/Diff-/Metric-Daten im Cache.',
     quartalHint: quartalHint || 'aktuell',
     hatDaten,
   }
+}
+
+function normalisiereWatchpoints(raw: string): string {
+  const lines = raw
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => (l.startsWith('-') || l.startsWith('•') ? l.replace(/^•\s*/, '- ') : `- ${l}`))
+  return lines.slice(0, 6).join('\n')
 }
 
 export async function generiereJournalFelder(opts: {
@@ -194,29 +307,29 @@ export async function generiereJournalFelder(opts: {
     primaryEnvKeys: ['JOURNAL_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
   })
 
-  const system = `Du bist Equity-Research-Assistent (Quality-Compounder-Stil).
-Schreibe auf Deutsch, nüchtern, ohne Kursziele und ohne Kauf-/Verkaufsempfehlung.
-Liefere JSON mit:
-- these: 2–4 Sätze Investment-These
-- kaufgrund: 2–3 Sätze warum die Position im Depot Sinn ergibt (Qualität, Moat, Kapitalallokation)
-- watchpoints: 3–5 konkrete Überwachungspunkte (Kennzahlen/Ereignisse), als Aufzählung mit "- "`
-
   const result = await runCoachCompletion(
     provider.provider,
     provider.apiKey,
-    system,
+    JOURNAL_FILL_SYSTEM_PROMPT,
     [
       {
         role: 'user',
-        content: `Unternehmen:\n${opts.kontext}\n\nErzeuge these, kaufgrund, watchpoints als JSON.`,
+        content: [
+          `Unternehmen: ${opts.name} (${opts.ticker})`,
+          '',
+          'KONTEXT:',
+          opts.kontext,
+          '',
+          'Erzeuge jetzt das Journal-JSON (these, kaufgrund, watchpoints) nach den Quality-Compounder-Regeln — mit festen Ankerzahlen aus den Key Metrics.',
+        ].join('\n'),
       },
     ],
     {
-      temperature: 0.35,
+      temperature: 0.22,
       geminiModels: models,
       geminiForceFreeApiKey: true,
-      jsonResponse: { schema: FILL_SCHEMA },
-      maxOutputTokens: 2048,
+      jsonResponse: { schema: JOURNAL_FILL_JSON_SCHEMA },
+      maxOutputTokens: 3072,
       thinkingMinimal: true,
       timeoutMs: 90_000,
     },
@@ -226,10 +339,18 @@ Liefere JSON mit:
   const parsed = parseJsonObject(result.reply)
   if (!parsed) throw new Error('KI-Fill: ungültiges JSON')
 
+  const these = String(parsed.these ?? '').trim()
+  const kaufgrund = String(parsed.kaufgrund ?? '').trim()
+  const watchpoints = normalisiereWatchpoints(String(parsed.watchpoints ?? '').trim())
+
+  if (!these || !kaufgrund || !watchpoints) {
+    throw new Error('KI-Fill: unvollständige Felder')
+  }
+
   return {
-    these: String(parsed.these ?? '').trim().slice(0, 4_000),
-    kaufgrund: String(parsed.kaufgrund ?? '').trim().slice(0, 3_000),
-    watchpoints: String(parsed.watchpoints ?? '').trim().slice(0, 3_000),
+    these: these.slice(0, 4_000),
+    kaufgrund: kaufgrund.slice(0, 3_000),
+    watchpoints: watchpoints.slice(0, 3_000),
     kiModell: result.model || models[0] || 'gemini',
   }
 }
@@ -252,46 +373,38 @@ export async function generiereJournalGegenpruefung(opts: {
     primaryEnvKeys: ['JOURNAL_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
   })
 
-  const system = `Du prüfst eine Investment-These gegen aktuelle Quartals-/Earnings-Daten.
-Nur Deutsch. Nur Fakten aus dem gelieferten Kontext. Keine Kursziele.
-status muss exakt einer sein: intakt | unter_beobachtung | beschaedigt
-- intakt: These und Watchpoints unbeschädigt
-- unter_beobachtung: erste Risse / gemischte Signale
-- beschaedigt: Kernthese klar unter Druck
-JSON: status, fazit (4–8 Sätze), quartalLabel, watchpointTreffer (Strings), belege (kurze Zitate/Zahlen).`
-
   const result = await runCoachCompletion(
     provider.provider,
     provider.apiKey,
-    system,
+    JOURNAL_GEGENPRUEFUNG_SYSTEM_PROMPT,
     [
       {
         role: 'user',
         content: [
           `Ticker: ${opts.eintrag.ticker} (${opts.eintrag.name})`,
           '',
-          '### These',
+          '### Journal — These',
           opts.eintrag.these || '(leer)',
           '',
-          '### Kaufgrund',
+          '### Journal — Kaufgrund',
           opts.eintrag.kaufgrund || '(leer)',
           '',
-          '### Watchpoints',
+          '### Journal — Watchpoints (Schwellen)',
           opts.eintrag.watchpoints || '(leer)',
           '',
-          `### Quartals-/Earnings-Kontext (Hinweis: ${opts.quartalHint})`,
-          opts.earningsKontext.slice(0, 28_000),
+          `### Update-Kontext (Quartals-/Earnings/Metrics, Hinweis: ${opts.quartalHint})`,
+          opts.earningsKontext.slice(0, 32_000),
           '',
-          'Prüfe These und Watchpoints. Antworte als JSON.',
+          'Prüfe Ankerzahlen und Watchpoints streng nach Status-Kalibrierung. Antworte als JSON.',
         ].join('\n'),
       },
     ],
     {
-      temperature: 0.25,
+      temperature: 0.15,
       geminiModels: models,
       geminiForceFreeApiKey: true,
-      jsonResponse: { schema: GP_SCHEMA },
-      maxOutputTokens: 3072,
+      jsonResponse: { schema: JOURNAL_GEGENPRUEFUNG_JSON_SCHEMA },
+      maxOutputTokens: 4096,
       thinkingMinimal: true,
       timeoutMs: 120_000,
     },
@@ -309,20 +422,28 @@ JSON: status, fazit (4–8 Sätze), quartalLabel, watchpointTreffer (Strings), b
       ? 'intakt'
       : statusRaw === 'beschaedigt' ||
           statusRaw.includes('beschädig') ||
-          statusRaw.includes('beschaedig')
+          statusRaw.includes('beschaedig') ||
+          statusRaw.includes('broken')
         ? 'beschaedigt'
         : 'unter_beobachtung'
 
+  const fazit = String(parsed.fazit ?? '').trim()
+  if (!fazit) throw new Error('Gegenprüfung: leeres Fazit')
+
   return {
     status,
-    fazit: String(parsed.fazit ?? '').trim().slice(0, 6_000),
-    quartalLabel: String(parsed.quartalLabel ?? opts.quartalHint).trim().slice(0, 80) || opts.quartalHint,
+    fazit: fazit.slice(0, 6_000),
+    quartalLabel:
+      String(parsed.quartalLabel ?? opts.quartalHint).trim().slice(0, 80) || opts.quartalHint,
     details: {
       watchpointTreffer: Array.isArray(parsed.watchpointTreffer)
-        ? parsed.watchpointTreffer.map((x) => String(x).slice(0, 200)).slice(0, 12)
+        ? parsed.watchpointTreffer.map((x) => String(x).slice(0, 280)).slice(0, 12)
         : [],
       belege: Array.isArray(parsed.belege)
-        ? parsed.belege.map((x) => String(x).slice(0, 300)).slice(0, 12)
+        ? parsed.belege.map((x) => String(x).slice(0, 320)).slice(0, 12)
+        : [],
+      ankerVergleiche: Array.isArray(parsed.ankerVergleiche)
+        ? parsed.ankerVergleiche.map((x) => String(x).slice(0, 280)).slice(0, 12)
         : [],
     },
     kiModell: result.model || models[0] || 'gemini',
@@ -417,10 +538,7 @@ export async function batchJournalGegenpruefung(opts?: {
     depot.map((d) => tickerAusDepot(d.symbolYahoo, d.symbolCandidates, d.isin)),
   )
   const depotByTicker = new Map(
-    depot.map((d) => [
-      tickerAusDepot(d.symbolYahoo, d.symbolCandidates, d.isin),
-      d,
-    ]),
+    depot.map((d) => [tickerAusDepot(d.symbolYahoo, d.symbolCandidates, d.isin), d]),
   )
 
   const filterTicker = opts?.ticker?.trim().toUpperCase()
@@ -431,7 +549,6 @@ export async function batchJournalGegenpruefung(opts?: {
     eintraege = eintraege.filter((e) => depotTickers.has(e.ticker))
   }
 
-  // Fehlende Journal-Einträge für Depot anlegen (leere Felder), damit Gegenprüfung möglich ist
   if (!filterTicker) {
     for (const d of depot) {
       const t = tickerAusDepot(d.symbolYahoo, d.symbolCandidates, d.isin)
@@ -465,13 +582,17 @@ export async function batchJournalGegenpruefung(opts?: {
         continue
       }
 
-      const { text, quartalHint, hatDaten } = await baueGegenpruefungKontext(e.ticker)
+      const { text, quartalHint, hatDaten } = await baueGegenpruefungKontext({
+        ticker: e.ticker,
+        isin: e.isin,
+        name,
+      })
       if (!hatDaten) {
         ergebnisse.push({
           ticker: e.ticker,
           name,
           status: 'uebersprungen',
-          message: 'Keine Quartals-/Earnings-Daten im Cache',
+          message: 'Keine Quartals-/Earnings-/Metric-Daten im Cache',
         })
         continue
       }

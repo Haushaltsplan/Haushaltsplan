@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
 import type {
   JournalEintrag,
@@ -51,14 +51,58 @@ function felderLeer(e: JournalEintrag | undefined): boolean {
   return !e.these.trim() || !e.kaufgrund.trim() || !e.watchpoints.trim()
 }
 
+function Feld({
+  label,
+  hint,
+  value,
+  onChange,
+  kompakt,
+  rows,
+}: {
+  label: string
+  hint?: string
+  value: string
+  onChange: (v: string) => void
+  kompakt?: boolean
+  rows?: number
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 flex items-baseline justify-between gap-2">
+        <span
+          className={`font-semibold tracking-wide text-teal-200/90 ${
+            kompakt ? 'text-[10px] uppercase' : 'text-[11px] uppercase'
+          }`}
+        >
+          {label}
+        </span>
+        {hint ? <span className="text-[10px] text-[var(--app-text-muted)]">{hint}</span> : null}
+      </span>
+      <textarea
+        className={`w-full resize-y rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2 text-[var(--app-text)] outline-none transition focus:border-teal-500/40 focus:ring-1 focus:ring-teal-500/20 ${
+          kompakt ? 'min-h-[4.5rem] text-[12.5px] leading-relaxed' : 'min-h-[4.75rem] text-[13px] leading-relaxed'
+        }`}
+        style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+        rows={rows ?? (kompakt ? 3 : 4)}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={label}
+      />
+    </label>
+  )
+}
+
 export function PaInvestmentJournal({
   ticker,
   isin,
   name,
+  /** Kompakte Karte unter dem Kurschart in der Übersicht */
+  unterChart = false,
 }: {
   ticker?: string | null
   isin?: string | null
   name?: string | null
+  unterChart?: boolean
 }) {
   const scoped = Boolean(ticker?.trim())
   const [eintraege, setEintraege] = useState<JournalEintrag[]>([])
@@ -101,7 +145,9 @@ export function PaInvestmentJournal({
           list.find((e) => e.status === 'aktiv')?.ticker ||
           j.depot?.[0]?.ticker ||
           ''
-        ).trim().toUpperCase()
+        )
+          .trim()
+          .toUpperCase()
 
         const aktiv =
           list.find((e) => e.status === 'aktiv' && e.ticker === t) ??
@@ -138,8 +184,7 @@ export function PaInvestmentJournal({
 
   useEffect(() => {
     void ladenDaten()
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- nur bei Ticker-Wechsel neu laden
-  }, [ticker])
+  }, [ticker, ladenDaten])
 
   const aktivEintrag = useMemo(() => {
     const t = aktivTicker.toUpperCase()
@@ -151,13 +196,12 @@ export function PaInvestmentJournal({
   }, [eintraege, aktivTicker])
 
   const depotListe = useMemo(() => {
-    if (scoped) return []
+    if (scoped || unterChart) return []
     const byTicker = new Map(eintraege.map((e) => [e.ticker, e]))
     const rows = depot.map((d) => ({
       ...d,
       journal: byTicker.get(d.ticker),
     }))
-    // Journal-Einträge ohne Depot-Match hinten anhängen
     for (const e of eintraege) {
       if (!rows.some((r) => r.ticker === e.ticker)) {
         rows.push({
@@ -170,7 +214,7 @@ export function PaInvestmentJournal({
       }
     }
     return rows
-  }, [depot, eintraege, scoped])
+  }, [depot, eintraege, scoped, unterChart])
 
   const gpFuerAktiv = useMemo(
     () => gegenpruefungen.filter((g) => g.ticker === aktivTicker),
@@ -229,7 +273,7 @@ export function PaInvestmentJournal({
   async function starteAutoFill() {
     setBusyFill(true)
     setFehler(null)
-    setFortschritt('Leere Felder werden befüllt … (kann einige Minuten dauern)')
+    setFortschritt('Leere Felder werden befüllt …')
     try {
       const res = await fetch('/api/portfolio-analyse/journal/auto-fill', {
         method: 'POST',
@@ -252,7 +296,7 @@ export function PaInvestmentJournal({
   async function starteGegenpruefung() {
     setBusyGp(true)
     setFehler(null)
-    setFortschritt('Quartale werden gegengeprüft … (kann einige Minuten dauern)')
+    setFortschritt('Quartale werden gegengeprüft …')
     try {
       const res = await fetch('/api/portfolio-analyse/journal/gegenpruefung', {
         method: 'POST',
@@ -272,45 +316,144 @@ export function PaInvestmentJournal({
     }
   }
 
-  const anzeigeName =
-    name ??
-    depot.find((d) => d.ticker === aktivTicker)?.name ??
-    aktivEintrag?.name ??
-    aktivTicker
+  const aktionen: ReactNode = (
+    <div className="flex flex-wrap gap-1.5">
+      <button
+        type="button"
+        disabled={busyFill || busyGp}
+        onClick={() => void starteAutoFill()}
+        className="rounded-lg border border-teal-500/35 bg-teal-500/10 px-2.5 py-1 text-[11px] font-semibold text-teal-100 hover:bg-teal-500/20 disabled:opacity-50"
+      >
+        {busyFill ? 'Befülle …' : unterChart ? 'Befüllen' : scoped ? 'Leere Felder befüllen' : 'Leere Felder befüllen (Depot)'}
+      </button>
+      <button
+        type="button"
+        disabled={busyFill || busyGp}
+        onClick={() => void starteGegenpruefung()}
+        className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+      >
+        {busyGp ? 'Prüfe …' : unterChart ? 'Gegenprüfen' : scoped ? 'Quartal gegenprüfen' : 'Quartale gegenprüfen'}
+      </button>
+      <button
+        type="button"
+        className="rounded-lg bg-teal-600/85 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-teal-600 disabled:opacity-50"
+        disabled={speichern || !(aktivTicker || ticker)}
+        onClick={() => void speichere()}
+      >
+        {speichern ? '…' : 'Speichern'}
+      </button>
+    </div>
+  )
+
+  const gpStrip =
+    gpFuerAktiv[0] != null ? (
+      <div
+        className={`rounded-xl border px-3 py-2.5 ${
+          gpFuerAktiv[0].status === 'intakt'
+            ? 'border-emerald-500/25 bg-emerald-500/[0.07]'
+            : gpFuerAktiv[0].status === 'beschaedigt'
+              ? 'border-rose-500/25 bg-rose-500/[0.07]'
+              : 'border-amber-500/25 bg-amber-500/[0.07]'
+        }`}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <PaBadge variant={statusBadgeVariant(gpFuerAktiv[0].status)}>
+            {statusLabel(gpFuerAktiv[0].status)}
+          </PaBadge>
+          <span className="text-[10px] text-[var(--app-text-muted)]">
+            {gpFuerAktiv[0].quartalLabel} · {formatDatum(gpFuerAktiv[0].erstelltAm)}
+          </span>
+        </div>
+        <p
+          className={`mt-1.5 text-[var(--app-text)]/90 ${unterChart ? 'line-clamp-4 text-[12px]' : 'text-[13px]'} leading-relaxed`}
+          style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
+        >
+          {gpFuerAktiv[0].fazit}
+        </p>
+        {!unterChart && Array.isArray(gpFuerAktiv[0].details?.ankerVergleiche) && (gpFuerAktiv[0].details.ankerVergleiche as unknown[]).length > 0 ? (
+          <ul className="mt-2 space-y-0.5 border-t border-white/[0.06] pt-2">
+            {(gpFuerAktiv[0].details.ankerVergleiche as unknown[]).slice(0, 6).map((a, i) => (
+              <li key={i} className="text-[11px] text-[var(--app-text-muted)]">
+                · {String(a)}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {!unterChart && Array.isArray(gpFuerAktiv[0].details?.watchpointTreffer) && (gpFuerAktiv[0].details.watchpointTreffer as unknown[]).length > 0 ? (
+          <ul className="mt-1.5 space-y-0.5">
+            {(gpFuerAktiv[0].details.watchpointTreffer as unknown[]).slice(0, 6).map((a, i) => (
+              <li key={`wp-${i}`} className="text-[11px] text-teal-100/80">
+                · {String(a)}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </div>
+    ) : (
+      <p className="text-[11px] text-[var(--app-text-muted)]">
+        Noch keine Gegenprüfung — These mit festen Ankerzahlen befüllen, dann prüfen.
+      </p>
+    )
+
+  if (unterChart) {
+    return (
+      <div className="border-t border-[var(--app-border)] bg-gradient-to-b from-white/[0.03] to-transparent px-3 py-3 sm:px-4">
+        <div className="mb-2.5 flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3 className="text-[12px] font-semibold tracking-tight text-[var(--app-text)]">
+              Investment-Journal
+            </h3>
+            <p className="text-[10px] text-[var(--app-text-muted)]">
+              These mit Ankerzahlen · Quartals-Check
+            </p>
+          </div>
+          {aktionen}
+        </div>
+        {fortschritt ? <p className="mb-2 text-[11px] text-teal-300/90">{fortschritt}</p> : null}
+        {fehler ? (
+          <p className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-100">
+            {fehler}
+          </p>
+        ) : null}
+        {laden ? <p className="text-[11px] text-[var(--app-text-muted)]">Lade…</p> : null}
+        <div className="space-y-2.5">
+          <Feld
+            label="These"
+            hint="mit festen Kennzahlen"
+            value={these}
+            onChange={setThese}
+            kompakt
+            rows={3}
+          />
+          <div className="grid gap-2.5 sm:grid-cols-2">
+            <Feld label="Kaufgrund" value={kaufgrund} onChange={setKaufgrund} kompakt rows={3} />
+            <Feld
+              label="Watchpoints"
+              hint="prüfbare Schwellen"
+              value={watchpoints}
+              onChange={setWatchpoints}
+              kompakt
+              rows={3}
+            />
+          </div>
+          {gpStrip}
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <PaCard className="space-y-4 p-5">
+    <PaCard variant="glass" className="space-y-4 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold tracking-tight text-[var(--app-text)]">
             Investment-Journal
           </h2>
           <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
-            These · Kaufgrund · Review in 6 Monaten · Quartals-Gegenprüfung
+            These mit festen Ankerzahlen · Kaufgrund · Watchpoints · Quartals-Gegenprüfung
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={busyFill || busyGp}
-            onClick={() => void starteAutoFill()}
-            className="rounded-lg border border-teal-500/40 bg-teal-500/15 px-3 py-1.5 text-xs font-semibold text-teal-100 hover:bg-teal-500/25 disabled:opacity-50"
-          >
-            {busyFill
-              ? 'Befülle …'
-              : scoped
-                ? 'Leere Felder befüllen'
-                : 'Leere Felder befüllen (Depot)'}
-          </button>
-          <button
-            type="button"
-            disabled={busyFill || busyGp}
-            onClick={() => void starteGegenpruefung()}
-            className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
-          >
-            {busyGp ? 'Prüfe …' : scoped ? 'Quartal gegenprüfen' : 'Quartale gegenprüfen'}
-          </button>
-        </div>
+        {aktionen}
       </div>
 
       {fortschritt ? <p className="text-xs text-teal-300/90">{fortschritt}</p> : null}
@@ -322,7 +465,7 @@ export function PaInvestmentJournal({
       {laden ? <p className="text-sm text-[var(--app-text-muted)]">Lade…</p> : null}
 
       {!scoped && depotListe.length > 0 ? (
-        <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-white/[0.06] p-2">
+        <div className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-white/[0.06] bg-black/10 p-2">
           {depotListe.map((row) => {
             const aktiv = row.ticker === aktivTicker
             const leer = felderLeer(row.journal)
@@ -334,7 +477,7 @@ export function PaInvestmentJournal({
                 className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-[12px] transition ${
                   aktiv
                     ? 'bg-teal-500/15 text-teal-50'
-                    : 'hover:bg-white/[0.04] text-[var(--app-text)]'
+                    : 'text-[var(--app-text)] hover:bg-white/[0.04]'
                 }`}
               >
                 <span className="min-w-0">
@@ -357,72 +500,35 @@ export function PaInvestmentJournal({
         </div>
       ) : null}
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {scoped || aktivTicker ? (
           <p className="text-sm text-[var(--app-text)]">
-            {anzeigeName}{' '}
+            {name ??
+              depot.find((d) => d.ticker === aktivTicker)?.name ??
+              aktivEintrag?.name ??
+              aktivTicker}{' '}
             <span className="text-[var(--app-text-muted)]">{aktivTicker || ticker}</span>
           </p>
         ) : (
           <input
-            className="w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-sm"
+            className="w-full rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2 text-sm"
             placeholder="Ticker"
             value={aktivTicker}
             onChange={(e) => setAktivTicker(e.target.value.toUpperCase())}
           />
         )}
-        <textarea
-          className="min-h-[72px] w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-sm"
-          placeholder="These"
-          value={these}
-          onChange={(e) => setThese(e.target.value)}
-        />
-        <textarea
-          className="min-h-[56px] w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-sm"
-          placeholder="Kaufgrund"
-          value={kaufgrund}
-          onChange={(e) => setKaufgrund(e.target.value)}
-        />
-        <textarea
-          className="min-h-[56px] w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-sm"
-          placeholder="Watchpoints"
-          value={watchpoints}
-          onChange={(e) => setWatchpoints(e.target.value)}
-        />
-        <button
-          type="button"
-          className="rounded-md bg-teal-600/80 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-50"
-          disabled={speichern || !(aktivTicker || ticker)}
-          onClick={() => void speichere()}
-        >
-          {speichern ? 'Speichere…' : 'Speichern'}
-        </button>
+        <Feld label="These" hint="mit festen Kennzahlen aus Key Metrics" value={these} onChange={setThese} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Feld label="Kaufgrund" value={kaufgrund} onChange={setKaufgrund} />
+          <Feld label="Watchpoints" hint="prüfbare Schwellen" value={watchpoints} onChange={setWatchpoints} />
+        </div>
       </div>
 
-      <div className="space-y-2 border-t border-[var(--app-border)]/50 pt-3">
-        <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--app-text-muted)]">
+      <div className="space-y-2 border-t border-white/[0.06] pt-3">
+        <h3 className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">
           Gegenprüfung
         </h3>
-        {gpFuerAktiv[0] ? (
-          <div className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <PaBadge variant={statusBadgeVariant(gpFuerAktiv[0].status)}>
-                {statusLabel(gpFuerAktiv[0].status)}
-              </PaBadge>
-              <span className="text-[11px] text-[var(--app-text-muted)]">
-                {gpFuerAktiv[0].quartalLabel} · {formatDatum(gpFuerAktiv[0].erstelltAm)}
-                {gpFuerAktiv[0].kiModell ? ` · ${gpFuerAktiv[0].kiModell}` : ''}
-              </span>
-            </div>
-            <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--app-text)]/90">
-              {gpFuerAktiv[0].fazit}
-            </p>
-          </div>
-        ) : (
-          <p className="text-[12px] text-[var(--app-text-muted)]">
-            Noch keine Gegenprüfung. Button „Quartale gegenprüfen“ starten.
-          </p>
-        )}
+        {gpStrip}
         {gpFuerAktiv.length > 1 ? (
           <ul className="space-y-1.5">
             {gpFuerAktiv.slice(1, 6).map((g) => (
