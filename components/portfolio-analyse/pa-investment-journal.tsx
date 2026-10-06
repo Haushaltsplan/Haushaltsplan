@@ -1,6 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
 import type {
   JournalEintrag,
@@ -57,15 +65,34 @@ function Feld({
   value,
   onChange,
   kompakt,
-  rows,
 }: {
   label: string
   hint?: string
   value: string
   onChange: (v: string) => void
   kompakt?: boolean
-  rows?: number
 }) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  // Leer: kompakt; mit Text: Höhe = Inhalt (kein Scroll, kein Leerraum)
+  const minPx = kompakt ? 52 : 64
+
+  const syncHeight = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.height = '0px'
+    el.style.height = `${Math.max(el.scrollHeight, minPx)}px`
+  }, [minPx])
+
+  useLayoutEffect(() => {
+    syncHeight()
+  }, [value, syncHeight])
+
+  useEffect(() => {
+    const onResize = () => syncHeight()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [syncHeight])
+
   return (
     <label className="block">
       <span className="mb-1 flex items-baseline justify-between gap-2">
@@ -79,13 +106,17 @@ function Feld({
         {hint ? <span className="text-[10px] text-[var(--app-text-muted)]">{hint}</span> : null}
       </span>
       <textarea
-        className={`w-full resize-y rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2 text-[var(--app-text)] outline-none transition focus:border-teal-500/40 focus:ring-1 focus:ring-teal-500/20 ${
-          kompakt ? 'min-h-[4.5rem] text-[12.5px] leading-relaxed' : 'min-h-[4.75rem] text-[13px] leading-relaxed'
+        ref={ref}
+        className={`w-full resize-none overflow-hidden rounded-xl border border-white/[0.08] bg-black/20 px-3 py-2 text-[var(--app-text)] outline-none transition focus:border-teal-500/40 focus:ring-1 focus:ring-teal-500/20 ${
+          kompakt ? 'text-[12.5px] leading-relaxed' : 'text-[13px] leading-relaxed'
         }`}
-        style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}
-        rows={rows ?? (kompakt ? 3 : 4)}
+        style={{ fontFamily: 'Georgia, "Times New Roman", serif', minHeight: minPx }}
+        rows={1}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => {
+          onChange(e.target.value)
+          requestAnimationFrame(syncHeight)
+        }}
         placeholder={label}
       />
     </label>
@@ -463,17 +494,15 @@ export function PaInvestmentJournal({
             value={these}
             onChange={setThese}
             kompakt
-            rows={3}
           />
           <div className="grid gap-2.5 sm:grid-cols-2">
-            <Feld label="Kaufgrund" value={kaufgrund} onChange={setKaufgrund} kompakt rows={3} />
+            <Feld label="Kaufgrund" value={kaufgrund} onChange={setKaufgrund} kompakt />
             <Feld
               label="Watchpoints"
               hint="prüfbare Schwellen"
               value={watchpoints}
               onChange={setWatchpoints}
               kompakt
-              rows={3}
             />
           </div>
           {gpStrip}
