@@ -1,6 +1,8 @@
 'use client'
 
+import { PaInfoHint } from '@/components/portfolio-analyse/pa-info-hint'
 import { keyMetricNavZiel } from '@/lib/portfolio-analyse/fundamentaldaten-key-metric-nav'
+import { keyMetricInfo } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics-info'
 import type { FundamentalGuvQuelle, FundamentalKeyMetric, FundamentalSchaetzungQuelle } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { fundamentalQuellenZeile } from '@/lib/portfolio-analyse/fundamentaldaten-quellen'
 
@@ -36,18 +38,42 @@ function MetrikZeile({
         : wert.startsWith('(')
           ? 'text-rose-400/90'
           : 'text-[var(--app-text)]'
+  const info = keyMetricInfo(id)
+
   return (
-    <button
-      type="button"
-      disabled={!klickbar}
-      onClick={() => onClick?.(id)}
-      className={`grid w-full grid-cols-[1fr_auto] gap-x-2 rounded px-1 py-0.5 text-left leading-tight transition ${
+    <div
+      role={klickbar ? 'button' : undefined}
+      tabIndex={klickbar ? 0 : undefined}
+      onClick={klickbar ? () => onClick?.(id) : undefined}
+      onKeyDown={
+        klickbar
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onClick?.(id)
+              }
+            }
+          : undefined
+      }
+      className={`grid w-full grid-cols-[1fr_auto] items-center gap-x-2 rounded px-1 py-0.5 text-left leading-tight transition ${
         klickbar ? 'cursor-pointer hover:bg-amber-500/[0.08]' : 'cursor-default'
       }`}
     >
-      <span className={`text-[10px] ${klickbar ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text-muted)]'}`}>{label}</span>
+      <span className="flex min-w-0 items-center gap-1">
+        <span className="truncate text-[10px] text-[var(--app-text-muted)]">{label}</span>
+        {info ? (
+          <span
+            className="shrink-0"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <PaInfoHint info={info} label={`Erklärung: ${label}`} />
+          </span>
+        ) : null}
+      </span>
       <span className={`text-right text-[10px] font-semibold tabular-nums ${farbe}`}>{wert}</span>
-    </button>
+    </div>
   )
 }
 
