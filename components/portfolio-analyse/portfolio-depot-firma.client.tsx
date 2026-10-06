@@ -98,10 +98,7 @@ export function PortfolioDepotFirmaClient() {
   const modell = daten ? (modus === 'depotgewicht' ? daten.depotgewicht : daten.gleichgewicht) : null
 
   return (
-    <PortfolioAnalyseShell
-      title="Depot als Firma"
-      description="Alle Aktien (ohne ETFs) zu einem Unternehmen zusammengezogen — dein Anteil an Umsatz, Gewinn und Cashflow."
-    >
+    <PortfolioAnalyseShell title="Depot als Firma">
       <PaFundamentalBereichTabs aktiv="firma" />
 
       {laden ? (

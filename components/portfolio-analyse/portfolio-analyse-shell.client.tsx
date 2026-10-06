@@ -10,35 +10,18 @@ import type { ReactNode } from 'react'
 export function PortfolioAnalyseShell({
   children,
   title,
-  description,
   /** Seiten wie DCF/Screener funktionieren ohne Parqet-Import — kein „Keine Daten“-Banner. */
   ohneDepotErlaubt = false,
 }: {
   children: ReactNode
   title: string
-  description?: ReactNode
   ohneDepotErlaubt?: boolean
 }) {
   const { schemaFehlt, dbFehler, buchungenLimit, hatDaten, laden } = usePortfolioAnalyse()
 
   return (
     <PageChrome density="compact" className="max-w-full min-w-0 overflow-x-visible">
-      <PageHero
-        density="compact"
-        eyebrow="Portfolioanalyse"
-        title={title}
-        description={
-          description ?? (
-            <>
-              <span className="hidden sm:inline">
-                Analysiere dein Portfolio, deine Aktivitäten und deine persönliche Investment-Strategie — lokal aus
-                Parqet-CSV und Trade-Republic-Daten.
-              </span>
-              <span className="sm:hidden">Parqet-CSV &amp; Trade-Republic — lokal im Browser.</span>
-            </>
-          )
-        }
-      />
+      <PageHero density="compact" eyebrow="Portfolioanalyse" title={title} />
 
       <div className="mb-4 sm:mb-6">
         <PaSubNav />

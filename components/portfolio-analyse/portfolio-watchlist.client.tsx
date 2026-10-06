@@ -138,10 +138,7 @@ export function PortfolioWatchlistClient() {
   }
 
   return (
-    <PortfolioAnalyseShell
-      title="Watchlist"
-      description="Außerhalb des Depots beobachten — dieselben Fundamentaldaten wie im Depot."
-    >
+    <PortfolioAnalyseShell title="Watchlist">
       {/* Feste Viewport-Höhe: linke Liste sticky, rechte Detailfläche scrollt intern — kein Springen */}
       <div className="grid gap-4 lg:grid-cols-[minmax(260px,300px)_minmax(0,1fr)] lg:items-stretch lg:min-h-[calc(100dvh-11rem)]">
         <PaCard className="flex min-h-0 flex-col overflow-hidden lg:sticky lg:top-3 lg:max-h-[calc(100dvh-11rem)]">

@@ -377,10 +377,7 @@ export function PortfolioNewsTerminalClient() {
   const heuteCount = paket?.zeilen.filter((z) => z.istHeute).length ?? 0
 
   return (
-    <PortfolioAnalyseShell
-      title="News-Terminal"
-      description="Finanzrelevante Meldungen deiner Depot-Positionen — optional als deutsches KI-Tagesfazit pro Unternehmen."
-    >
+    <PortfolioAnalyseShell title="News-Terminal">
       {!paLaden && !hatDaten ? null : (
         <div className="space-y-5">
           <div className="flex flex-wrap items-center justify-between gap-3">

@@ -906,10 +906,7 @@ export function PortfolioScreenerClient() {
   const qcSpalteAn = spalten.has('quality')
 
   return (
-    <PortfolioAnalyseShell
-      title="Aktienscreener"
-      description="US-gelistete SEC-Filer filtern — eigene Vorlagen, volle Kontrolle über Schwellen und Spalten."
-    >
+    <PortfolioAnalyseShell title="Aktienscreener">
       <PaCard className="space-y-3 p-4 sm:p-5">
         {/* 1 Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">

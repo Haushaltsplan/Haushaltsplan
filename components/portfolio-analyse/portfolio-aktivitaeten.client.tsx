@@ -125,10 +125,7 @@ export function PortfolioAktivitaetenClient() {
   }
 
   return (
-    <PortfolioAnalyseShell
-      title="Aktivitäten"
-      description="Alle Buchungen nach Jahr und Monat — filterbar und als CSV exportierbar."
-    >
+    <PortfolioAnalyseShell title="Aktivitäten">
       {!laden && !hatDaten ? null : (
         <PaCard variant="elevated" className="min-w-0 overflow-hidden p-4 sm:p-6">
             {!hatDaten ? (

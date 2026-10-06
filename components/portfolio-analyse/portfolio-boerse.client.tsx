@@ -331,10 +331,7 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
     }[usWahlPhase(aktuellesJahr)]
 
   return (
-    <PortfolioAnalyseShell
-      title="Börse"
-      description="Langfristige Saisoneffekte und der US-Wahlzyklus: durchschnittliche Rendite je Kalendermonat — positiv und negativ."
-    >
+    <PortfolioAnalyseShell title="Börse">
       <PaCard className="space-y-5 p-4 sm:p-5">
         <div>
           <h2 className="text-base font-semibold text-[var(--app-text)]">Monatsrenditen im Schnitt</h2>

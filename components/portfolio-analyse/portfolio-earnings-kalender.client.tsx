@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { PaEarningsKalender } from '@/components/portfolio-analyse/pa-earnings-kalender'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
@@ -63,17 +62,7 @@ export function PortfolioEarningsKalenderClient() {
   const jahr = new Date().getUTCFullYear()
 
   return (
-    <PortfolioAnalyseShell
-      title={`Earnings-Kalender ${jahr}`}
-      description={
-        <>
-          Quartalstermine deines Depots —{' '}
-          <Link href="/portfolioanalyse/earnings" className="text-teal-400 hover:underline">
-            Zurück zum Dashboard
-          </Link>
-        </>
-      }
-    >
+    <PortfolioAnalyseShell title={`Earnings-Kalender ${jahr}`}>
       {!paLaden && !hatDaten ? null : (
         <PaEarningsKalender daten={daten} meta={meta} laden={laden || paLaden} fehler={fehler} />
       )}

@@ -87,10 +87,7 @@ export function PortfolioEarningsDashboardClient() {
   }, [depotKey, metaKey, hatDaten, live, meta])
 
   return (
-    <PortfolioAnalyseShell
-      title="Quartalszahlen"
-      description="Kommende Quartalstermine (DivvyDiary) und Konsens-Schätzungen."
-    >
+    <PortfolioAnalyseShell title="Quartalszahlen">
       {!paLaden && !hatDaten ? null : (
         <div className="min-w-0 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">

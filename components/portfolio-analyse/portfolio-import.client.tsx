@@ -279,15 +279,7 @@ export function PortfolioImportClient() {
   }
 
   return (
-    <PortfolioAnalyseShell
-      title="Import"
-      description={
-        <>
-          Parqet- oder Trade-Republic-CSV, Kontoauszug-PDF oder Wertpapierabrechnungen — mehrere Dateien per Drag
-          &amp; Drop. Oder einzelne Buchungen manuell erfassen. Alles nur im Browser.
-        </>
-      }
-    >
+    <PortfolioAnalyseShell title="Import">
       <PageSection titleId="pa-import-heading" title="Dateien">
         <PageSectionPanel>
           <div className="space-y-8">

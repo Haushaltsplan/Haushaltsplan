@@ -389,11 +389,7 @@ export function PortfolioDcfClient() {
   }, [kandidaten, hatTitel, isin, symbol])
 
   return (
-    <PortfolioAnalyseShell
-      title="DCF-Rechner"
-      description="Intrinsic Value aus Free Cashflows — Annahmen, Szenarien, Sensitivität."
-      ohneDepotErlaubt
-    >
+    <PortfolioAnalyseShell title="DCF-Rechner" ohneDepotErlaubt>
       <div className="space-y-6">
         {/* overflow-visible: Such-Dropdown darf aus der Card ragen (app-section-shell clippt sonst) */}
         <PaCard className="!overflow-visible px-4 py-4 sm:px-6">

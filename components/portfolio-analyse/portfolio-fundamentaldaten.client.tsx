@@ -179,10 +179,7 @@ export function PortfolioFundamentaldatenClient() {
   const leerOhneSuche = kandidaten.length === 0 && !hatUrlTitel
 
   return (
-    <PortfolioAnalyseShell
-      title="Fundamentaldaten"
-      description="Historische Kennzahlen und Bewertungsmultiples im TIKR-Stil — Daten von Macrotrends.net."
-    >
+    <PortfolioAnalyseShell title="Fundamentaldaten">
       {!hatDaten && !paLaden && leerOhneSuche ? (
         <PaCard className="space-y-3 p-6 text-sm text-[var(--app-text-muted)]">
           <p>Importiere Portfolio-Daten, lege Aktien auf der Watchlist an — oder nutze die Suche oben.</p>

@@ -7,14 +7,12 @@ import { PageSection, PageSectionPanel } from '@/components/page-shell'
 export function PortfolioAnalysePageClient({
   titel,
   phase,
-  beschreibung,
 }: {
   titel: string
   phase: string
-  beschreibung: string
 }) {
   return (
-    <PortfolioAnalyseShell title={titel} description={beschreibung}>
+    <PortfolioAnalyseShell title={titel}>
       <PageSection titleId="pa-placeholder-heading" title={titel}>
         <PageSectionPanel>
           <PortfolioPlaceholder titel={titel} phase={phase} />

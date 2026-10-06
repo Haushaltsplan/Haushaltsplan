@@ -41,10 +41,7 @@ export function PortfolioAnalyseMainClient() {
   const positionenCount = live?.positionen.length ?? 0
 
   return (
-    <PortfolioAnalyseShell
-      title="Portfolioanalyse"
-      description="Gewichtungsanalyse, Kapitalfluss und Performance — angelehnt an Parqet."
-    >
+    <PortfolioAnalyseShell title="Portfolioanalyse">
       {!laden && !hatDaten ? null : (
         <PaCard variant="elevated" className="min-w-0 p-4 sm:p-6">
             {!hatDaten ? (

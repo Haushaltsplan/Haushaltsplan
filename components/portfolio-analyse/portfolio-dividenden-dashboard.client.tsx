@@ -109,10 +109,7 @@ export function PortfolioDividendenDashboardClient() {
   const startLabel = kpis?.startDatum ? formatDatumDe(kpis.startDatum) : null
 
   return (
-    <PortfolioAnalyseShell
-      title="Dividenden Dashboard"
-      description="Erhaltene Dividenden, persönliche Dividenden-Rendite und Verlauf."
-    >
+    <PortfolioAnalyseShell title="Dividenden Dashboard">
       {!laden && !hatDaten ? null : (
         <div className="min-w-0 space-y-5 sm:space-y-8">
             {!hatDaten ? (

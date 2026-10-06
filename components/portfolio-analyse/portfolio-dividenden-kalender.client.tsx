@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { PaDividendenKalender } from '@/components/portfolio-analyse/pa-dividenden-kalender'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
@@ -63,17 +62,7 @@ export function PortfolioDividendenKalenderClient() {
   const jahr = new Date().getUTCFullYear()
 
   return (
-    <PortfolioAnalyseShell
-      title={`Dividendenkalender ${jahr}`}
-      description={
-        <>
-          Angekündigte und prognostizierte Dividenden deines Depots nach Zahltag —{' '}
-          <Link href="/portfolioanalyse/dividenden" className="text-teal-400 hover:underline">
-            Zurück zum Dashboard
-          </Link>
-        </>
-      }
-    >
+    <PortfolioAnalyseShell title={`Dividendenkalender ${jahr}`}>
       {!paLaden && !hatDaten ? null : (
         <PaDividendenKalender daten={daten} meta={meta} laden={laden || paLaden} fehler={fehler} />
       )}
