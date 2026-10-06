@@ -331,7 +331,9 @@ export async function generiereJournalFelder(opts: {
       jsonResponse: { schema: JOURNAL_FILL_JSON_SCHEMA },
       maxOutputTokens: 3072,
       thinkingMinimal: true,
-      timeoutMs: 90_000,
+      // Pro Modell kürzer, Gesamtbudget groß genug für 503→Fallback auf 3.5-flash
+      timeoutMs: 55_000,
+      geminiTotalBudgetMs: 160_000,
     },
   )
 
@@ -412,7 +414,8 @@ export async function generiereJournalGegenpruefung(opts: {
       jsonResponse: { schema: JOURNAL_GEGENPRUEFUNG_JSON_SCHEMA },
       maxOutputTokens: 4096,
       thinkingMinimal: true,
-      timeoutMs: 120_000,
+      timeoutMs: 55_000,
+      geminiTotalBudgetMs: 160_000,
     },
   )
 
@@ -556,9 +559,19 @@ export async function batchJournalAutoFill(opts?: {
   const nOk = ergebnisse.filter((e) => e.status === 'befuellt').length
   const nSkip = ergebnisse.filter((e) => e.status === 'uebersprungen').length
   const nErr = ergebnisse.filter((e) => e.status === 'fehler').length
+  const errDetail =
+    nErr > 0
+      ? ergebnisse
+          .filter((e) => e.status === 'fehler')
+          .slice(0, 3)
+          .map((e) => `${e.ticker}: ${e.message || 'Fehler'}`)
+          .join(' · ')
+      : ''
   return {
     ergebnisse,
-    zusammenfassung: `${nOk} befüllt · ${nSkip} übersprungen · ${nErr} Fehler (von ${kandidaten.length})`,
+    zusammenfassung:
+      `${nOk} befüllt · ${nSkip} übersprungen · ${nErr} Fehler (von ${kandidaten.length})` +
+      (errDetail ? ` — ${errDetail}` : ''),
   }
 }
 
@@ -664,8 +677,18 @@ export async function batchJournalGegenpruefung(opts?: {
   const nOk = ergebnisse.filter((x) => x.status === 'geprueft').length
   const nSkip = ergebnisse.filter((x) => x.status === 'uebersprungen').length
   const nErr = ergebnisse.filter((x) => x.status === 'fehler').length
+  const errDetail =
+    nErr > 0
+      ? ergebnisse
+          .filter((e) => e.status === 'fehler')
+          .slice(0, 3)
+          .map((e) => `${e.ticker}: ${e.message || 'Fehler'}`)
+          .join(' · ')
+      : ''
   return {
     ergebnisse,
-    zusammenfassung: `${nOk} geprüft · ${nSkip} übersprungen · ${nErr} Fehler (von ${eintraege.length})`,
+    zusammenfassung:
+      `${nOk} geprüft · ${nSkip} übersprungen · ${nErr} Fehler (von ${eintraege.length})` +
+      (errDetail ? ` — ${errDetail}` : ''),
   }
 }

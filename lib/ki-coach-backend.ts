@@ -736,9 +736,13 @@ async function callGemini(
       })
     }
 
-    // Kurze Backoffs bei Overload/RPM — oft kein Tageskontingent, sondern Kapazität
+    // Kurze Backoffs bei Overload/RPM — oft kein Tageskontingent, sondern Kapazität.
+    // Bei 503 und vorhandenem Fallback nur 1 Retry, dann schnell zum nächsten Modell
+    // (sonst frisst die Retry-Schleife das Gesamtbudget und der Fallback startet nie).
     if (!r.ok && r.quotaOderRateLimit && (r.httpStatus === 503 || r.httpStatus === 429) && restMs() > 12_000) {
-      const pauses = r.httpStatus === 503 ? [2500, 4500] : [2000]
+      const hatFallback = Boolean(models[i + 1])
+      const pauses =
+        r.httpStatus === 503 ? (hatFallback ? [2000] : [2500, 4500]) : [2000]
       for (const pause of pauses) {
         if (r.ok || restMs() < 12_000) break
         console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): Pause ${pause}ms, Retry …`)

@@ -119,9 +119,9 @@ export function PaInvestmentJournal({
   const [fortschritt, setFortschritt] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
 
-  const ladenDaten = useCallback(async () => {
+  const ladenDaten = useCallback(async (opts?: { clearFehler?: boolean }) => {
     setLaden(true)
-    setFehler(null)
+    if (opts?.clearFehler !== false) setFehler(null)
     try {
       const qs = scoped
         ? `?ticker=${encodeURIComponent(ticker!.trim().toUpperCase())}`
@@ -299,10 +299,12 @@ export function PaInvestmentJournal({
           .join(' · ')
         setFehler(details)
         setFortschritt(j.zusammenfassung ?? null)
+        // Fehler nicht durch Reload löschen
+        await ladenDaten({ clearFehler: false })
       } else {
         setFortschritt(j.zusammenfassung ?? 'Fertig')
+        await ladenDaten()
       }
-      await ladenDaten()
     } catch (e) {
       setFehler(e instanceof Error ? e.message : 'Auto-Fill fehlgeschlagen')
       setFortschritt(null)
@@ -331,6 +333,9 @@ export function PaInvestmentJournal({
       if (!res.ok || !j.ok) throw new Error(j.message || 'Gegenprüfung fehlgeschlagen')
       const fehlerZeilen = (j.ergebnisse ?? []).filter((e) => e.status === 'fehler')
       const skipZeilen = (j.ergebnisse ?? []).filter((e) => e.status === 'uebersprungen')
+      const hatFehlerOderSkip =
+        fehlerZeilen.length > 0 ||
+        (skipZeilen.length > 0 && (j.ergebnisse ?? []).every((e) => e.status !== 'geprueft'))
       if (fehlerZeilen.length > 0) {
         setFehler(
           fehlerZeilen.map((e) => `${e.ticker ?? '?'}: ${e.message || 'Fehler'}`).join(' · '),
@@ -342,7 +347,7 @@ export function PaInvestmentJournal({
         setFehler(skipZeilen.map((e) => `${e.ticker ?? '?'}: ${e.message || 'übersprungen'}`).join(' · '))
       }
       setFortschritt(j.zusammenfassung ?? 'Fertig')
-      await ladenDaten()
+      await ladenDaten({ clearFehler: !hatFehlerOderSkip })
     } catch (e) {
       setFehler(e instanceof Error ? e.message : 'Gegenprüfung fehlgeschlagen')
       setFortschritt(null)
