@@ -8,6 +8,7 @@ import {
 import { berechneMonatsEmpfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-score'
 import { reichereNachkaufEintraegeVoll } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kontext-server'
 import {
+  bereinigeNachkaufRadarAusserhalbKandidaten,
   filtereGastScanAufKandidaten,
   ladeNachkaufKandidaten,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
@@ -37,6 +38,8 @@ export async function GET(req: Request) {
         console.warn('[api/nachkaeufe/ergebnisse] Anreicherung fehlgeschlagen — Roh-Scan wird trotzdem geliefert:', e)
       }
 
+      // Alt-Scans außerhalb Whitelist∪Depot∪Watchlist ausblenden + DB bereinigen
+      void bereinigeNachkaufRadarAusserhalbKandidaten(kandidaten)
       const sichtbar = filtereGastScanAufKandidaten(mitDeep, kandidaten)
       const gesamtAnzahl = kandidaten.length
       const gespeicherteIsins = new Set(

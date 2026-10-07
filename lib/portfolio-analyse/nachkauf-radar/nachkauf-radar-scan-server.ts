@@ -58,6 +58,7 @@ import { berechneTrimSignale } from './nachkauf-trim-signal'
 import { wendeNachkaufDisziplinAn } from './nachkauf-disziplin-server'
 import {
   behalteGastKandidatenInPlace,
+  bereinigeNachkaufRadarAusserhalbKandidaten,
   ladeNachkaufKandidaten,
   setzeKandidatenQuelle,
 } from './nachkauf-watchlist-cloud-server'
@@ -436,6 +437,10 @@ async function reichereErgebnisseAn(
 
 export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufScanPaket> {
   const kandidaten = await ladeNachkaufKandidaten()
+  // Verkauft / von Watchlist runter → nicht mitscrapen, Alt-Zeilen entfernen
+  await bereinigeNachkaufRadarAusserhalbKandidaten(kandidaten).catch((e) =>
+    console.warn('[nachkauf-scan] Universum-Bereinigung:', e),
+  )
   const gesamtAnzahl = kandidaten.length
   if (gesamtAnzahl === 0) {
     return {
