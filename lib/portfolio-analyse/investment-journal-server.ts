@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { analyseTickerFuerPosition } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { requireOwnerUserId } from '@/lib/request-owner'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import type {
@@ -63,21 +64,48 @@ function mapGpRow(row: Record<string, unknown>): JournalGegenpruefung {
   }
 }
 
-export async function ladeJournalEintraege(opts?: { ticker?: string }): Promise<JournalEintrag[]> {
+function tickerAliase(ticker: string): string[] {
+  const t = ticker.trim().toUpperCase()
+  if (!t) return []
+  const bare = t.includes('.') ? t.split('.')[0]! : t
+  return [...new Set([t, bare].filter(Boolean))]
+}
+
+function journalTreffer(
+  e: JournalEintrag,
+  opts: { ticker?: string; isin?: string | null },
+): boolean {
+  const isin = opts.isin?.trim().toUpperCase()
+  if (isin && e.isin?.trim().toUpperCase() === isin) return true
+  if (!opts.ticker) return !opts.isin
+  const aliases = tickerAliase(opts.ticker)
+  const et = e.ticker.trim().toUpperCase()
+  const eBare = et.includes('.') ? et.split('.')[0]! : et
+  return aliases.includes(et) || aliases.includes(eBare)
+}
+
+export async function ladeJournalEintraege(opts?: {
+  ticker?: string
+  isin?: string | null
+}): Promise<JournalEintrag[]> {
   if (!istKonfiguriert()) return []
-  let q = admin()
+  const q = admin()
     .from(TABLE)
     .select('*')
     .eq('owner_user_id', requireOwnerUserId())
     .order('aktualisiert_am', { ascending: false })
-  if (opts?.ticker) q = q.eq('ticker', opts.ticker.trim().toUpperCase())
   const { data, error } = await q
   if (error || !data) return []
-  return data.map((r) => mapRow(r as Record<string, unknown>))
+  const alle = data.map((r) => mapRow(r as Record<string, unknown>))
+  if (!opts?.ticker && !opts?.isin) return alle
+  return alle.filter((e) => journalTreffer(e, { ticker: opts.ticker, isin: opts.isin }))
 }
 
-export async function ladeAktivenJournalEintrag(ticker: string): Promise<JournalEintrag | null> {
-  const list = await ladeJournalEintraege({ ticker })
+export async function ladeAktivenJournalEintrag(
+  ticker: string,
+  isin?: string | null,
+): Promise<JournalEintrag | null> {
+  const list = await ladeJournalEintraege({ ticker, isin })
   return list.find((e) => e.status === 'aktiv') ?? list[0] ?? null
 }
 
@@ -97,7 +125,8 @@ export async function speichereJournalEintrag(input: {
 }): Promise<JournalEintrag | null> {
   if (!istKonfiguriert()) throw new Error('Supabase nicht konfiguriert')
   const owner = requireOwnerUserId()
-  const ticker = input.ticker.trim().toUpperCase()
+  const tickerRoh = input.ticker.trim().toUpperCase()
+  const ticker = analyseTickerFuerPosition(input.isin ?? null, tickerRoh) || tickerRoh
   const review =
     input.reviewAm?.slice(0, 10) ||
     (() => {
@@ -112,8 +141,8 @@ export async function speichereJournalEintrag(input: {
 
   if (input.nurLeereFuellen && input.fuelle) {
     const bestehend = input.id
-      ? (await ladeJournalEintraege({ ticker })).find((e) => e.id === input.id)
-      : await ladeAktivenJournalEintrag(ticker)
+      ? (await ladeJournalEintraege({ ticker, isin: input.isin })).find((e) => e.id === input.id)
+      : await ladeAktivenJournalEintrag(ticker, input.isin)
     these = bestehend?.these?.trim() ? bestehend.these : input.fuelle.these ?? ''
     kaufgrund = bestehend?.kaufgrund?.trim() ? bestehend.kaufgrund : input.fuelle.kaufgrund ?? ''
     watchpoints = bestehend?.watchpoints?.trim()
@@ -150,8 +179,8 @@ export async function speichereJournalEintrag(input: {
     return mapRow(data as Record<string, unknown>)
   }
 
-  // Upsert auf aktiven Ticker: falls Unique-Index greift, update
-  const bestehend = await ladeAktivenJournalEintrag(ticker)
+  // Upsert auf aktiven Ticker (inkl. Alias ASML.AS → ASML)
+  const bestehend = await ladeAktivenJournalEintrag(ticker, input.isin)
   if (bestehend) {
     const { data, error } = await admin()
       .from(TABLE)

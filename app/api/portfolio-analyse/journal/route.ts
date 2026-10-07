@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { ladeDepotRadarAktien } from '@/lib/portfolio-analyse/depot-gewichte-server'
+import { analyseTickerFuerPosition } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   ladeJournalEintraege,
   speichereJournalEintrag,
@@ -12,21 +13,19 @@ export async function GET(req: Request) {
   const out = await jsonMitOwner(req, async () => {
     const url = new URL(req.url)
     const ticker = url.searchParams.get('ticker') || undefined
+    const isin = url.searchParams.get('isin') || undefined
     const mitDepot = url.searchParams.get('depot') === '1'
-    const eintraege = await ladeJournalEintraege({ ticker })
+    const eintraege = await ladeJournalEintraege({ ticker, isin })
     let depot: Array<{ isin: string; name: string; ticker: string; symbolYahoo: string | null }> =
       []
     if (mitDepot) {
       const raw = await ladeDepotRadarAktien()
-      depot = raw.map((d) => {
-        const sym = (d.symbolYahoo || d.symbolCandidates[0] || '').trim().toUpperCase()
-        return {
-          isin: d.isin,
-          name: d.name,
-          ticker: sym || d.isin,
-          symbolYahoo: d.symbolYahoo,
-        }
-      })
+      depot = raw.map((d) => ({
+        isin: d.isin,
+        name: d.name,
+        ticker: analyseTickerFuerPosition(d.isin, d.symbolYahoo || d.symbolCandidates[0] || null),
+        symbolYahoo: d.symbolYahoo,
+      }))
     }
     return { ok: true, eintraege, depot }
   })

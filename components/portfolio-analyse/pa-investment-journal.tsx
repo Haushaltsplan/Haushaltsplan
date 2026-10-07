@@ -155,7 +155,9 @@ export function PaInvestmentJournal({
     if (opts?.clearFehler !== false) setFehler(null)
     try {
       const qs = scoped
-        ? `?ticker=${encodeURIComponent(ticker!.trim().toUpperCase())}`
+        ? `?ticker=${encodeURIComponent(ticker!.trim().toUpperCase())}${
+            isin?.trim() ? `&isin=${encodeURIComponent(isin.trim().toUpperCase())}` : ''
+          }`
         : '?depot=1'
       const res = await fetch(`/api/portfolio-analyse/journal${qs}`, { cache: 'no-store' })
       const j = (await res.json()) as {
@@ -180,8 +182,17 @@ export function PaInvestmentJournal({
           .trim()
           .toUpperCase()
 
+        const tBare = t.includes('.') ? t.split('.')[0]! : t
+        const isinU = isin?.trim().toUpperCase()
         const aktiv =
-          list.find((e) => e.status === 'aktiv' && e.ticker === t) ??
+          list.find(
+            (e) =>
+              e.status === 'aktiv' &&
+              (e.ticker === t ||
+                e.ticker === tBare ||
+                e.ticker.split('.')[0] === tBare ||
+                (isinU && e.isin?.toUpperCase() === isinU)),
+          ) ??
           list.find((e) => e.status === 'aktiv') ??
           null
         if (aktiv) {
@@ -211,7 +222,7 @@ export function PaInvestmentJournal({
     } finally {
       setLaden(false)
     }
-  }, [ticker, scoped])
+  }, [ticker, isin, scoped])
 
   useEffect(() => {
     void ladenDaten()
@@ -320,9 +331,21 @@ export function PaInvestmentJournal({
         ok?: boolean
         zusammenfassung?: string
         message?: string
-        ergebnisse?: Array<{ ticker?: string; status?: string; message?: string }>
+        ergebnisse?: Array<{
+          ticker?: string
+          status?: string
+          message?: string
+          eintrag?: JournalEintrag
+        }>
       }
       if (!res.ok || !j.ok) throw new Error(j.message || 'Auto-Fill fehlgeschlagen')
+      // Skip mit vorhandenem Eintrag (z. B. unter ASML.AS) sofort in die Felder
+      const mitEintrag = (j.ergebnisse ?? []).find((e) => e.eintrag)
+      if (mitEintrag?.eintrag) {
+        setThese(mitEintrag.eintrag.these)
+        setKaufgrund(mitEintrag.eintrag.kaufgrund)
+        setWatchpoints(mitEintrag.eintrag.watchpoints)
+      }
       const fehlerZeilen = (j.ergebnisse ?? []).filter((e) => e.status === 'fehler')
       if (fehlerZeilen.length > 0) {
         const details = fehlerZeilen

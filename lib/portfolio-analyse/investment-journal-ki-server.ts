@@ -14,6 +14,7 @@ import { ladeDepotRadarAktien } from '@/lib/portfolio-analyse/depot-gewichte-ser
 import { ladeEarningsCallKiCacheFuerTicker } from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
 import { ladeFundamentaldatenPaketCacheFuerAnfrage } from '@/lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
 import type { FundamentalKeyMetric, FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { analyseTickerFuerPosition } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   ladeAktivenJournalEintrag,
   ladeJournalEintraege,
@@ -43,9 +44,8 @@ function sleep(ms: number) {
 }
 
 function tickerAusDepot(symbolYahoo: string | null, candidates: string[], isin: string): string {
-  const sym = (symbolYahoo || candidates[0] || '').trim().toUpperCase()
-  if (sym) return sym
-  return isin.trim().toUpperCase()
+  // Immer Analyse-Bare (ASML), nie Listing-Suffix (ASML.AS) — sonst Skip vs. leere UI
+  return analyseTickerFuerPosition(isin, symbolYahoo || candidates[0] || null)
 }
 
 function parseJsonObject(reply: string): Record<string, unknown> | null {
@@ -470,19 +470,24 @@ export async function batchJournalAutoFill(opts?: {
   }))
 
   if (filterTicker || filterIsin) {
-    kandidaten = kandidaten.filter(
-      (d) =>
-        (filterTicker && (d.ticker === filterTicker || d.isin === filterTicker)) ||
-        (filterIsin && d.isin === filterIsin),
-    )
+    const filterBare = filterTicker?.includes('.') ? filterTicker.split('.')[0]! : filterTicker
+    kandidaten = kandidaten.filter((d) => {
+      if (filterIsin && d.isin.toUpperCase() === filterIsin) return true
+      if (!filterTicker) return false
+      if (d.ticker === filterTicker || d.isin === filterTicker) return true
+      if (filterBare && d.ticker === filterBare) return true
+      const sym = (d.symbolYahoo || '').toUpperCase()
+      return Boolean(filterBare && (sym === filterTicker || sym.startsWith(`${filterBare}.`)))
+    })
     // Scoped-Fill auch ohne Depot-Treffer (Übersicht einzelner Titel)
     if (kandidaten.length === 0 && filterTicker) {
+      const isinGuess = filterIsin || filterTicker
       kandidaten = [
         {
-          isin: filterIsin || filterTicker,
+          isin: isinGuess,
           name: opts?.name?.trim() || filterTicker,
           symbolYahoo: filterTicker,
-          ticker: filterTicker,
+          ticker: analyseTickerFuerPosition(isinGuess, filterTicker),
         },
       ]
     }
@@ -493,7 +498,7 @@ export async function batchJournalAutoFill(opts?: {
   for (let i = 0; i < kandidaten.length; i++) {
     const k = kandidaten[i]!
     try {
-      const bestehend = await ladeAktivenJournalEintrag(k.ticker)
+      const bestehend = await ladeAktivenJournalEintrag(k.ticker, k.isin)
       const theseVoll = Boolean(bestehend?.these?.trim())
       const kgVoll = Boolean(bestehend?.kaufgrund?.trim())
       const wpVoll = Boolean(bestehend?.watchpoints?.trim())
@@ -581,11 +586,14 @@ export async function batchJournalGegenpruefung(opts?: {
   )
 
   const filterTicker = opts?.ticker?.trim().toUpperCase()
-  let eintraege = (await ladeJournalEintraege()).filter((e) => e.status === 'aktiv')
-  if (filterTicker) {
-    eintraege = eintraege.filter((e) => e.ticker === filterTicker)
-  } else {
-    eintraege = eintraege.filter((e) => depotTickers.has(e.ticker))
+  let eintraege = (await ladeJournalEintraege(filterTicker ? { ticker: filterTicker } : undefined)).filter(
+    (e) => e.status === 'aktiv',
+  )
+  if (!filterTicker) {
+    eintraege = eintraege.filter((e) => {
+      const bare = e.ticker.includes('.') ? e.ticker.split('.')[0]! : e.ticker
+      return depotTickers.has(e.ticker) || depotTickers.has(bare)
+    })
   }
 
   if (!filterTicker) {
