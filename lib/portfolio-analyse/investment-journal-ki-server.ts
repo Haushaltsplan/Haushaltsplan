@@ -303,9 +303,9 @@ export async function generiereJournalFelder(opts: {
   const provider = resolveGeminiFreeTierProvider()
   if (!provider) throw new Error('GEMINI_API_KEY_FREE fehlt')
 
-  const models = geminiFreeTierFlashModelKandidaten({
-    primaryEnvKeys: ['JOURNAL_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
-  })
+  // Nur 3.8: 3.5-flash antwortet oft stundenlang mit 503 „high demand“ und
+  // überschreibt dann die eigentliche Ursache (Timeout/Denk-Budget auf 3.8).
+  const models = [geminiFreeTierFlashModelKandidaten()[0]!]
 
   const result = await runCoachCompletion(
     provider.provider,
@@ -325,15 +325,13 @@ export async function generiereJournalFelder(opts: {
       },
     ],
     {
-      temperature: 0.22,
       geminiModels: models,
       geminiForceFreeApiKey: true,
       jsonResponse: { schema: JOURNAL_FILL_JSON_SCHEMA },
-      maxOutputTokens: 3072,
+      maxOutputTokens: 8192,
       thinkingMinimal: true,
-      // Pro Modell kürzer, Gesamtbudget groß genug für 503→Fallback auf 3.5-flash
-      timeoutMs: 55_000,
-      geminiTotalBudgetMs: 160_000,
+      timeoutMs: 90_000,
+      geminiTotalBudgetMs: 120_000,
     },
   )
 
@@ -377,9 +375,7 @@ export async function generiereJournalGegenpruefung(opts: {
   const provider = resolveGeminiFreeTierProvider()
   if (!provider) throw new Error('GEMINI_API_KEY_FREE fehlt')
 
-  const models = geminiFreeTierFlashModelKandidaten({
-    primaryEnvKeys: ['JOURNAL_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
-  })
+  const models = [geminiFreeTierFlashModelKandidaten()[0]!]
 
   const result = await runCoachCompletion(
     provider.provider,
@@ -408,14 +404,13 @@ export async function generiereJournalGegenpruefung(opts: {
       },
     ],
     {
-      temperature: 0.15,
       geminiModels: models,
       geminiForceFreeApiKey: true,
       jsonResponse: { schema: JOURNAL_GEGENPRUEFUNG_JSON_SCHEMA },
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
       thinkingMinimal: true,
-      timeoutMs: 55_000,
-      geminiTotalBudgetMs: 160_000,
+      timeoutMs: 90_000,
+      geminiTotalBudgetMs: 120_000,
     },
   )
 

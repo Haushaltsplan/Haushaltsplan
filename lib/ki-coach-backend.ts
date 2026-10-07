@@ -458,6 +458,13 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
     )
   }
   if (art === 'capacity') {
+    // Timeout auf Primärmodell + 503-Fallback nicht als reine „Überlastung“ verkaufen
+    if (raw.includes('zeitlimit') || raw.includes('timeout') || raw.includes('abgeschnitten')) {
+      return (
+        `Gemini hat die Antwort nicht rechtzeitig fertig bekommen; der Fallback meldet zusätzlich Kapazitätsengpass.${mehr} ` +
+        'Bitte nochmal senden (oft klappt es beim zweiten Versuch).'
+      )
+    }
     return (
       `Google Gemini ist gerade überlastet (Kapazität/high demand) — das ist nicht dein Tageskontingent.${mehr} ` +
       'Bitte 1–2 Minuten warten und erneut senden.'
@@ -697,25 +704,18 @@ async function callGemini(
     const optsMitTimeout = { ...callOpts, timeoutMs: thisTimeout }
     let r = await callGeminiEinModell(modellKey, model, systemText, userMessages, optsMitTimeout)
 
-    // thinkingLevel=minimal nicht unterstützt (3.7+/flash-latest) → Retry mit low, dann ohne Flag
+    // thinkingLevel=minimal nicht unterstützt (3.7+/3.8/flash-latest) → nur auf low upgraden.
+    // Nie thinkingConfig entfernen: ohne Thinking hängt gemini-3.8-flash oft bis Timeout
+    // und verbrennt das Budget, bevor der Fallback (oft selbst 503) greift.
     if (!r.ok && r.httpStatus === 400 && callOpts.thinkingMinimal && restMs() > 10_000) {
       const tipp = r.hint.toLowerCase()
-      const minimalAbgelehnt =
-        tipp.includes('thinking') && (tipp.includes('minimal') || tipp.includes('not supported'))
-      if (minimalAbgelehnt && !callOpts.thinkingLevelOverride) {
-        console.warn(`[ki-coach] Gemini „${model}“ 400 (minimal) — Retry mit thinkingLevel=low.`)
+      const thinkingAbgelehnt = tipp.includes('thinking') && tipp.includes('not supported')
+      const schonLow = callOpts.thinkingLevelOverride === 'low'
+      if (thinkingAbgelehnt && !schonLow) {
+        console.warn(`[ki-coach] Gemini „${model}“ 400 (thinking) — Retry mit thinkingLevel=low.`)
         r = await callGeminiEinModell(modellKey, model, systemText, userMessages, {
           ...callOpts,
           thinkingLevelOverride: 'low',
-          timeoutMs: Math.min(perModelTimeout, restMs()),
-        })
-      }
-      if (!r.ok && r.httpStatus === 400 && restMs() > 10_000) {
-        console.warn(`[ki-coach] Gemini „${model}“ 400 mit thinkingConfig — Retry ohne Thinking-Flag.`)
-        r = await callGeminiEinModell(modellKey, model, systemText, userMessages, {
-          ...callOpts,
-          thinkingMinimal: false,
-          thinkingLevelOverride: undefined,
           timeoutMs: Math.min(perModelTimeout, restMs()),
         })
       }
@@ -762,8 +762,16 @@ async function callGemini(
       }
       return { ok: true, reply: r.reply, model }
     }
-    lastHint = r.hint
-    lastHttp = r.httpStatus
+    // Primär-Timeout nicht hinter Fallback-503 „Überlastung“ verstecken
+    if (r.httpStatus === 504 && i === 0) {
+      lastHint =
+        `${r.hint} (Modell ${model}).` +
+        (models[i + 1] ? ` Fallback ${models[i + 1]} wird versucht.` : '')
+      lastHttp = r.httpStatus
+    } else {
+      lastHint = r.hint
+      lastHttp = r.httpStatus
+    }
 
     const naechstes = models[i + 1]
     const modellAbgeschaltet = /no longer available|not longer available/i.test(r.hint)
@@ -778,7 +786,8 @@ async function callGemini(
         modellAbgeschaltet)
     if (naechstesModellMoeglich) {
       console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): ${r.hint.slice(0, 220)} — versuche „${naechstes}“.`)
-      if (r.quotaOderRateLimit || r.httpStatus === 503) await sleepMs(1500)
+      // Bei Primär-Timeout: sofort Fallback, kein Extra-Wait (Budget schon verbraucht)
+      if ((r.quotaOderRateLimit || r.httpStatus === 503) && r.httpStatus !== 504) await sleepMs(1500)
       continue
     }
     return {
