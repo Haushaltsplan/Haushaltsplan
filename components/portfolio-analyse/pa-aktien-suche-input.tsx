@@ -120,7 +120,7 @@ export function PaAktienSucheInput({
       }
       const assetType = meta.assetType?.toLowerCase() ?? ''
       if (assetType.includes('etf') || assetType.includes('fund')) {
-        onFehler?.('ETFs/Fonds eignen sich nicht für Macrotrends-Fundamentaldaten.')
+        onFehler?.('ETFs/Fonds eignen sich nicht für Aktien-Fundamentaldaten (SEC EDGAR).')
         return
       }
       await onAuswahl({ meta, isin })

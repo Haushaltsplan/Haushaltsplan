@@ -8,7 +8,7 @@ export function labelFundamentalGuvQuelle(
 ): string | null {
   if (!q) return null
   if (q === 'sec') return 'SEC EDGAR'
-  if (q === 'macrotrends') return 'Macrotrends'
+  if (q === 'macrotrends') return 'SEC EDGAR'
   if (q === 'eu') return 'EU-Berichte'
   if (q === 'marketscreener') return 'MarketScreener'
   return 'Yahoo'

@@ -153,10 +153,10 @@ export async function extractKassenzettelPositionen(
       'Nur gültiges JSON liefert das Schema.',
   })
 
+  // Kein temperature/top_p/top_k — Gemini 3.x Defaults (sonst bald 400).
   const structuredBody = {
     contents: [{ role: 'user', parts }],
     generationConfig: {
-      temperature: 0.1,
       responseMimeType: 'application/json',
       responseSchema: RECEIPT_SCHEMA,
     },
@@ -164,12 +164,11 @@ export async function extractKassenzettelPositionen(
 
   const plainBody = {
     contents: [{ role: 'user', parts }],
-    generationConfig: { temperature: 0.1, responseMimeType: 'application/json' },
+    generationConfig: { responseMimeType: 'application/json' },
   }
 
   const simplestBody = {
     contents: [{ role: 'user', parts }],
-    generationConfig: { temperature: 0.1 },
   }
 
   async function doFetch(url: string, body: object) {

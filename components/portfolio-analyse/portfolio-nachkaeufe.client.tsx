@@ -32,7 +32,7 @@ import type {
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
 function historischQuelleLabel(q: NachkaufScanEintrag['bewertung']['historischQuelle']): string {
-  if (q === 'macrotrends') return ' (historisch)'
+  if (q === 'macrotrends') return ' (SEC)'
   if (q === 'whitelist') return ' (Whitelist)'
   return ''
 }
@@ -2207,7 +2207,7 @@ export function NachkaufRadarClient() {
                   Scan läuft …{scanFortschritt ? ` (${scanFortschritt})` : ''}
                 </p>
                 <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                  Macrotrends-Live + gespeicherte Segment-Daten. Je 1 Position pro Durchlauf — Fortschritt wird
+                  SEC EDGAR + gespeicherte Segment-Daten. Je 1 Position pro Durchlauf — Fortschritt wird
                   laufend gespeichert. Tab offen lassen oder mit &ldquo;Scan fortsetzen&rdquo; weitermachen.
                 </p>
                 {ergebnisse.length > 0 && (
@@ -2264,7 +2264,7 @@ export function NachkaufRadarClient() {
                   <span className="font-medium text-teal-400">Neuer Scan</span>, um alle Positionen zu analysieren.
                 </p>
                 <p className="mt-2 text-xs text-[var(--app-text-muted)]">
-                  Macrotrends-Mediane, Kaufzonen (Score ≥80), Performance-Tracking vs. SPY, Klumpenrisiko.
+                  Historische Mediane (SEC), Kaufzonen (Score ≥80), Performance-Tracking vs. SPY, Klumpenrisiko.
                 </p>
               </>
             )}

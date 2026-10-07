@@ -147,15 +147,28 @@ const ABFLUSS = new Set<SecFeld>(['capex', 'aktienrueckkauf', 'dividenden_gezahl
 
 const TAG_KETTEN: Record<SecFeld, string[]> = {
   umsatz: [...UMSATZ_TAG_KETTE],
-  bruttogewinn: ['GrossProfit'],
+  bruttogewinn: [
+    'GrossProfit',
+    'GrossProfitLoss',
+    // Manche Emittenten nur „Gross Profit from Sales“
+    'GrossProfitOnSales',
+  ],
   cogs: [
     'CostOfGoodsAndServicesSold',
     'CostOfRevenue',
     'CostOfGoodsSold',
+    'CostOfSales',
+    'CostsAndExpensesRelatedToSales',
     // Nur Fallback: sonst D&A-Lage vs. EBITDA inkonsistent
     'CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization',
   ],
-  ebit: ['OperatingIncomeLoss', 'ProfitLossFromOperatingActivities'],
+  ebit: [
+    'OperatingIncomeLoss',
+    'ProfitLossFromOperatingActivities',
+    // Manche Filings (z. B. Zoetis) melden keinen OperatingIncomeLoss-Tag
+    'IncomeLossFromOperations',
+    'OperatingProfitLoss',
+  ],
   nettogewinn: ['NetIncomeLoss', 'ProfitLoss', 'NetIncomeLossAvailableToCommonStockholdersBasic'],
   eps: ['EarningsPerShareDiluted', 'EarningsPerShareBasicAndDiluted', 'EarningsPerShareBasic'],
   rd: ['ResearchAndDevelopmentExpense', 'ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost'],
@@ -800,12 +813,20 @@ function ttmAusQuartalen(
   reihe: Map<string, Treffer>,
   feld: SecFeld | undefined,
   modus: 'sum' | 'last',
+  /** Neuestes GuV-Anker-ISO (z. B. Umsatz) — verwirft TTM aus uralten Quartalen. */
+  ankerIso?: string | null,
 ): number | null {
   const sortiert = [...reihe.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   if (sortiert.length === 0) return null
   if (modus !== 'sum') {
     const last = sortiert[sortiert.length - 1]
-    return last && feld ? vorzeichen(feld, last[1].wert) : last?.[1].wert ?? null
+    if (!last) return null
+    if (ankerIso) {
+      const drift = Math.abs(Date.parse(ankerIso) - Date.parse(last[0])) / 86_400_000
+      // Instant/Bilanz: bis ~1 Jahr Drift ok; darüber gehört der Wert nicht zum aktuellen TTM
+      if (drift > 400) return null
+    }
+    return feld ? vorzeichen(feld, last[1].wert) : last[1].wert
   }
   const letzte = sortiert.slice(-4)
   if (letzte.length < 4) return null
@@ -818,6 +839,16 @@ function ttmAusQuartalen(
   const span =
     (Date.parse(letzte[letzte.length - 1]![0]) - Date.parse(letzte[0]![0])) / 86_400_000
   if (span < 250 || span > 420) return null
+  // Kein „TTM“ aus 2019-Quartalen neben 2025-Umsatz (z. B. TMO ohne aktuelle GrossProfit-Tags)
+  if (ankerIso) {
+    const neuestesQ = letzte[letzte.length - 1]![0]
+    const drift = Math.abs(Date.parse(ankerIso) - Date.parse(neuestesQ)) / 86_400_000
+    if (drift > 200) return null
+  } else {
+    const neuestesQ = letzte[letzte.length - 1]![0]
+    const alterTage = (Date.now() - Date.parse(neuestesQ)) / 86_400_000
+    if (alterTage > 450) return null
+  }
   let sum = 0
   for (const [, t] of letzte) sum += feld ? vorzeichen(feld, t.wert) : t.wert
   return sum
@@ -885,7 +916,8 @@ export async function ladeSecFundamentaldaten(
   ident: MacrotrendsIdent,
   frequenz: FundamentalFrequenz = 'jahr',
 ): Promise<MacrotrendsFundamentalRoh | null> {
-  const cacheKey = `${ident.ticker}|${frequenz}`
+  // v2: TTM-Frischheit + EBIT-Ableitung + EPS-NI-Fallback
+  const cacheKey = `v2|${ident.ticker}|${frequenz}`
   const hit = paketCache.get(cacheKey)
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
 
@@ -948,6 +980,7 @@ export async function ladeSecFundamentaldaten(
   const mitTtm = frequenz === 'jahr'
   const perioden = bauePerioden(isoListe, mitTtm, frequenz)
   const zeilen: FundamentalMetrikZeile[] = []
+  const umsatzAnkerIso = [...(reihen.get('umsatz')?.keys() ?? [])].sort().at(-1) ?? isoListe.at(-1) ?? null
 
   for (const def of ZEILEN) {
     if (def.id === 'ebitda' || def.id === 'gesamtverschuldung') continue
@@ -960,6 +993,7 @@ export async function ladeSecFundamentaldaten(
           quartalsreihe(facts, waehrung, def.feld),
           def.feld,
           TTM_SUMME.has(def.feld) ? 'sum' : 'last',
+          umsatzAnkerIso,
         )
       : null
     const werte = werteAusReihe(reihe, def.feld, isoListe, ttm)
@@ -988,7 +1022,7 @@ export async function ladeSecFundamentaldaten(
       const u = umsatzVorab.werte[iso]
       const c =
         iso === FUNDAMENTAL_TTM_KEY
-          ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'cogs'), 'cogs', 'sum')
+          ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'cogs'), 'cogs', 'sum', umsatzAnkerIso)
           : cogsReihe?.get(iso)
             ? vorzeichen('cogs', cogsReihe.get(iso)!.wert)
             : null
@@ -1001,7 +1035,7 @@ export async function ladeSecFundamentaldaten(
       if (u == null || b == null || !(b > u)) continue
       const c =
         iso === FUNDAMENTAL_TTM_KEY
-          ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'cogs'), 'cogs', 'sum')
+          ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'cogs'), 'cogs', 'sum', umsatzAnkerIso)
           : cogsReihe?.get(iso)
             ? vorzeichen('cogs', cogsReihe.get(iso)!.wert)
             : null
@@ -1012,11 +1046,15 @@ export async function ladeSecFundamentaldaten(
   const ebit = zeilen.find((z) => z.id === 'ebit')
   const da = zeilen.find((z) => z.id === 'da')
 
-  /** Viele Emittenten melden OperatingIncomeLoss erst spät quartalsweise. */
-  if (quartal && ebit && bruttoZeile) {
+  /**
+   * Emittenten ohne OperatingIncomeLoss-Tag (z. B. Zoetis): EBIT aus
+   * Bruttogewinn − SG&A − R&D (± D&A) ableiten — Jahr und Quartal.
+   */
+  if (ebit && bruttoZeile) {
     const sgaZeile = zeilen.find((z) => z.id === 'sga')
     const rdZeile = zeilen.find((z) => z.id === 'rd')
-    for (const iso of isoListe) {
+    const isos = [...isoListe, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])]
+    for (const iso of isos) {
       if (ebit.werte[iso] != null && Number.isFinite(ebit.werte[iso]!)) continue
       const bg = bruttoZeile.werte[iso]
       const sga = sgaZeile?.werte[iso]
@@ -1058,7 +1096,12 @@ export async function ladeSecFundamentaldaten(
     'langfristigeSchulden',
     isoListe,
     mitTtm
-      ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'langfristigeSchulden'), 'langfristigeSchulden', 'last')
+      ? ttmAusQuartalen(
+          quartalsreihe(facts, waehrung, 'langfristigeSchulden'),
+          'langfristigeSchulden',
+          'last',
+          umsatzAnkerIso,
+        )
       : null,
   )
   const stWerte = werteAusReihe(
@@ -1066,7 +1109,12 @@ export async function ladeSecFundamentaldaten(
     'kurzfristigeSchulden',
     isoListe,
     mitTtm
-      ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'kurzfristigeSchulden'), 'kurzfristigeSchulden', 'last')
+      ? ttmAusQuartalen(
+          quartalsreihe(facts, waehrung, 'kurzfristigeSchulden'),
+          'kurzfristigeSchulden',
+          'last',
+          umsatzAnkerIso,
+        )
       : null,
   )
   const leaseLt = werteAusReihe(
@@ -1074,7 +1122,12 @@ export async function ladeSecFundamentaldaten(
     'leaseLangfristig',
     isoListe,
     mitTtm
-      ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'leaseLangfristig'), 'leaseLangfristig', 'last')
+      ? ttmAusQuartalen(
+          quartalsreihe(facts, waehrung, 'leaseLangfristig'),
+          'leaseLangfristig',
+          'last',
+          umsatzAnkerIso,
+        )
       : null,
   )
   const leaseSt = werteAusReihe(
@@ -1082,7 +1135,12 @@ export async function ladeSecFundamentaldaten(
     'leaseKurzfristig',
     isoListe,
     mitTtm
-      ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'leaseKurzfristig'), 'leaseKurzfristig', 'last')
+      ? ttmAusQuartalen(
+          quartalsreihe(facts, waehrung, 'leaseKurzfristig'),
+          'leaseKurzfristig',
+          'last',
+          umsatzAnkerIso,
+        )
       : null,
   )
   const debtWerte: Record<string, number | null> = {}
@@ -1144,8 +1202,8 @@ export async function ladeSecFundamentaldaten(
     }
   }
 
-  // Fehlendes Quartals-EPS: NI / WAS (beide Mio.). Kein YTD-EPS — nicht additiv.
-  if (quartal && epsZeile && netto && aktienZeile) {
+  // Fehlendes EPS (Jahr + Quartal): NI / WAS (beide Mio.). Kein YTD-EPS — nicht additiv.
+  if (epsZeile && netto && aktienZeile) {
     for (const iso of isoListe) {
       if (epsZeile.werte[iso] != null) continue
       const ni = netto.werte[iso]
@@ -1263,13 +1321,14 @@ export async function ladeSecFundamentaldaten(
 
   const umsatzJ = zaehle(umsatz, isoListe)
   const epsJ = zaehle(zeilen.find((z) => z.id === 'eps'), isoListe)
+  const niJ = zaehle(netto, isoListe)
   const ekJ = zaehle(ek, isoListe)
-  // Quartal: EPS in XBRL fehlt bei manchen Titeln (z. B. Visa) — Umsatz+EK reichen,
-  // EPS kommt ggf. aus Yahoo/NI÷WAS. Jahr: EPS weiter Pflicht.
-  const epsMin = quartal ? 0 : 4
-  if (umsatzJ < (quartal ? 4 : 6) || epsJ < epsMin || ekJ < (quartal ? 4 : 4)) {
+  // EPS fehlt in Company Facts bei manchen Filern (z. B. Visa) — NI+Umsatz+EK reichen.
+  // EPS wird ggf. später aus NI/WAS oder Yahoo aufgefüllt.
+  const ertragOk = quartal ? true : epsJ >= 4 || niJ >= 6
+  if (umsatzJ < (quartal ? 4 : 6) || !ertragOk || ekJ < (quartal ? 4 : 4)) {
     console.warn(
-      `[sec-fundamental] zu dünn für ${ident.ticker} umsatz=${umsatzJ} eps=${epsJ} ek=${ekJ}`,
+      `[sec-fundamental] zu dünn für ${ident.ticker} umsatz=${umsatzJ} eps=${epsJ} ni=${niJ} ek=${ekJ}`,
     )
     return merke(null)
   }

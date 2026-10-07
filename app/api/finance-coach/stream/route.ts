@@ -70,7 +70,6 @@ export async function POST(req: Request) {
       system: buildSystemPrompt(parsed.data.context),
       messages,
       mode: 'free',
-      temperature: 0.5,
       maxOutputTokens: 4096,
     })
     return result.toTextStreamResponse()

@@ -256,7 +256,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     (ctx.yahoo?.grossMargins != null ? ctx.yahoo.grossMargins * 100 : null)
 
   const bruttoHistRoh = historischeWerte(bruttoMargeZeile, perioden)
-  // Macrotrends setzt bei Payment-Networks oft Bruttogewinn = Umsatz → 100 % Schein-Marge
+  // Payment-Networks oft Bruttogewinn = Umsatz → 100 % Schein-Marge
   const scheinBrutto =
     istScheinBruttomargeSerie(bruttoHistRoh) ||
     (bruttoMargeRoh != null &&
@@ -336,7 +336,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const roicAnzeige = roic ?? (!hatGoodwillZeile ? roicExGoodwill : null)
   const roicQuelle =
     roic != null
-      ? 'ROIC (Macrotrends/Bilanz)'
+      ? 'ROIC (SEC/Bilanz)'
       : roicAnzeige != null
         ? 'ROIC ex Goodwill'
         : undefined

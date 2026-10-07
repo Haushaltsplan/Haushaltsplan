@@ -307,6 +307,20 @@ function quartalsEpsDuen(roh: { perioden: FundamentalPeriode[]; zeilen: Fundamen
   return n < 4
 }
 
+/** Bruttogewinn fehlt in SEC Company Facts bei manchen Filern (z. B. TMO ab ~2020). */
+function bruttogewinnDuen(roh: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] } | null | undefined): boolean {
+  if (!roh || roh.zeilen.length === 0) return true
+  const hist = roh.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm)
+  if (hist.length < 4) return true
+  const brutto = roh.zeilen.find((z) => z.id === 'bruttogewinn')
+  const recent = hist.slice(-4)
+  const n = recent.filter((p) => {
+    const v = brutto?.werte[p.iso]
+    return v != null && Number.isFinite(v)
+  }).length
+  return n < 2
+}
+
 function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<FundamentaldatenPaket, 'ok' | 'ticker' | 'firmenname'>): FundamentaldatenPaket {
   return {
     slug: '',
@@ -559,8 +573,15 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
       roh = fallback
       yahooAlsGuV = true
     }
-  } else if (roh && roh.guvQuelle !== 'sec' && symbolYahoo && frequenz === 'jahr' && euGuV) {
-    roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, mergeOpts)
+  } else if (roh && symbolYahoo && frequenz === 'jahr') {
+    // SEC bleibt Primärquelle; Yahoo/SA nur Lücken (EPS bei Visa, Brutto wenn SEC-Tags fehlen).
+    const brauchtMerge =
+      roh.guvQuelle !== 'sec'
+        ? euGuV
+        : quartalsEpsDuen(roh) || bruttogewinnDuen(roh)
+    if (brauchtMerge) {
+      roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, mergeOpts)
+    }
   } else if (roh && symbolYahoo && frequenz === 'quartal') {
     const brauchtMerge =
       roh.guvQuelle !== 'sec'
@@ -790,19 +811,19 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
 
   return leeresPaket({
     ok: true,
-    quelle: yahooAlsGuV ? 'yahoo' : roh.guvQuelle === 'sec' ? 'sec' : 'macrotrends',
+    quelle: yahooAlsGuV ? 'yahoo' : roh.guvQuelle === 'sec' ? 'sec' : 'sec',
     guvQuelle:
       roh.guvQuelle === 'sec' && !yahooAlsGuV
         ? 'sec'
         : frequenz === 'quartal'
           ? yahooAlsGuV
             ? 'yahoo'
-            : 'macrotrends'
+            : 'sec'
           : euGuV
             ? 'eu'
             : yahooAlsGuV
               ? 'yahoo'
-              : 'macrotrends',
+              : 'sec',
     schaetzungQuelle: schaetzungenGefiltert.quelle ?? null,
     ticker: ident.ticker,
     slug: ident.slug,

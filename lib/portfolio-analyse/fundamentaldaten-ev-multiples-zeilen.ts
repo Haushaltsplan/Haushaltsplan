@@ -2,12 +2,11 @@
  * Historische EV/Umsatz & EV/EBITDA aus Marktkapitalisierung + Nettoverschuldung.
  *
  * EV = Marktkap + Schulden − Cash
- * Primär: Macrotrends market-cap Chart (v3 in Mrd. → Mio.)
+ * Primär: Marktkapitalisierung-Zeile (Yahoo-Kurs × Aktien / historische Multiples).
  * Fallback: P/S × Umsatz, dann KGV × EPS × Aktien
  *
  * Werte werden periodennahe gematcht (±45 Tage), weil nach dem
- * Yahoo/SA-GuV-Merge Umsatz auf neuen FY-ISOs liegt, Marktkap/P/S oft noch auf
- * Macrotrends-Daten — exakter Key-Match ließ die Historie leer.
+ * Yahoo/SA-GuV-Merge Umsatz auf neuen FY-ISOs liegen kann.
  */
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'

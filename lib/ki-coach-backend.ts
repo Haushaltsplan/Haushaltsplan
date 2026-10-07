@@ -485,7 +485,6 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
 }
 
 type CallGeminiEinModellOptions = {
-  temperature: number
   jsonResponse?: CoachJsonResponseConfig
   /** Grounding mit Google Search — siehe https://ai.google.dev/gemini-api/docs/google-search */
   geminiGoogleSearch?: boolean
@@ -494,7 +493,7 @@ type CallGeminiEinModellOptions = {
   /** Caps die sichtbare Antwortlänge. Bei Thinking-Modellen zählt Denken mit — nicht zu knapp setzen. */
   maxOutputTokens?: number
   /**
-   * Wenig/kein Thinking, damit Free-Flash nicht das Tokenbudget im Denken verbraucht
+   * Wenig Thinking (thinkingLevel), damit Free-Flash nicht das Tokenbudget im Denken verbraucht
    * und die sichtbare Antwort mitten im Satz abbricht.
    */
   thinkingMinimal?: boolean
@@ -503,12 +502,13 @@ type CallGeminiEinModellOptions = {
 }
 
 /**
- * Gemini 3.7+ Full-Flash und Alias `gemini-flash-latest` unterstützen
- * thinkingLevel=minimal nicht (HTTP 400). Flash-Lite behält minimal.
+ * Modelle ohne thinkingLevel=minimal (HTTP 400): 3.7+ Full-Flash, flash-latest, 2.5.
+ * Flash-Lite / Image behalten minimal wo unterstützt.
  */
 function geminiMinimalThinkingNichtUnterstuetzt(model: string): boolean {
   const m = model.toLowerCase().replace(/^models\//, '')
   if (m === 'gemini-flash-latest') return true
+  if (/gemini-2\.5/.test(m)) return true
   if (m.includes('lite') || m.includes('image')) return false
   const full = m.match(/^gemini-(\d+)\.(\d+)-flash(?:-|$)/)
   if (!full) return false
@@ -517,9 +517,8 @@ function geminiMinimalThinkingNichtUnterstuetzt(model: string): boolean {
   return major > 3 || (major === 3 && minor >= 7)
 }
 
+/** Nur thinkingLevel — thinkingBudget ist deprecated und liefert bald 400. */
 function geminiThinkingConfig(model: string): Record<string, unknown> {
-  const m = model.toLowerCase()
-  if (/gemini-2\.5/.test(m)) return { thinkingBudget: 0 }
   if (geminiMinimalThinkingNichtUnterstuetzt(model)) return { thinkingLevel: 'low' }
   return { thinkingLevel: 'minimal' }
 }
@@ -541,7 +540,8 @@ async function callGeminiEinModell(
     parts: m.role === 'assistant' ? [{ text: m.content }] : geminiPartsForUser(m),
   }))
 
-  const generationConfig: Record<string, unknown> = { temperature: opts.temperature }
+  // Kein temperature/top_p/top_k — Gemini 3.x ignoriert sie bzw. liefert bald 400.
+  const generationConfig: Record<string, unknown> = {}
   if (opts.maxOutputTokens != null && opts.maxOutputTokens > 0) {
     generationConfig.maxOutputTokens = opts.maxOutputTokens
   }
@@ -796,6 +796,10 @@ async function callGemini(
 }
 
 export type RunCoachCompletionOptions = {
+  /**
+   * Nur OpenAI-Fallback. Gemini 3.x: temperature/top_p/top_k nicht senden
+   * (Defaults bzw. bald 400 INVALID_ARGUMENT).
+   */
   temperature?: number
   /** Nur JSON-Antwort (Gemini: Schema; OpenAI: json_object). */
   jsonResponse?: CoachJsonResponseConfig
@@ -825,7 +829,7 @@ export type RunCoachCompletionOptions = {
   geminiTotalBudgetMs?: number
   /** Gemini generationConfig.maxOutputTokens. */
   maxOutputTokens?: number
-  /** Wenig Thinking (3.x: thinkingLevel minimal, 2.5: thinkingBudget 0). */
+  /** Wenig Thinking via thinkingLevel (minimal wo erlaubt, sonst low). Nie thinkingBudget. */
   thinkingMinimal?: boolean
 }
 
@@ -849,7 +853,6 @@ export async function runCoachCompletion(
       systemText,
       messages,
       {
-        temperature: t,
         jsonResponse: options?.jsonResponse,
         geminiGoogleSearch: options?.geminiGoogleSearch,
         timeoutMs: options?.timeoutMs,

@@ -7,50 +7,14 @@ import {
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
-import { ergaenzeDividendenHistorieZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-dividenden-historie-zeilen'
-import { ergaenzeEvMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ev-multiples-zeilen'
-import { ergaenzeNettoverschuldungZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-nettoverschuldung-zeilen'
-import {
-  ensureMacrotrendsCookies,
-  invalidateMacrotrendsCookies,
-  macrotrendsCdpVerfuegbar,
-  macrotrendsPreferBrowser,
-  macrotrendsUserAgent,
-  markMacrotrendsBrowserRequired,
-} from '@/lib/portfolio-analyse/macrotrends-browser-auth-server'
-import { fetchMacrotrendsHtml, fetchMacrotrendsHtmlBatch } from '@/lib/portfolio-analyse/macrotrends-remote-fetch-server'
 
+/**
+ * Legacy-Fassade: Typen + Ident-Auflösung bleiben (viele Importe),
+ * GuV kommt ausschließlich aus SEC EDGAR. Macrotrends-HTML ist abgeschaltet.
+ */
 const BASE = 'https://www.macrotrends.net'
 const IFRAME_BASE =
   'https://www.macrotrends.net/production/stocks/desktop/PRODUCTION/fundamental_iframe.php'
-const CACHE_MS = 24 * 60 * 60 * 1000
-const FEHLER_CACHE_MS = 3 * 60 * 1000
-/** Bei Live-Fehler: erfolgreichen Cache bis 7 Tage als Fallback (kein Datenverlust). */
-const STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
-const MIN_ABSTAND_MS = 200
-const FETCH_TIMEOUT_MS = 35_000
-const MAX_FETCH_RETRIES = 3
-const MAX_BLOCK_RETRIES = 2
-const RETRY_BASE_MS = 800
-
-function bauFetchHeaders(cookie?: string): Record<string, string> {
-  const h: Record<string, string> = {
-    'User-Agent': macrotrendsUserAgent(),
-    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-    Referer: 'https://www.macrotrends.net/',
-    'Cache-Control': 'no-cache',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'same-origin',
-    'Upgrade-Insecure-Requests': '1',
-  }
-  if (cookie) h.Cookie = cookie
-  return h
-}
-
-let letzterAbruf = 0
-let warteschlange: Promise<void> = Promise.resolve()
 
 type PageCache = { at: number; html: string | null; fehler?: boolean }
 const pageCache = new Map<string, PageCache>()
@@ -341,114 +305,11 @@ const BEWERTUNG_METRIKEN: Array<
   },
 ]
 
-function pause(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms))
-}
-
-function htmlBlockiertOderLeer(html: string, erwartetJson = false): boolean {
-  // JSON-Endpunkte (z. B. Suche) liefern legitim sehr kurze Antworten â€” LÃ¤ngen-Check nur fÃ¼r HTML-Seiten.
-  if (!erwartetJson && html.length < 1_500) return true
-  if (erwartetJson && html.trim().length === 0) return true
-  if (html.includes('Oops!')) return true
-  const kopf = html.slice(0, 8_000).toLowerCase()
-  return /access denied|403 forbidden|rate limit|cf-challenge|just a moment|captcha|bot detection/i.test(
-    kopf,
-  )
-}
-
-function htmlHatOriginalData(html: string): boolean {
-  return html.includes('var originalData = ')
-}
-
-function htmlHatChartData(html: string): boolean {
-  return html.includes('var chartData = ')
-}
-
-async function rateLimitedFetch(url: string, erwartetJson = false): Promise<string | null> {
-  await warteschlange
-  let resolve!: () => void
-  warteschlange = new Promise((r) => {
-    resolve = r
-  })
-  try {
-    for (let attempt = 0; attempt <= MAX_FETCH_RETRIES; attempt++) {
-      const warten = Math.max(0, MIN_ABSTAND_MS - (Date.now() - letzterAbruf))
-      if (warten > 0) await pause(warten)
-      letzterAbruf = Date.now()
-
-      // Produktionspfad: Relay / ZenRows / ScrapingBee / lokales CDP
-      const viaRemote = await fetchMacrotrendsHtml(url)
-      if (viaRemote && !htmlBlockiertOderLeer(viaRemote, erwartetJson)) return viaRemote
-
-      // Legacy Node-fetch (meist 403 hinter Turnstile) â€” nur als schneller Versuch ohne Remote
-      if (attempt === 0 && !(await macrotrendsCdpVerfuegbar())) {
-        try {
-          const cookie = await ensureMacrotrendsCookies()
-          const res = await fetch(url, {
-            headers: bauFetchHeaders(cookie || undefined),
-            cache: 'no-store',
-            redirect: 'follow',
-            signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-          })
-          if (res.ok) {
-            const html = await res.text()
-            if (!htmlBlockiertOderLeer(html, erwartetJson)) return html
-          }
-          if (res.status === 403 || res.status === 429) {
-            markMacrotrendsBrowserRequired()
-            invalidateMacrotrendsCookies()
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-
-      if (attempt < MAX_BLOCK_RETRIES) {
-        await pause(RETRY_BASE_MS * (attempt + 1) + (macrotrendsPreferBrowser() ? 800 : 1_500))
-        continue
-      }
-      return null
-    }
-    return null
-  } finally {
-    resolve()
-  }
-}
-
-function staleFallback(url: string): string | null {
-  const hit = pageCache.get(url)
-  if (!hit?.html || hit.fehler) return null
-  const age = Date.now() - hit.at
-  if (age > STALE_MAX_AGE_MS) return null
-  console.warn(`[macrotrends] Stale-Cache-Fallback (${Math.round(age / 3600000)}h alt): ${url}`)
-  return hit.html
-}
-
+/** Macrotrends-HTML abgeschaltet — Fundamentals kommen aus SEC EDGAR (+ Yahoo/URD für EU). */
 async function ladeSeite(
-  url: string,
-  opts?: { forceRefresh?: boolean; nurCache?: boolean; erwartetJson?: boolean },
+  _url: string,
+  _opts?: { forceRefresh?: boolean; nurCache?: boolean; erwartetJson?: boolean },
 ): Promise<string | null> {
-  const hit = pageCache.get(url)
-  const now = Date.now()
-  if (!opts?.forceRefresh && hit && now - hit.at < (hit.fehler ? FEHLER_CACHE_MS : CACHE_MS)) {
-    return hit.html
-  }
-
-  if (opts?.nurCache) {
-    if (hit?.html && !hit.fehler) return hit.html
-    return staleFallback(url)
-  }
-
-  const html = await rateLimitedFetch(url, opts?.erwartetJson)
-  if (html) {
-    pageCache.set(url, { at: now, html, fehler: false })
-    return html
-  }
-
-  const stale = staleFallback(url)
-  if (stale) return stale
-
-  pageCache.set(url, { at: now, html: null, fehler: true })
   return null
 }
 
@@ -911,19 +772,8 @@ export type MacrotrendsFundamentalRoh = {
   waehrung?: string
 }
 
-async function praefetchSeiten(urls: string[]): Promise<void> {
-  const unique = [...new Set(urls)]
-  const fehlend = unique.filter((u) => {
-    const hit = pageCache.get(u)
-    return !hit?.html || hit.fehler
-  })
-  if (fehlend.length === 0) return
-  const pages = await fetchMacrotrendsHtmlBatch(fehlend)
-  const now = Date.now()
-  for (const [url, html] of pages) {
-    pageCache.set(url, { at: now, html, fehler: false })
-  }
-  // Fehlende URLs NICHT als Fehler cachen â€” sonst blockiert ein Teil-Batch den GuV-Retry.
+async function praefetchSeiten(_urls: string[]): Promise<void> {
+  /* Macrotrends-HTML abgeschaltet */
 }
 
 function statementUrlsFuer(ident: MacrotrendsIdent, frequenz: FundamentalFrequenz): string[] {
@@ -952,33 +802,12 @@ export async function ladeMacrotrendsFundamentaldaten(
   if (opts?.nurCache) return null
   return null
 }
+/** Abgeschaltet — GuV/Bewertung kommen aus SEC EDGAR + Yahoo, nicht Macrotrends-HTML. */
 export async function ladeMacrotrendsChartSerie(
-  ident: MacrotrendsIdent,
-  slug: string,
-  statement: 'financial-ratios' | 'price-ratios' | 'income-statement' | 'cash-flow-statement' | 'balance-sheet',
-  frequenz: FundamentalFrequenz = 'jahr',
+  _ident: MacrotrendsIdent,
+  _slug: string,
+  _statement: 'financial-ratios' | 'price-ratios' | 'income-statement' | 'cash-flow-statement' | 'balance-sheet',
+  _frequenz: FundamentalFrequenz = 'jahr',
 ): Promise<Array<{ datum: string; wert: number }>> {
-  if (statement === 'price-ratios') {
-    const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(slug)}&statement=price-ratios&freq=A&sub=&yb=15`
-    const iframeHtml = await ladeSeite(iframeUrl)
-    const chart = iframeHtml ? parseChartData(iframeHtml) : null
-    if (chart?.length) {
-      return chart
-        .map((p) => ({
-          datum: p.date,
-          wert: wertAusChartPunkt(p, 'v3') ?? wertAusChartPunkt(p, 'v1') ?? 0,
-        }))
-        .filter((p) => Number.isFinite(p.wert))
-    }
-  }
-
-  const roh = await ladeStatementRoh(ident, statement, frequenz)
-  const row = roh ? zeileFuerSlug(roh, slug) : null
-  if (row) {
-    return periodenAusRoh([row])
-      .map((iso) => ({ datum: iso, wert: parseZahl(row[iso]) ?? 0 }))
-      .filter((p) => p.wert !== 0)
-  }
-
   return []
 }

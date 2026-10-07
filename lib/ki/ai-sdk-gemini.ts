@@ -38,6 +38,7 @@ export async function streamGeminiText(opts: {
   system: string
   messages: ModelMessage[]
   mode?: AiSdkGeminiMode
+  /** Ignoriert für Gemini 3.x (Sampling-Params deprecated / bald 400). */
   temperature?: number
   maxOutputTokens?: number
 }) {
@@ -49,11 +50,11 @@ export async function streamGeminiText(opts: {
   const google = createGoogleGenerativeAI({ apiKey: resolved.apiKey })
   const modelId = resolved.models[0] ?? 'gemini-3.5-flash'
 
+  // Kein temperature/topP/topK — Modell-Defaults.
   return streamText({
     model: google(modelId),
     system: opts.system,
     messages: opts.messages,
-    temperature: opts.temperature ?? 0.5,
     maxOutputTokens: opts.maxOutputTokens ?? 4096,
   })
 }

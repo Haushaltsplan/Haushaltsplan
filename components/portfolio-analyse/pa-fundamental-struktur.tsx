@@ -134,7 +134,7 @@ export function PaFundamentalStruktur({
 
       <Sektion
         titel="Kapitalstruktur & Bilanz"
-        untertitel="Verschuldung, Working Capital, SBC — aus Macrotrends GuV/Bilanz/CF"
+        untertitel="Verschuldung, Working Capital, SBC — aus SEC EDGAR GuV/Bilanz/CF"
         klasse="mt-8"
       >
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -430,7 +430,7 @@ function Sektion({
 function QuellenFusszeile({ erweitert }: { erweitert: FundamentaldatenErweitert }) {
   return (
     <p className="text-[10px] leading-relaxed text-[var(--app-text-muted)]">
-      Quellen: Macrotrends · Yahoo Finance · Finviz · SEC EDGAR · DivvyDiary · OpenInsider · Marketscreener ·
+      Quellen: SEC EDGAR · Yahoo Finance · Finviz · DivvyDiary · OpenInsider · Marketscreener ·
       Yahoo Options · Glassdoor/Kununu · Stand {new Date(erweitert.geladenAm).toLocaleString('de-DE')}
     </p>
   )

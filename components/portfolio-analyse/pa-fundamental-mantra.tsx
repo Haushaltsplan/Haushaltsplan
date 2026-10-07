@@ -406,7 +406,7 @@ export function PaFundamentalMantra({ audit, ticker }: { audit: FundamentalMantr
         <h2 className="mt-1 text-base font-semibold text-white">{audit.frameworkTitel}</h2>
         <p className="mt-1 text-xs text-[var(--app-text-muted)]">{audit.frameworkUntertitel}</p>
         <p className="mt-3 text-sm leading-relaxed text-[var(--app-text-muted)]">
-          Abgleich des quantitativen Dashboards mit LTM-Daten aus Macrotrends, Yahoo Finance und berechneten
+          Abgleich des quantitativen Dashboards mit LTM-Daten aus SEC EDGAR, Yahoo Finance und berechneten
           Kennzahlen. Moat-Check und Sell-Triggers sind qualitative Referenz für Deep Research.
         </p>
       </div>
