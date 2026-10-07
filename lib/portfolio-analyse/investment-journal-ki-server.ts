@@ -303,9 +303,8 @@ export async function generiereJournalFelder(opts: {
   const provider = resolveGeminiFreeTierProvider()
   if (!provider) throw new Error('GEMINI_API_KEY_FREE fehlt')
 
-  // Nur 3.8: 3.5-flash antwortet oft stundenlang mit 503 „high demand“ und
-  // überschreibt dann die eigentliche Ursache (Timeout/Denk-Budget auf 3.8).
-  const models = [geminiFreeTierFlashModelKandidaten()[0]!]
+  // 3.8 → 3.5-flash-lite (Full-3.5 oft 503; 3.8 Free-Quota/RPM oft 429)
+  const models = geminiFreeTierFlashModelKandidaten()
 
   const result = await runCoachCompletion(
     provider.provider,
@@ -331,7 +330,7 @@ export async function generiereJournalFelder(opts: {
       maxOutputTokens: 8192,
       thinkingMinimal: true,
       timeoutMs: 90_000,
-      geminiTotalBudgetMs: 120_000,
+      geminiTotalBudgetMs: 180_000,
     },
   )
 
@@ -375,7 +374,7 @@ export async function generiereJournalGegenpruefung(opts: {
   const provider = resolveGeminiFreeTierProvider()
   if (!provider) throw new Error('GEMINI_API_KEY_FREE fehlt')
 
-  const models = [geminiFreeTierFlashModelKandidaten()[0]!]
+  const models = geminiFreeTierFlashModelKandidaten()
 
   const result = await runCoachCompletion(
     provider.provider,
@@ -410,7 +409,7 @@ export async function generiereJournalGegenpruefung(opts: {
       maxOutputTokens: 8192,
       thinkingMinimal: true,
       timeoutMs: 90_000,
-      geminiTotalBudgetMs: 120_000,
+      geminiTotalBudgetMs: 180_000,
     },
   )
 

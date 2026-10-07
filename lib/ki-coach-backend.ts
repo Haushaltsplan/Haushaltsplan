@@ -325,13 +325,13 @@ function buildGeminiModelChain(opts: {
   return out
 }
 
-/** Free-Tier Flash: fest 3.8 → 3.5 (kein Lite/Latest/ENV-Chaos). */
+/** Free-Tier Flash: 3.8 → 3.5-Lite (kein Full-3.5: oft stundenlang 503 high demand). */
 export const GEMINI_FREE_FLASH_PRIMARY = 'gemini-3.8-flash'
-export const GEMINI_FREE_FLASH_FALLBACK = 'gemini-3.5-flash'
+export const GEMINI_FREE_FLASH_FALLBACK = 'gemini-3.5-flash-lite'
 
 /**
  * Flash-Modelle mit Google-AI-Studio-Tageskontingent — kein Pro, kein Billing-Fallback.
- * Kette ist fest: gemini-3.8-flash, dann gemini-3.5-flash.
+ * Kette: gemini-3.8-flash, dann gemini-3.5-flash-lite (eigenes Kontingent, aktuell verfügbar).
  * `opts` bleibt für Call-Sites kompatibel, steuert die Reihenfolge aber nicht mehr.
  */
 export function geminiFreeTierFlashModelKandidaten(_opts?: {
@@ -484,8 +484,9 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
   }
   if (art === 'per_minute' || art === 'generic_429') {
     return (
-      'Gemini hat die Anfrage gerade mit einem kurzen Rate-Limit beantwortet — das Tageskontingent ist dafür oft noch frei. ' +
-      `Bitte 30–60 Sekunden warten und erneut senden.${mehr}`
+      'Gemini Free-Tier-Limit (Quota/RPM) für dieses Modell ist gerade erreicht. ' +
+      'Die App wechselt automatisch auf Flash-Lite — bitte nochmal senden.' +
+      mehr
     )
   }
   return hint
