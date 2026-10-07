@@ -33,9 +33,10 @@ export function PaBenchmarkPanel({ startDatumIso }: { startDatumIso: string | nu
   }, [startDatumIso])
 
   return (
-    <PaCard className="p-5">
+    <PaCard className="relative p-5 lg:bg-gradient-to-br lg:from-white/[0.03] lg:to-transparent">
+      <div className="pointer-events-none absolute inset-x-0 top-0 hidden h-px bg-gradient-to-r from-transparent via-teal-400/35 to-transparent lg:block" />
       <h2 className="text-sm font-semibold tracking-tight text-[var(--app-text)]">vs. Benchmark</h2>
-      <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
+      <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
         SPY &amp; MSCI World (URTH) · Total Return seit {daten?.von ?? '…'}
       </p>
       {laden && !daten ? (

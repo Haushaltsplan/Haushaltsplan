@@ -334,22 +334,24 @@ function WertpapierZeile({
       role={onOeffnen ? 'link' : undefined}
       aria-label={onOeffnen ? `${p.anzeigeName} — Fundamentaldaten öffnen` : undefined}
     >
-      <div className="flex min-w-0 items-start gap-2.5 px-4 py-3 sm:gap-3 sm:px-5 sm:py-3.5">
+      <div className="flex min-w-0 items-start gap-2.5 px-4 py-3 sm:gap-3 sm:px-5 sm:py-3.5 lg:gap-4 lg:px-6 lg:py-4">
         <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="md" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-start gap-2">
             <div className="min-w-0 flex-1">
               <p className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[var(--app-text-muted)]">
-                <span>{assetZeileLabel(p.assetKlasse)}</span>
+                <span className="lg:rounded lg:bg-white/[0.04] lg:px-1.5 lg:py-px lg:text-[10px] lg:font-medium lg:uppercase lg:tracking-wide">
+                  {assetZeileLabel(p.assetKlasse)}
+                </span>
                 {isin ? (
                   <>
                     <span aria-hidden>·</span>
-                    <span className="break-all font-mono">{isin}</span>
+                    <span className="break-all font-mono lg:tracking-tight">{isin}</span>
                     <CopyIsinButton isin={isin} />
                   </>
                 ) : null}
               </p>
-              <p className="mt-0.5 break-words text-sm font-semibold leading-snug text-[var(--app-text)]">
+              <p className="mt-0.5 break-words text-sm font-semibold leading-snug text-[var(--app-text)] lg:text-[15px]">
                 {p.anzeigeName}
               </p>
             </div>
@@ -471,11 +473,12 @@ export function PaWertpapiereListe({
   }
 
   return (
-    <PaCard variant="elevated" className="min-w-0">
+    <PaCard variant="elevated" className="relative min-w-0 lg:overflow-hidden">
+      <div className="pointer-events-none absolute inset-x-0 top-0 hidden h-px bg-gradient-to-r from-transparent via-teal-400/30 to-transparent lg:block" />
       <button
         type="button"
         onClick={() => setOffen((o) => !o)}
-        className="flex w-full items-center gap-3 border-b border-white/[0.04] px-4 py-3.5 text-left sm:px-5"
+        className="flex w-full items-center gap-3 border-b border-white/[0.04] px-4 py-3.5 text-left sm:px-5 lg:gap-3.5 lg:px-6 lg:py-4"
       >
         <svg
           className={`h-4 w-4 shrink-0 text-[var(--app-text-muted)] transition-transform ${offen ? 'rotate-0' : '-rotate-90'}`}
@@ -486,12 +489,21 @@ export function PaWertpapiereListe({
         >
           <path d="M6 9l6 6 6-6" />
         </svg>
-        <h2 className="text-sm font-semibold text-[var(--app-text)]">Wertpapiere</h2>
+        <h2 className="text-sm font-semibold tracking-tight text-[var(--app-text)]">Wertpapiere</h2>
         <span className="flex items-center gap-2 text-[11px] tabular-nums">
-          <span className="text-emerald-400">↑ {gewinner}</span>
-          <span className="text-rose-400">↓ {verlierer}</span>
+          <span className="text-emerald-400 lg:rounded-md lg:bg-emerald-500/10 lg:px-2 lg:py-0.5">
+            ↑ {gewinner}
+          </span>
+          <span className="text-rose-400 lg:rounded-md lg:bg-rose-500/10 lg:px-2 lg:py-0.5">
+            ↓ {verlierer}
+          </span>
         </span>
-        {laden ? <span className="ml-auto text-[11px] text-[var(--app-text-muted)]">Kurse …</span> : null}
+        <span className="ml-auto flex items-center gap-3 text-[11px] tabular-nums text-[var(--app-text-muted)]">
+          <span className="hidden lg:inline">
+            {sortiert.length} Position{sortiert.length === 1 ? '' : 'en'}
+          </span>
+          {laden ? <span>Kurse …</span> : null}
+        </span>
       </button>
 
       {offen ? (
