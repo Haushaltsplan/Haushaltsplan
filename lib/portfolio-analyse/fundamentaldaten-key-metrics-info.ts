@@ -23,7 +23,8 @@ export const KEY_METRIC_INFO = {
     schlecht: 'Sehr dünnes Volumen — Einstieg/Ausstieg teuer, Kurse sprunghaft.',
   },
   beta: {
-    schauen: '5-Jahres-Beta vs. Markt — wie stark die Aktie mit dem Gesamtmarkt mitschwingt.',
+    schauen:
+      '5-Jahres-Beta vs. S&P 500 — OLS aus monatlichen Total-Return-Renditen (adj. closes). Fehlt Yahoo-Beta, rechnen wir es selbst (ggf. FX→USD). Fließt in CAPM-Eigenkapitalkosten / WACC.',
     gut: 'Moderates Beta bei Quality Compoundern; kein Selbstzweck.',
     schlecht: 'Sehr hohes Beta ohne entsprechend höheres langfristiges Wachstum — mehr Volatilität ohne Ertrag.',
   },
@@ -311,6 +312,71 @@ export const KEY_METRIC_INFO = {
     schauen: 'Ausschüttungsquote — Dividende relativ zum Gewinn (manchmal auch FCF-Logik prüfen).',
     gut: 'Konservativ und vom FCF getragen.',
     schlecht: 'Sehr hoch oder steigend bei schwachem FCF — Dividende gefährdet.',
+  },
+  wacc: {
+    schauen: 'WACC (CAPM-Schätzung) — gewichtete Kapitalkosten aus Beta, Marktkap und Fremdkapitalzins.',
+    gut: 'ROIC und Incremental ROIC klar darüber — Economic Profit.',
+    schlecht: 'ROIC nahe oder unter WACC — investiertes Kapital verdient die Hurdle Rate nicht.',
+  },
+  pers_div_yield: {
+    schauen: 'Persönliche Div-Rendite (Yield on Cost) — Jahresausschüttung relativ zu deinem Einstandskurs.',
+    gut: 'Deutlich über der Marktrendite bei Kursgewinn — du „verdienst“ mehr als neue Käufer.',
+    schlecht: 'Unter der Marktrendite trotz Plus: oft falscher Vergleich (TTM-Cash vs. Yahoo) oder teurer Nachkauf.',
+  },
+  fcf_marge: {
+    schauen: 'FCF-Marge = Free Cashflow / Umsatz — wie viel vom Umsatz als Eigentümer-Cash bleibt.',
+    gut: 'Hoch und stabil: skalierbares, cashgenerierendes Modell.',
+    schlecht: 'Niedrig oder fallend: CapEx, WC oder schwache Conversion fressen den Umsatz.',
+  },
+  ltm_ev_ebitda: {
+    schauen: 'EV / EBITDA — Enterprise Value relativ zum operativen Ergebnis (hier oft FY/LTM-Mix).',
+    gut: 'Im Rahmen der eigenen Historie und zur Ertragskraft passend.',
+    schlecht: 'Am oberen Historienrand ohne Margen-/Wachstumsverbesserung.',
+  },
+  hist_median_pe_5y: {
+    schauen: 'Median des eigenen KGV über ~5 Geschäftsjahre — Bewertungsanker der Firma.',
+    gut: 'Aktuelles KGV klar darunter bei intakter Qualität — relativ günstig zur eigenen Historie.',
+    schlecht: 'Aktuelles KGV deutlich darüber ohne Qualitätsplus — teurer als „normal“ für diese Aktie.',
+  },
+  hist_pe_pctl_5y: {
+    schauen: 'Aktuelles KGV als Perzentil der 5J-Historie (0 = günstig, 100 = teuer).',
+    gut: 'Niedriges Perzentil bei stabiler Ertragskraft — Einstiegszone relativ zur eigenen Historie.',
+    schlecht: 'Hohes Perzentil — Kurs bewertet die Aktie am oberen Ende ihrer Historie.',
+  },
+  hist_pe_pctl_10y: {
+    schauen: 'Aktuelles KGV als Perzentil der 10J-Historie — längerer Bewertungskontext.',
+    gut: 'Niedrig bei intaktem Moat — selten günstige Phase.',
+    schlecht: 'Hoch: teurer als in den meisten der letzten zehn Jahre.',
+  },
+  hist_median_fcf_yield_5y: {
+    schauen: 'Median der FCF-Rendite über ~5 Jahre — typischer Cash-Yield der Aktie.',
+    gut: 'Aktuelle FCF-Rendite darüber — mehr Cash-Yield als historisch üblich.',
+    schlecht: 'Aktuell darunter — Markt zahlt mehr für denselben Cashflow.',
+  },
+  hist_median_ev_ebitda_5y: {
+    schauen: 'Median EV/EBITDA über ~5 Jahre — operativer Bewertungsanker.',
+    gut: 'Aktuelles Multiple darunter bei stabiler Marge.',
+    schlecht: 'Aktuell deutlich teurer als der eigene 5J-Median.',
+  },
+  hist_ev_ebitda_pctl_5y: {
+    schauen: 'Aktuelles EV/EBITDA als Perzentil der 5J-Historie.',
+    gut: 'Niedrig = günstig relativ zur eigenen Historie.',
+    schlecht: 'Hoch = teuer im eigenen Bewertungsband.',
+  },
+  hist_ev_ebitda_pctl_10y: {
+    schauen: 'Aktuelles EV/EBITDA als Perzentil der 10J-Historie.',
+    gut: 'Niedrig bei intakter Qualität — längerer Kontext spricht für Discount.',
+    schlecht: 'Hoch — teurer als in den meisten der letzten zehn Jahre.',
+  },
+  hist_median_ev_rev_5y: {
+    schauen: 'Median EV/Umsatz über ~5 Jahre — Sales-Bewertungsanker.',
+    gut: 'Aktuell darunter bei stabiler/steigender Marge.',
+    schlecht: 'Aktuell deutlich teurer ohne Margenfortschritt.',
+  },
+  hist_ev_rev_pctl_5y: {
+    schauen: 'Aktuelles EV/Umsatz als Perzentil der 5J-Historie.',
+    gut: 'Niedriges Perzentil — relativ günstig zum eigenen Band.',
+    schlecht: 'Hohes Perzentil — teuer im eigenen Historienkontext.',
   },
 } as const satisfies Record<string, PaInfoHintInhalt>
 

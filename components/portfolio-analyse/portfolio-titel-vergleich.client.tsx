@@ -6,11 +6,13 @@ import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaAktienSucheInput } from '@/components/portfolio-analyse/pa-aktien-suche-input'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
+import { PaInfoHint } from '@/components/portfolio-analyse/pa-info-hint'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import {
   berechnePersoenlicheDivRenditeProzent,
   dividendenTtmJeIsin,
 } from '@/lib/portfolio-analyse/dividenden-yoc'
+import { keyMetricInfo } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics-info'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import {
@@ -42,6 +44,20 @@ function fmtWert(v: number | null | undefined, format: TitelVergleichZeileDef['f
     return `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}×`
   }
   return v.toLocaleString('de-DE', { maximumFractionDigits: 2 })
+}
+
+function VergleichKennzahlLabel({ z }: { z: TitelVergleichZeileDef }) {
+  const info = keyMetricInfo(z.id)
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1">
+      <span className="min-w-0 leading-snug">{z.label}</span>
+      {info ? (
+        <span className="shrink-0" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+          <PaInfoHint info={info} label={`Erklärung: ${z.label}`} />
+        </span>
+      ) : null}
+    </span>
+  )
 }
 
 function vsFarbe(
@@ -295,7 +311,9 @@ export function PortfolioTitelVergleichClient() {
                             <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
                               {gz.map((z) => (
                                 <div key={z.id} className="contents">
-                                  <dt className="text-[var(--app-text-muted)]">{z.label}</dt>
+                                  <dt className="min-w-0 text-[var(--app-text-muted)]">
+                                    <VergleichKennzahlLabel z={z} />
+                                  </dt>
                                   <dd className="text-right tabular-nums text-[var(--app-text)]">
                                     {fmtWert(sp?.werte[z.id as TitelVergleichKennzahlId], z.format)}
                                   </dd>
@@ -422,7 +440,7 @@ export function PortfolioTitelVergleichClient() {
                               zebra ? 'bg-[var(--app-surface)]' : 'bg-white/[0.02]'
                             }`}
                           >
-                            {z.label}
+                            <VergleichKennzahlLabel z={z} />
                           </div>
                           {state.eintraege.map((e) => {
                             const key = titelVergleichSchluessel(e)

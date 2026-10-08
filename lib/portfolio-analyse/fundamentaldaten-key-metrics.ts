@@ -29,6 +29,8 @@ export type YahooFundamentalKennzahlen = {
   fiftyTwoWeekHigh?: number
   fiftyTwoWeekLow?: number
   beta?: number
+  /** Herkunft des Beta: Yahoo Key Statistics oder OLS aus Monatsrenditen. */
+  betaQuelle?: 'yahoo' | 'berechnet'
   marketCap?: number
   sharesOutstanding?: number
   floatShares?: number
@@ -176,6 +178,18 @@ function roiicAnzeige(
     | null
     | undefined,
 ): string {
+  // Reines „0 %“ bei NOPAT-Rückgang ist irreführend — lieber klar kennzeichnen.
+  if (
+    w?.incrementalRoicRegime === 'schrumpfend' &&
+    (w.incrementalRoicPct == null || w.incrementalRoicPct === 0)
+  ) {
+    const buch =
+      w.incrementalRoicBuchPct != null && w.incrementalRoicBuchPct !== 0
+        ? ` · Buch ${pctRaw(w.incrementalRoicBuchPct)}`
+        : ''
+    return `– (NOPAT rückläufig${buch})`
+  }
+
   const basis = pctRaw(w?.incrementalRoicPct)
   if (basis === '–') return basis
 
@@ -236,7 +250,13 @@ export function baueKeyMetrics(
       gruppe: 'marktdaten',
     },
     { id: 'vol_3m', label: 'Ø Volumen (3M)', wert: volMio != null ? `${zahl(volMio)} Mio.` : '–', gruppe: 'marktdaten' },
-    { id: 'beta', label: '5-Jahres-Beta', wert: zahl(yahoo?.beta), gruppe: 'marktdaten' },
+    {
+      id: 'beta',
+      label: yahoo?.betaQuelle === 'berechnet' ? '5-Jahres-Beta (berechnet)' : '5-Jahres-Beta',
+      wert: zahl(yahoo?.beta),
+      zahl: yahoo?.beta ?? null,
+      gruppe: 'marktdaten',
+    },
     { id: 'float', label: 'Free Float', wert: pctRaw(floatPct), gruppe: 'marktdaten' },
   )
 
@@ -348,9 +368,17 @@ export function baueKeyMetrics(
       gruppe: 'effizienz',
     },
     {
+      id: 'wacc',
+      label: 'WACC (geschätzt, CAPM)',
+      wert: pctRaw(w?.wacc),
+      zahl: w?.wacc ?? null,
+      gruppe: 'effizienz',
+    },
+    {
       id: 'ltm_value_spread',
       label: 'Value Spread (ROIC − WACC)',
       wert: pctSigned(w?.valueSpread),
+      zahl: w?.valueSpread ?? null,
       ton:
         w?.valueSpread == null
           ? undefined
@@ -370,7 +398,11 @@ export function baueKeyMetrics(
       // Fensterlänge zuerst: „Lag 1J“ allein wurde als Einjahresfenster gelesen.
       label: 'Incremental ROIC (ΔNOPAT/ΔIC, 3J, ΔIC 1J versetzt)',
       wert: roiicAnzeige(w),
-      zahl: w?.incrementalRoicPct ?? null,
+      zahl:
+        w?.incrementalRoicRegime === 'schrumpfend' &&
+        (w.incrementalRoicPct == null || w.incrementalRoicPct === 0)
+          ? null
+          : (w?.incrementalRoicPct ?? null),
       gruppe: 'effizienz',
     },
     {

@@ -6,6 +6,7 @@
 
 import 'server-only'
 
+import { berechneBeta5JVsSp500 } from '@/lib/portfolio-analyse/beta-berechnung-server'
 import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
@@ -248,6 +249,10 @@ export function yahooKennzahlenSymbolKandidaten(opts: {
   return out.slice(0, 5)
 }
 
+function betaGueltig(b: number | null | undefined): boolean {
+  return b != null && Number.isFinite(b) && b > 0 && b < 5
+}
+
 /** Lädt Yahoo-Kennzahlen und füllt Lücken über Alternativ-Symbole. */
 export async function ladeYahooFundamentalKennzahlenMitFallback(opts: {
   symbolYahoo: string
@@ -267,6 +272,24 @@ export async function ladeYahooFundamentalKennzahlenMitFallback(opts: {
     if (!hit) continue
     merged = mergeYahooKennzahlen(merged, hit)
     if (!fehlendeKernfelder(merged)) break
+  }
+
+  if (merged) {
+    if (betaGueltig(merged.beta)) {
+      merged.betaQuelle = 'yahoo'
+    } else {
+      const berechnet = await berechneBeta5JVsSp500({
+        symbole: kandidaten,
+        currency: merged.currency,
+      }).catch(() => null)
+      if (berechnet) {
+        merged.beta = berechnet.beta
+        merged.betaQuelle = 'berechnet'
+      } else {
+        merged.beta = undefined
+        merged.betaQuelle = undefined
+      }
+    }
   }
 
   return merged as

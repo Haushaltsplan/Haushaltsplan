@@ -23,7 +23,23 @@ export async function ladeIncrementalRoicAusKapitalbasis(opts: {
   if (!serie || serie.jahre.length < 3) return null
 
   const paket = berechneRoiic(serie.jahre, serie.ableitungen)
-  const leit = paket.organisch?.pct != null ? paket.organisch : paket.buch
+  // Wie berechneRoiic: produktive Variante vor „schrumpfend“/0 % — sonst gewinnt
+  // organisch=0 gegen einen echten Buch-ROIIC.
+  const organisch = paket.organisch
+  const buch = paket.buch
+  const produktiv = (v: typeof organisch) =>
+    v != null && v.pct != null && v.regime !== 'unzureichend' && v.regime !== 'schrumpfend'
+  const messbar = (v: typeof organisch) =>
+    v != null && v.pct != null && v.regime !== 'unzureichend'
+  const leit = produktiv(organisch)
+    ? organisch
+    : produktiv(buch)
+      ? buch
+      : messbar(organisch)
+        ? organisch
+        : messbar(buch)
+          ? buch
+          : null
   if (!leit || leit.pct == null) return null
 
   // Ein-Jahres-Fenster separat, damit die Verbraucher wie bisher zwischen kurz- und

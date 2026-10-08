@@ -191,7 +191,8 @@ export const TITEL_VERGLEICH_ZEILEN: TitelVergleichZeileDef[] = [
   km('ltm_roic', 'ROIC', 'Qualität', true, 'pct'),
   km('ltm_roic_ex_gw', 'ROIC ex Goodwill', 'Qualität', true, 'pct'),
   km('roic_5y_avg', 'ROIC Ø 5J', 'Qualität', true, 'pct'),
-  km('ltm_value_spread', 'Value Spread', 'Qualität', true, 'pct'),
+  km('wacc', 'WACC (geschätzt)', 'Qualität', false, 'pct'),
+  km('ltm_value_spread', 'Value Spread (ROIC−WACC)', 'Qualität', true, 'pct'),
   km('incremental_roic', 'Incremental ROIC', 'Qualität', true, 'pct'),
   km('incremental_value_spread', 'Incr. Value Spread', 'Qualität', true, 'pct'),
   km('reinvest_quote', 'Reinvestitionsquote', 'Qualität', null, 'pct'),
@@ -212,6 +213,6 @@ export const TITEL_VERGLEICH_ZEILEN: TitelVergleichZeileDef[] = [
   km('interest_coverage', 'Zinsdeckung', 'Bilanz', true, 'mult'),
 
   // —— Marktdaten (kompakt) ——
-  km('beta', 'Beta (5J)', 'Marktdaten', null, 'zahl'),
+  km('beta', 'Beta (5J vs. S&P)', 'Marktdaten', null, 'zahl'),
   km('float', 'Free Float', 'Marktdaten', null, 'pct'),
 ]

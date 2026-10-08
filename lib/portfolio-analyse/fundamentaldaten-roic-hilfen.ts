@@ -123,24 +123,32 @@ export function schaetzeWaccPct(opts: {
   pretaxIncomeUsd?: number | null
   taxProvisionUsd?: number | null
 }): number | null {
-  const beta = opts.beta ?? 1
+  // Ohne firmenspezifisches Beta keinen Einheits-WACC (~10 % bei β=1) vortäuschen.
+  const beta = opts.beta
+  if (beta == null || !Number.isFinite(beta) || beta <= 0) return null
+
   const costEquityPct = (RISIKOFREIER_ZINS + beta * MARKTPRAEMIE) * 100
 
   const debt = opts.totalDebtUsd ?? 0
   const equity = opts.marketCapUsd ?? 0
   const total = debt + equity
-  if (total <= 0) return costEquityPct
+  if (total <= 0) return Math.round(costEquityPct * 100) / 100
 
   const wE = equity / total
   const wD = debt / total
 
-  let costDebtPct = 5
+  let costDebtPct: number | null = null
   if (debt > 0 && opts.interestExpenseUsd != null && opts.interestExpenseUsd > 0) {
     costDebtPct = (opts.interestExpenseUsd / debt) * 100
+  } else if (debt <= 0) {
+    costDebtPct = 0
+  } else {
+    // Schulden ohne Zinsaufwand: leichter Spread über rf, nicht pauschal 5 % für alle.
+    costDebtPct = (RISIKOFREIER_ZINS + 0.015) * 100
   }
 
   const t = effektiverSteuersatz(opts.pretaxIncomeUsd ?? null, opts.taxProvisionUsd ?? null)
-  return wE * costEquityPct + wD * costDebtPct * (1 - t)
+  return Math.round((wE * costEquityPct + wD * costDebtPct * (1 - t)) * 100) / 100
 }
 
 /** iROIC − WACC; Fallback über implizites WACC aus ROIC−Spread (Cache-Read ohne Yahoo/iROIC-Kontext). */

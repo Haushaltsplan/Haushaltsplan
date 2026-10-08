@@ -360,25 +360,58 @@ function berechneVariante(
   }
 }
 
+function istMessbareRoiicVariante(v: RoiicVariante | null | undefined): v is RoiicVariante {
+  return v != null && v.pct != null && v.regime !== 'unzureichend'
+}
+
+/** Produktiv = echte Grenzrendite; „schrumpfend“ mit pct=0 ist nur ein Hinweis, kein ROIIC. */
+function istProduktiveRoiicVariante(v: RoiicVariante | null | undefined): v is RoiicVariante {
+  return istMessbareRoiicVariante(v) && v.regime !== 'schrumpfend'
+}
+
+function mitMaHinweis(v: RoiicVariante, art: RoiicArt): RoiicVariante {
+  if (art === 'organisch' && v.fensterUeberspanntMa) {
+    return {
+      ...v,
+      begruendung: `${v.begruendung} Akquisition im Zeitraum — organischer Wert nach oben verzerrt.`,
+    }
+  }
+  return v
+}
+
 /**
  * Festes Drei-Jahres-Fenster für beide Varianten. Organisch darf nicht heimlich auf
  * zwei Jahre verkürzen, nur weil ein Deal im Fenster liegt — sonst vergleicht man
  * bei Rollins 11 % (2J, dealfrei) mit 88 % Buch (3J inkl. Deal). Der Deal wird
  * gekennzeichnet, nicht umgangen. Kürzer nur, wenn die Historie für drei Jahre fehlt.
+ *
+ * „schrumpfend“ (NOPAT rückläufig → pct=0) erst als letzter Fallback — sonst gewinnt
+ * eine sinnlose 0 % gegen einen echten Buch-ROIIC (z. B. ODFL).
  */
 function waehleVariante(zeilen: Zeile[], art: RoiicArt, maJahre: number[]): RoiicVariante | null {
+  let schrumpfendFallback: RoiicVariante | null = null
   for (const spanne of FENSTER_PRAEFERENZ) {
     const v = berechneVariante(zeilen, art, spanne, maJahre)
-    if (!v || v.pct == null || v.regime === 'unzureichend') continue
-    if (art === 'organisch' && v.fensterUeberspanntMa) {
-      return {
-        ...v,
-        begruendung: `${v.begruendung} Akquisition im Zeitraum — organischer Wert nach oben verzerrt.`,
-      }
+    if (!istMessbareRoiicVariante(v)) continue
+    if (v.regime === 'schrumpfend') {
+      if (!schrumpfendFallback) schrumpfendFallback = mitMaHinweis(v, art)
+      continue
     }
-    return v
+    return mitMaHinweis(v, art)
   }
+  if (schrumpfendFallback) return schrumpfendFallback
   return berechneVariante(zeilen, art, FENSTER_PRAEFERENZ[0]!, maJahre)
+}
+
+function waehleLeitVariante(
+  organisch: RoiicVariante | null,
+  buch: RoiicVariante | null,
+): RoiicVariante | null {
+  if (istProduktiveRoiicVariante(organisch)) return organisch
+  if (istProduktiveRoiicVariante(buch)) return buch
+  if (istMessbareRoiicVariante(organisch)) return organisch
+  if (istMessbareRoiicVariante(buch)) return buch
+  return null
 }
 
 export function berechneRoiic(
@@ -400,7 +433,7 @@ export function berechneRoiic(
     }
   }
 
-  const leit = organisch?.pct != null ? organisch : buch?.pct != null ? buch : null
+  const leit = waehleLeitVariante(organisch, buch)
 
   return {
     roiicPct: leit?.pct ?? null,

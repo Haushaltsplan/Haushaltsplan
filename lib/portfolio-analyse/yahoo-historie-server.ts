@@ -183,17 +183,11 @@ export async function ladeYahooHistorieBatch(
 
 export type YahooKursPunkt = { datum: string; kurs: number }
 
-/**
- * Monatliche **Roh**-Schlusskurse (nicht dividendenbereinigt).
- *
- * Für historische Multiples darf nicht `adjclose` verwendet werden: die Dividendenbereinigung
- * drückt alte Kurse, während GuV-EPS unbereinigt bleibt — KGV würde bei Ausschüttern
- * systematisch zu niedrig. Splits stecken bereits im Rohkurs.
- */
-export async function ladeYahooMonatsRohkurse(
+async function ladeYahooMonatsKurse(
   symbol: string,
   vonDatum: string,
   bisDatum: string,
+  modus: 'roh' | 'adj',
 ): Promise<YahooKursPunkt[]> {
   const sym = symbol.trim().toUpperCase()
   if (!sym) return []
@@ -210,13 +204,17 @@ export async function ladeYahooMonatsRohkurse(
     try {
       const res = await fetch(url, {
         headers: YAHOO_FETCH_HEADERS,
-        cache: 'no-store',
+        // Adj-Serie für Beta: stündlich cachen; Roh für Multiples: frisch
+        ...(modus === 'adj' ? { next: { revalidate: 3600 } } : { cache: 'no-store' as const }),
       })
       if (!res.ok) continue
       const j = (await res.json()) as YahooChartJson
       const result = j.chart?.result?.[0]
       if (!result?.timestamp?.length) continue
-      const closes = result.indicators?.quote?.[0]?.close ?? []
+      const closes =
+        modus === 'adj'
+          ? (result.indicators?.adjclose?.[0]?.adjclose ?? result.indicators?.quote?.[0]?.close ?? [])
+          : (result.indicators?.quote?.[0]?.close ?? [])
       const out: YahooKursPunkt[] = []
       for (let i = 0; i < result.timestamp.length; i++) {
         const datum = tagAusUnix(result.timestamp[i]!)
@@ -230,6 +228,32 @@ export async function ladeYahooMonatsRohkurse(
     }
   }
   return []
+}
+
+/**
+ * Monatliche **Roh**-Schlusskurse (nicht dividendenbereinigt).
+ *
+ * Für historische Multiples darf nicht `adjclose` verwendet werden: die Dividendenbereinigung
+ * drückt alte Kurse, während GuV-EPS unbereinigt bleibt — KGV würde bei Ausschüttern
+ * systematisch zu niedrig. Splits stecken bereits im Rohkurs.
+ */
+export async function ladeYahooMonatsRohkurse(
+  symbol: string,
+  vonDatum: string,
+  bisDatum: string,
+): Promise<YahooKursPunkt[]> {
+  return ladeYahooMonatsKurse(symbol, vonDatum, bisDatum, 'roh')
+}
+
+/**
+ * Monatliche **dividendenbereinigte** Schlusskurse (Total Return) — für Beta vs. Markt.
+ */
+export async function ladeYahooMonatsAdjKurse(
+  symbol: string,
+  vonDatum: string,
+  bisDatum: string,
+): Promise<YahooKursPunkt[]> {
+  return ladeYahooMonatsKurse(symbol, vonDatum, bisDatum, 'adj')
 }
 
 /** Nächster Kurs zu einem ISO-Datum, sonst null wenn weiter weg als `toleranzTage`. */
