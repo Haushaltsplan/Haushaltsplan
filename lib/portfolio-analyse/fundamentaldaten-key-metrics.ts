@@ -257,7 +257,13 @@ export function baueKeyMetrics(
       zahl: yahoo?.beta ?? null,
       gruppe: 'marktdaten',
     },
-    { id: 'float', label: 'Free Float', wert: pctRaw(floatPct), gruppe: 'marktdaten' },
+    {
+      id: 'float',
+      label: 'Free Float',
+      wert: pctRaw(floatPct),
+      zahl: floatPct ?? null,
+      gruppe: 'marktdaten',
+    },
   )
 
   const netDebt = w?.netDebt ?? null
@@ -296,6 +302,7 @@ export function baueKeyMetrics(
       id: 'net_debt_ebitda',
       label: 'Net Debt / EBITDA (LTM)',
       wert: netDebtEbitda != null ? (netDebtEbitda < 0 ? `(${multiple(Math.abs(netDebtEbitda))})` : multiple(netDebtEbitda)) : '–',
+      zahl: netDebtEbitda ?? null,
       gruppe: 'kapitalstruktur',
     },
     {
@@ -307,12 +314,14 @@ export function baueKeyMetrics(
             ? `(${multiple(Math.abs(w.netDebtFcf))})`
             : multiple(w.netDebtFcf)
           : '–',
+      zahl: w?.netDebtFcf ?? null,
       gruppe: 'kapitalstruktur',
     },
     {
       id: 'interest_coverage',
       label: 'Zinsdeckung (EBIT/Zins)',
       wert: w?.interestCoverage != null ? multiple(w.interestCoverage) : '–',
+      zahl: w?.interestCoverage ?? null,
       gruppe: 'kapitalstruktur',
     },
   )
@@ -325,6 +334,7 @@ export function baueKeyMetrics(
       id: 'ltm_brutto',
       label: 'LTM Bruttomarge',
       wert: w?.bruttoMargeSchein ? '– (kein COGS)' : pctRaw(w?.bruttoMarge),
+      zahl: w?.bruttoMargeSchein ? null : (w?.bruttoMarge ?? null),
       gruppe: 'effizienz',
     },
     {
@@ -335,36 +345,42 @@ export function baueKeyMetrics(
         : w?.bruttoMargeStd10y != null
           ? `${zahl(w.bruttoMargeStd10y)} Pp.${w.pricingPowerOk === false ? ' ⚠' : w.pricingPowerOk ? ' ✓' : ''}`
           : '–',
+      zahl: w?.bruttoMargeSchein ? null : (w?.bruttoMargeStd10y ?? null),
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_ebit',
       label: 'LTM EBIT-Marge',
       wert: pctRaw(w?.ebitMarge),
+      zahl: w?.ebitMarge ?? null,
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_roa',
       label: 'LTM ROA',
       wert: pctRaw(w?.roa),
+      zahl: w?.roa ?? null,
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_roe',
       label: 'LTM ROE',
       wert: pctRaw(w?.roe),
+      zahl: w?.roe ?? null,
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_roic',
       label: 'LTM ROIC',
       wert: pctRaw(w?.roicAnzeige ?? w?.roic ?? w?.roicExGoodwill),
+      zahl: w?.roicAnzeige ?? w?.roic ?? w?.roicExGoodwill ?? null,
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_roic_ex_gw',
       label: 'LTM ROIC ex Goodwill',
       wert: pctRaw(w?.roicExGoodwill),
+      zahl: w?.roicExGoodwill ?? null,
       gruppe: 'effizienz',
     },
     {
@@ -391,6 +407,7 @@ export function baueKeyMetrics(
       id: 'reinvest_quote',
       label: 'Reinvestitionsquote (CapEx+M&A−D&A)/FCF',
       wert: pctMitVorzeichen(w?.reinvestitionsquotePct),
+      zahl: w?.reinvestitionsquotePct ?? null,
       gruppe: 'effizienz',
     },
     {
@@ -431,6 +448,7 @@ export function baueKeyMetrics(
       id: 'sloan_ratio',
       label: 'Sloan-Ratio (Accruals)',
       wert: w?.sloanRatio != null ? zahl(w.sloanRatio) : '–',
+      zahl: w?.sloanRatio ?? null,
       gruppe: 'effizienz',
     },
     {
@@ -440,6 +458,7 @@ export function baueKeyMetrics(
         w?.beneishMScore != null
           ? `${zahl(w.beneishMScore)}${w.beneishRisiko ? ` (${w.beneishRisiko})` : ''}`
           : '–',
+      zahl: w?.beneishMScore ?? null,
       gruppe: 'effizienz',
     },
   )
@@ -464,13 +483,32 @@ export function baueKeyMetrics(
   const ebitdaCagr2 = ebitdaCagr2YahooOk ?? ebitdaCagr2Ms
 
   out.push(
-    { id: 'fwd_rev_cagr_2y', label: 'Erw. Umsatz-CAGR (2J)', wert: pctRaw(revCagr2), gruppe: 'wachstum' },
-    { id: 'fwd_ebitda_cagr_2y', label: 'Erw. EBITDA-CAGR (2J)', wert: pctRaw(ebitdaCagr2), gruppe: 'wachstum' },
-    { id: 'fwd_eps_cagr_2y', label: 'Erw. EPS-CAGR (2J)', wert: pctRaw(epsCagr2), gruppe: 'wachstum' },
+    {
+      id: 'fwd_rev_cagr_2y',
+      label: 'Erw. Umsatz-CAGR (2J)',
+      wert: pctRaw(revCagr2),
+      zahl: revCagr2 ?? null,
+      gruppe: 'wachstum',
+    },
+    {
+      id: 'fwd_ebitda_cagr_2y',
+      label: 'Erw. EBITDA-CAGR (2J)',
+      wert: pctRaw(ebitdaCagr2),
+      zahl: ebitdaCagr2 ?? null,
+      gruppe: 'wachstum',
+    },
+    {
+      id: 'fwd_eps_cagr_2y',
+      label: 'Erw. EPS-CAGR (2J)',
+      wert: pctRaw(epsCagr2),
+      zahl: epsCagr2 ?? null,
+      gruppe: 'wachstum',
+    },
     {
       id: 'rev_cagr_3y',
       label: 'Umsatz-CAGR (3J)',
       wert: pctRaw(w?.umsatzCagr3),
+      zahl: w?.umsatzCagr3 ?? null,
       gruppe: 'wachstum',
     },
     {
@@ -484,12 +522,14 @@ export function baueKeyMetrics(
       id: 'ebitda_cagr_3y',
       label: 'EBITDA-CAGR (3J)',
       wert: pctRaw(w?.ebitdaCagr3),
+      zahl: w?.ebitdaCagr3 ?? null,
       gruppe: 'wachstum',
     },
     {
       id: 'eps_cagr_3y',
       label: 'EPS-CAGR (3J)',
       wert: pctRaw(w?.epsCagr3),
+      zahl: w?.epsCagr3 ?? null,
       gruppe: 'wachstum',
     },
     {
@@ -577,18 +617,44 @@ export function baueKeyMetrics(
       id: 'target_price',
       label: 'Kursziel (Konsens)',
       wert: zahl(yahoo?.targetMeanPrice, ' $'),
+      zahl: yahoo?.targetMeanPrice ?? null,
       gruppe: 'bewertung_ntm',
     },
-    { id: 'ntm_ev_rev', label: 'FY EV / Umsatz', wert: multiple(fwdEvRevenue), gruppe: 'bewertung_ntm' },
-    { id: 'ntm_ev_ebitda', label: 'FY EV / EBITDA', wert: multiple(fwdEvEbitda), gruppe: 'bewertung_ntm' },
-    { id: 'ntm_pe', label: 'FY KGV (P/E)', wert: multiple(fwdKgv), gruppe: 'bewertung_ntm' },
+    {
+      id: 'ntm_ev_rev',
+      label: 'FY EV / Umsatz',
+      wert: multiple(fwdEvRevenue),
+      zahl: fwdEvRevenue ?? null,
+      gruppe: 'bewertung_ntm',
+    },
+    {
+      id: 'ntm_ev_ebitda',
+      label: 'FY EV / EBITDA',
+      wert: multiple(fwdEvEbitda),
+      zahl: fwdEvEbitda ?? null,
+      gruppe: 'bewertung_ntm',
+    },
+    {
+      id: 'ntm_pe',
+      label: 'FY KGV (P/E)',
+      wert: multiple(fwdKgv),
+      zahl: fwdKgv ?? null,
+      gruppe: 'bewertung_ntm',
+    },
     {
       id: 'peg_ratio',
       label: 'PEG (Fwd-KGV / EPS-Wachstum)',
       wert: multiple(w?.pegRatio),
+      zahl: w?.pegRatio ?? null,
       gruppe: 'bewertung_ntm',
     },
-    { id: 'ntm_mc_fcf', label: 'FY MC / FCF', wert: multiple(fwdMcFcf), gruppe: 'bewertung_ntm' },
+    {
+      id: 'ntm_mc_fcf',
+      label: 'FY MC / FCF',
+      wert: multiple(fwdMcFcf),
+      zahl: fwdMcFcf ?? null,
+      gruppe: 'bewertung_ntm',
+    },
     {
       id: 'ntm_fcf_rendite',
       label: 'FY FCF-Rendite',
@@ -596,29 +662,39 @@ export function baueKeyMetrics(
       zahl: fyFcfRendite,
       gruppe: 'bewertung_ntm',
     },
-    { id: 'ltm_ev_rev', label: 'LTM EV / Umsatz', wert: multiple(ltmEvRevenue), gruppe: 'bewertung_ltm' },
+    {
+      id: 'ltm_ev_rev',
+      label: 'LTM EV / Umsatz',
+      wert: multiple(ltmEvRevenue),
+      zahl: ltmEvRevenue ?? null,
+      gruppe: 'bewertung_ltm',
+    },
     {
       id: 'ltm_pe',
       label: 'LTM KGV (P/E)',
       wert: multiple(yahoo?.trailingPE ?? letzterGeschaeftsjahresWert(kgvZeile, perioden)),
+      zahl: yahoo?.trailingPE ?? letzterGeschaeftsjahresWert(kgvZeile, perioden) ?? null,
       gruppe: 'bewertung_ltm',
     },
     {
       id: 'ltm_pb',
       label: 'LTM KBV (P/B)',
       wert: multiple(letzterGeschaeftsjahresWert(pbZeile, perioden) ?? w?.pb),
+      zahl: letzterGeschaeftsjahresWert(pbZeile, perioden) ?? w?.pb ?? null,
       gruppe: 'bewertung_ltm',
     },
     {
       id: 'ltm_ps',
       label: 'LTM KUV (P/S)',
       wert: multiple(letzterGeschaeftsjahresWert(psZeile, perioden)),
+      zahl: letzterGeschaeftsjahresWert(psZeile, perioden) ?? null,
       gruppe: 'bewertung_ltm',
     },
     {
       id: 'ltm_pfcf',
       label: 'LTM MC / FCF',
       wert: multiple(ltmPfcf),
+      zahl: ltmPfcf ?? null,
       gruppe: 'bewertung_ltm',
     },
     {
@@ -646,12 +722,14 @@ export function baueKeyMetrics(
       id: 'fcf_conversion',
       label: 'FCF-Conversion (FCF/Nettogewinn)',
       wert: pctRaw(w?.fcfConversion),
+      zahl: w?.fcfConversion ?? null,
       gruppe: 'effizienz',
     },
     {
       id: 'aktien_verwaesserung',
       label: 'Aktien-Verwässerung p.a.',
       wert: pctMitVorzeichen(w?.aktienVerwaesserungJaehrlichPct),
+      zahl: w?.aktienVerwaesserungJaehrlichPct ?? null,
       ton:
         w?.aktienVerwaesserungJaehrlichPct == null
           ? undefined
@@ -666,12 +744,14 @@ export function baueKeyMetrics(
       id: 'rule_of_40',
       label: 'Rule of 40',
       wert: w?.ruleOf40 != null ? zahl(w.ruleOf40) : '–',
+      zahl: w?.ruleOf40 ?? null,
       gruppe: 'wachstum',
     },
     {
       id: 'sbc_fcf_ratio',
       label: 'SBC / FCF',
       wert: pctRaw(w?.sbcFcfRatio),
+      zahl: w?.sbcFcfRatio ?? null,
       gruppe: 'effizienz',
     },
     {
@@ -693,6 +773,7 @@ export function baueKeyMetrics(
       id: 'nrr',
       label: 'NRR (Net Retention)',
       wert: pctRaw(w?.nrrPct),
+      zahl: w?.nrrPct ?? null,
       gruppe: 'wachstum',
     },
   )
@@ -783,16 +864,30 @@ export function korrigiereFwdWachstumKeyMetrics(
   })
 }
 
-/** Prozent-Kennzahl aus `zahl` oder Anzeige-String („26,4 %“ / „(1,2 %)“). */
+/** Prozent-Kennzahl aus `zahl` oder Anzeige-String („26,4 %“ / „−1,2 %“ / „(1,2 %)“). */
 function kmPctAusMetric(m: FundamentalKeyMetric | undefined): number | null {
   if (!m) return null
   if (m.zahl != null && Number.isFinite(m.zahl)) return m.zahl
+  // lazy: vermeidet Zirkel-Import; gleiche Regeln wie titel-vergleich-parse
   const roh = m.wert?.trim()
-  if (!roh || roh === '–' || roh === '-') return null
-  const neg = /^\(.*\)$/.test(roh.replace(/\s/g, ''))
-  const n = Number(roh.replace(/[()%\s]/g, '').replace(',', '.'))
+  if (!roh || roh === '–' || roh === '-' || roh === '—') return null
+  let t = roh.replace(/\s*(Pp\.|pp\.|✓|⚠).*$/i, '')
+  const inKlammern = /^\(.*\)$/.test(t.replace(/\s/g, ''))
+  t = t
+    .replace(/[()]/g, '')
+    .replace(/%/g, '')
+    .replace(/\s/g, '')
+    .replace(/[\u2212\u2013\u2014]/g, '-')
+    .replace(/\./g, '')
+    .replace(',', '.')
+  const mSign = t.match(/^([+-]?)(.*)$/)
+  if (!mSign) return null
+  const body = (mSign[2] ?? '').replace(/[^\d.]/g, '')
+  if (!body) return null
+  let n = Number(`${mSign[1] ?? ''}${body}`)
   if (!Number.isFinite(n)) return null
-  return neg ? -Math.abs(n) : n
+  if (inKlammern && n > 0) n = -n
+  return n
 }
 
 /**
@@ -895,9 +990,12 @@ export function korrigiereEffizienzKeyMetrics(
         ton: spread == null ? undefined : spread >= 0 ? 'positiv' : 'negativ',
       }
     }
-    if (k.id === 'fcf_conversion') return { ...k, wert: pctRaw(w.fcfConversion) }
     if (k.id === 'sloan_ratio') {
-      return { ...k, wert: w.sloanRatio != null ? zahl(w.sloanRatio) : '–' }
+      return {
+        ...k,
+        wert: w.sloanRatio != null ? zahl(w.sloanRatio) : '–',
+        zahl: w.sloanRatio ?? null,
+      }
     }
     if (k.id === 'beneish_m') {
       return {
@@ -906,9 +1004,29 @@ export function korrigiereEffizienzKeyMetrics(
           w.beneishMScore != null
             ? `${zahl(w.beneishMScore)}${w.beneishRisiko ? ` (${w.beneishRisiko})` : ''}`
             : '–',
+        zahl: w.beneishMScore ?? null,
       }
     }
-    if (k.id === 'reinvest_quote') return { ...k, wert: pctMitVorzeichen(w.reinvestitionsquotePct) }
+    if (k.id === 'reinvest_quote') {
+      return {
+        ...k,
+        wert: pctMitVorzeichen(w.reinvestitionsquotePct),
+        zahl: w.reinvestitionsquotePct ?? k.zahl ?? null,
+      }
+    }
+    if (k.id === 'aktien_verwaesserung') {
+      const v = w.aktienVerwaesserungJaehrlichPct
+      if (v == null) return k
+      return {
+        ...k,
+        wert: pctMitVorzeichen(v),
+        zahl: v,
+        ton: v <= 0 ? 'positiv' : v >= 1.5 ? 'negativ' : 'neutral',
+      }
+    }
+    if (k.id === 'fcf_conversion') {
+      return { ...k, wert: pctRaw(w.fcfConversion), zahl: w.fcfConversion ?? k.zahl ?? null }
+    }
     if (k.id === 'roic_5y_avg') return { ...k, wert: pctRaw(w.roic5yAvgPct), zahl: w.roic5yAvgPct ?? null }
     if (k.id === 'incremental_value_spread') {
       return { ...k, ...iSpreadAnzeige(incrementalSpread) }

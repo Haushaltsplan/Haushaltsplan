@@ -35,13 +35,30 @@ import {
   type TitelVergleichState,
 } from '@/lib/portfolio-analyse/titel-vergleich-store'
 
-function fmtWert(v: number | null | undefined, format: TitelVergleichZeileDef['format']): string {
+function fmtWert(
+  v: number | null | undefined,
+  format: TitelVergleichZeileDef['format'],
+  opts?: { signedDisplay?: boolean },
+): string {
   if (v == null || !Number.isFinite(v)) return '—'
-  if (format === 'pct') {
-    return `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`
+  if (format === 'pct' || format === 'pp') {
+    const abs = Math.abs(v).toLocaleString('de-DE', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    })
+    const suffix = format === 'pp' ? ' Pp.' : ' %'
+    if (v < 0) return `−${abs}${suffix}`
+    if (v > 0 && opts?.signedDisplay) return `+${abs}${suffix}`
+    return `${abs}${suffix}`
   }
   if (format === 'mult') {
-    return `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 })}×`
+    const abs = Math.abs(v).toLocaleString('de-DE', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 2,
+    })
+    // Net Cash: Klammern wie in Fundamentaldaten
+    if (v < 0) return `(${abs}×)`
+    return `${abs}×`
   }
   return v.toLocaleString('de-DE', { maximumFractionDigits: 2 })
 }
@@ -309,16 +326,27 @@ export function PortfolioTitelVergleichClient() {
                               {gruppe}
                             </p>
                             <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
-                              {gz.map((z) => (
-                                <div key={z.id} className="contents">
-                                  <dt className="min-w-0 text-[var(--app-text-muted)]">
-                                    <VergleichKennzahlLabel z={z} />
-                                  </dt>
-                                  <dd className="text-right tabular-nums text-[var(--app-text)]">
-                                    {fmtWert(sp?.werte[z.id as TitelVergleichKennzahlId], z.format)}
-                                  </dd>
-                                </div>
-                              ))}
+                              {gz.map((z) => {
+                                const wert = sp?.werte[z.id as TitelVergleichKennzahlId]
+                                const refWert = referenzSpalte?.werte[z.id]
+                                return (
+                                  <div key={z.id} className="contents">
+                                    <dt className="min-w-0 text-[var(--app-text-muted)]">
+                                      <VergleichKennzahlLabel z={z} />
+                                    </dt>
+                                    <dd
+                                      className={`text-right tabular-nums ${vsFarbe(
+                                        wert,
+                                        refWert,
+                                        z.higherIsBetter,
+                                        istRef,
+                                      )}`}
+                                    >
+                                      {fmtWert(wert, z.format, { signedDisplay: z.signedDisplay })}
+                                    </dd>
+                                  </div>
+                                )
+                              })}
                             </dl>
                           </div>
                         ))}
@@ -466,7 +494,7 @@ export function PortfolioTitelVergleichClient() {
                                   istRef,
                                 )}`}
                               >
-                                {fmtWert(wert, z.format)}
+                                {fmtWert(wert, z.format, { signedDisplay: z.signedDisplay })}
                               </div>
                             )
                           })}

@@ -3,6 +3,7 @@ import 'server-only'
 import { berechneHistorischeBewertung } from '@/lib/portfolio-analyse/fundamentaldaten-historische-bewertung'
 import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-server'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { parseDeZahl } from '@/lib/portfolio-analyse/titel-vergleich-parse'
 import {
   TITEL_VERGLEICH_ZEILEN,
   type TitelVergleichAnfrage,
@@ -19,27 +20,13 @@ export type {
   TitelVergleichZeileDef,
 } from '@/lib/portfolio-analyse/titel-vergleich-types'
 export { TITEL_VERGLEICH_ZEILEN }
-
-function parseDeZahl(raw: string | null | undefined): number | null {
-  if (!raw) return null
-  const t = raw
-    .trim()
-    .replace(/%/g, '')
-    .replace(/[x×$€]/gi, '')
-    .replace(/\s/g, '')
-    .replace(/\./g, '')
-    .replace(',', '.')
-  const n = Number(t.replace(/[^\d.+-]/g, ''))
-  return Number.isFinite(n) ? n : null
-}
+export { parseDeZahl } from '@/lib/portfolio-analyse/titel-vergleich-parse'
 
 function kmZahl(paket: FundamentaldatenPaket, id: string): number | null {
   const km = paket.keyMetrics.find((m) => m.id === id)
   if (!km) return null
   if (km.zahl != null && Number.isFinite(km.zahl)) return km.zahl
-  const t = km.wert?.trim()
-  if (!t || t === '–' || t === '-' || t === 'NM') return null
-  return parseDeZahl(t)
+  return parseDeZahl(km.wert)
 }
 
 function snapshotMio(paket: FundamentaldatenPaket, id: string): number | null {
@@ -82,7 +69,6 @@ function wertFuerZeile(
     return snapshotMio(paket, def.id)
   }
 
-  // km (+ Fallbacks), Sonderfall EV/EBITDA auch aus Zeile
   const ids = [def.id, ...(def.kmFallbacks ?? [])]
   for (const id of ids) {
     const v = kmZahl(paket, id)

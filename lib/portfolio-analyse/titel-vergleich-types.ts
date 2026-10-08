@@ -7,7 +7,9 @@ export type TitelVergleichZeileDef = {
   gruppe: string
   /** true = höher besser, false = niedriger besser, null = neutral */
   higherIsBetter: boolean | null
-  format: 'pct' | 'mult' | 'zahl'
+  format: 'pct' | 'mult' | 'zahl' | 'pp'
+  /** true = +/− wie in Fundamentaldaten (Verwässerung, Reinvest). */
+  signedDisplay?: boolean
   /**
    * Quelle:
    * - km: paket.keyMetrics[id]
@@ -54,8 +56,9 @@ function km(
   higherIsBetter: boolean | null,
   format: TitelVergleichZeileDef['format'],
   kmFallbacks?: string[],
+  signedDisplay?: boolean,
 ): TitelVergleichZeileDef {
-  return { id, label, gruppe, higherIsBetter, format, quelle: 'km', kmFallbacks }
+  return { id, label, gruppe, higherIsBetter, format, quelle: 'km', kmFallbacks, signedDisplay }
 }
 
 function zeile(
@@ -183,7 +186,7 @@ export const TITEL_VERGLEICH_ZEILEN: TitelVergleichZeileDef[] = [
 
   // —— Qualität / Rentabilität ——
   km('ltm_brutto', 'Bruttomarge', 'Qualität', true, 'pct'),
-  km('brutto_std_10y', 'Bruttomarge σ 10J', 'Qualität', false, 'pct'),
+  km('brutto_std_10y', 'Bruttomarge σ 10J (Pp.)', 'Qualität', false, 'pp'),
   km('ltm_ebit', 'EBIT-Marge', 'Qualität', true, 'pct'),
   zeile('fcf_marge', 'FCF-Marge', 'Qualität', true, 'pct'),
   km('ltm_roa', 'ROA', 'Qualität', true, 'pct'),
@@ -195,16 +198,16 @@ export const TITEL_VERGLEICH_ZEILEN: TitelVergleichZeileDef[] = [
   km('ltm_value_spread', 'Value Spread (ROIC−WACC)', 'Qualität', true, 'pct'),
   km('incremental_roic', 'Incremental ROIC', 'Qualität', true, 'pct'),
   km('incremental_value_spread', 'Incr. Value Spread', 'Qualität', true, 'pct'),
-  km('reinvest_quote', 'Reinvestitionsquote', 'Qualität', null, 'pct'),
-  km('rule_of_40', 'Rule of 40', 'Qualität', true, 'pct'),
+  km('reinvest_quote', 'Reinvestitionsquote', 'Qualität', null, 'pct', undefined, true),
+  km('rule_of_40', 'Rule of 40', 'Qualität', true, 'zahl'),
   km('nrr', 'Net Revenue Retention', 'Qualität', true, 'pct'),
 
   // —— Effizienz / Kapital ——
   km('fcf_conversion', 'FCF-Conversion', 'Effizienz', true, 'pct'),
-  km('aktien_verwaesserung', 'Aktien-Verwässerung p.a.', 'Effizienz', false, 'pct'),
+  km('aktien_verwaesserung', 'Aktien-Verwässerung p.a.', 'Effizienz', false, 'pct', undefined, true),
   km('sbc_fcf_ratio', 'SBC / FCF', 'Effizienz', false, 'pct'),
   km('sbc_ocf_ratio', 'SBC / OCF', 'Effizienz', false, 'pct'),
-  km('sloan_ratio', 'Sloan Ratio', 'Effizienz', null, 'pct'),
+  km('sloan_ratio', 'Sloan Ratio', 'Effizienz', null, 'zahl'),
   km('beneish_m', 'Beneish M-Score', 'Effizienz', false, 'zahl'),
 
   // —— Bilanz ——
