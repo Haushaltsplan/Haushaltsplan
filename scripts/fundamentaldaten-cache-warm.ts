@@ -1,5 +1,5 @@
 /**
- * Fundamentaldaten-Paket-Cache vorwärmen (Whitelist + Watchlist).
+ * Fundamentaldaten-Paket-Cache vorwärmen (Depot ∪ Watchlist — ohne Radar-Whitelist).
  *
  * Voraussetzung: Migration `20260823220000_fundamentaldaten_paket_cache.sql`.
  *
@@ -15,7 +15,7 @@ import {
   fundamentaldatenCacheKey,
   ladeFundamentaldatenPaketCache,
 } from '../lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
-import { ladeNachkaufKandidaten } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
+import { ladeNachkaufWatchlistAusCloud } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import { ladeDepotAktieAnfragen } from '../lib/portfolio-analyse/depot-gewichte-server'
 import { runWithPrimaeremOwner } from '../lib/request-owner'
 import type { WhitelistPosition } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
@@ -127,25 +127,36 @@ async function main() {
     process.exit(1)
   }
 
-  const { radar, depot } = await runWithPrimaeremOwner(async () => ({
-    radar: await ladeNachkaufKandidaten(),
+  const { depot, watchlist } = await runWithPrimaeremOwner(async () => ({
     depot: await ladeDepotAktieAnfragen(),
+    watchlist: await ladeNachkaufWatchlistAusCloud(),
   }))
-  const gesehen = new Set(radar.map((k) => k.isin.toUpperCase()))
-  const extra: WhitelistPosition[] = []
+  const gesehen = new Set<string>()
+  const kandidaten: WhitelistPosition[] = []
   for (const d of depot) {
     const isin = d.isin?.trim().toUpperCase()
     if (!isin || gesehen.has(isin)) continue
     gesehen.add(isin)
-    extra.push({
+    kandidaten.push({
       isin,
       name: d.name ?? isin,
       symbolYahoo: d.symbolYahoo,
       symbolCandidates: d.symbolCandidates,
+      quelle: 'depot',
+    })
+  }
+  for (const w of watchlist) {
+    const isin = w.isin.trim().toUpperCase()
+    if (!isin || gesehen.has(isin)) continue
+    gesehen.add(isin)
+    kandidaten.push({
+      isin,
+      name: w.name,
+      symbolYahoo: w.symbolYahoo,
+      symbolCandidates: w.symbolCandidates,
       quelle: 'watchlist',
     })
   }
-  const kandidaten = [...radar, ...extra]
   const liste = kandidaten.filter((k) => {
     if (filter.size === 0) return true
     const t = tickerVon(k)
@@ -159,7 +170,7 @@ async function main() {
   const schnell = liste.filter((k) => !istEuIsin(k.isin))
   const langsam = liste.filter((k) => istEuIsin(k.isin))
   console.log(
-    `Warmup ${liste.length} Titel (Whitelist+Watchlist+Depot)${erneuern ? ', erneuern' : ''} — ${schnell.length} parallel, ${langsam.length} EU nacheinander`,
+    `Warmup ${liste.length} Titel (Depot+Watchlist)${erneuern ? ', erneuern' : ''} — ${schnell.length} parallel, ${langsam.length} EU nacheinander`,
   )
 
   let ok = 0

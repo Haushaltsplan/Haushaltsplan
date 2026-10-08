@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
+import { ladeNachkaufWatchlistAusCloud } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import { ladeDepotAktieAnfragen } from '@/lib/portfolio-analyse/depot-gewichte-server'
 import type { FundamentaldatenAnfrage } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
@@ -22,33 +22,55 @@ function unique(werte: Array<string | null | undefined>): string[] {
   return out
 }
 
+/** Fundamentaldaten-Batch: nur Depot ∪ Watchlist — ohne Nachkauf-Radar-Whitelist. */
 export async function GET(req: Request) {
   return jsonMitOwner(req, async () => {
   try {
-    const kandidaten = await ladeNachkaufKandidaten()
-    const depot = await ladeDepotAktieAnfragen()
-    const ziele: FundamentaldatenAnfrage[] = kandidaten.map((k) => {
-      const ken = isinKenntnis(k.isin)
-      return {
-        isin: k.isin,
-        name: k.name,
-        symbolYahoo: k.symbolYahoo ?? ken?.symbolYahoo ?? null,
+    const [depot, watchlist] = await Promise.all([
+      ladeDepotAktieAnfragen(),
+      ladeNachkaufWatchlistAusCloud(),
+    ])
+    const ziele: FundamentaldatenAnfrage[] = []
+    const gesehen = new Set<string>()
+
+    for (const d of depot) {
+      const isin = d.isin?.trim().toUpperCase()
+      if (!isin || gesehen.has(isin)) continue
+      gesehen.add(isin)
+      const ken = isinKenntnis(isin)
+      ziele.push({
+        ...d,
+        isin,
+        symbolYahoo: d.symbolYahoo ?? ken?.symbolYahoo ?? null,
         symbolCandidates: unique([
-          ...(k.symbolCandidates ?? []),
+          ...(d.symbolCandidates ?? []),
           ken?.symbolYahoo,
           ...(ken?.symbolCandidates ?? []),
         ]),
         frequenz: 'jahr',
         cacheModus: 'erneuern',
-      }
-    })
-    const gesehen = new Set(ziele.map((z) => z.isin?.trim().toUpperCase()).filter(Boolean) as string[])
-    for (const d of depot) {
-      const isin = d.isin?.trim().toUpperCase()
+      })
+    }
+
+    for (const w of watchlist) {
+      const isin = w.isin?.trim().toUpperCase()
       if (!isin || gesehen.has(isin)) continue
       gesehen.add(isin)
-      ziele.push({ ...d, cacheModus: 'erneuern' })
+      const ken = isinKenntnis(isin)
+      ziele.push({
+        isin,
+        name: w.name,
+        symbolYahoo: w.symbolYahoo ?? ken?.symbolYahoo ?? null,
+        symbolCandidates: unique([
+          ...w.symbolCandidates,
+          ken?.symbolYahoo,
+          ...(ken?.symbolCandidates ?? []),
+        ]),
+        frequenz: 'jahr',
+        cacheModus: 'erneuern',
+      })
     }
+
     return NextResponse.json({ ok: true, ziele, anzahl: ziele.length })
   } catch (e) {
     console.error('[fundamentaldaten/cache-ziele]', e)

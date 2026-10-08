@@ -265,7 +265,7 @@ export function PaFundamentalInhalt({
     }
     const okStart = window.confirm(
       `${ziele.length} Titel neu scrapen und den Cloud-Cache überschreiben?\n\n` +
-        'Whitelist, Watchlist und Depot. Langsamer Batch mit Retries (oft 45–90 Min) — Seite offen lassen.',
+        'Nur Depot und Watchlist. Langsamer Batch mit Retries (oft 45–90 Min) — Seite offen lassen.',
     )
     if (!okStart) return
 
@@ -539,7 +539,7 @@ export function PaFundamentalInhalt({
                     onClick={() => void aktualisiereAllePakete()}
                     disabled={aktualisiere || laden}
                     className="rounded-md border border-amber-500/40 bg-amber-500/20 px-2 py-1 text-[11px] font-medium text-amber-100 transition hover:bg-amber-500/30 disabled:opacity-50"
-                    title="Whitelist, Watchlist und Depot neu scrapen — Cache überschreiben"
+                    title="Depot und Watchlist neu scrapen — Cache überschreiben"
                   >
                     Alle aktualisieren
                   </button>
