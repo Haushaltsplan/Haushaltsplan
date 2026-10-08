@@ -1,6 +1,6 @@
 import { lesePersonlichenStorage, schreibePersonlichenStorage } from '@/lib/zugriff-client'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 export type WatchlistEintrag = {
   isin: string | null
@@ -40,17 +40,18 @@ export function ladeWatchlist(): WatchlistEintrag[] {
 
 export function speichereWatchlist(eintraege: WatchlistEintrag[]): void {
   if (typeof window === 'undefined') return
+  const angereichert = eintraege.map(anreichereWatchlistIsinLokal)
   try {
-    schreibePersonlichenStorage(LS_KEY, JSON.stringify(eintraege))
+    schreibePersonlichenStorage(LS_KEY, JSON.stringify(angereichert))
   } catch {
     /* ignore */
   }
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(WATCHLIST_CHANGED_EVENT))
   }
-  syncWatchlistZurCloud(eintraege)
+  syncWatchlistZurCloud(angereichert)
   void import('@/lib/client-state/client-state-sync').then((m) => {
-    m.pushClientState('watchlist', eintraege)
+    m.pushClientState('watchlist', angereichert)
   })
 }
 
@@ -94,8 +95,46 @@ export function entferneAusWatchlist(schluessel: string): WatchlistEintrag[] {
 export function fuegeZurWatchlistHinzu(eintrag: WatchlistEintrag): WatchlistEintrag[] {
   const key = watchlistSchluessel(eintrag)
   const bestehend = ladeWatchlist().filter((e) => watchlistSchluessel(e) !== key)
-  const next = [eintrag, ...bestehend]
+  const next = [anreichereWatchlistIsinLokal(eintrag), ...bestehend]
   speichereWatchlist(next)
+  return next
+}
+
+/**
+ * Watchlist-Add mit ISIN-Auflösung (Screener/Ticker ohne ISIN) + Cloud-Sync.
+ * Bevorzugt nutzen, wenn der Eintrag noch keine ISIN hat.
+ */
+export async function fuegeZurWatchlistHinzuAsync(eintrag: WatchlistEintrag): Promise<WatchlistEintrag[]> {
+  let e = anreichereWatchlistIsinLokal(eintrag)
+  if ((!e.isin || !istGueltigeIsin(e.isin)) && e.symbolYahoo?.trim()) {
+    try {
+      const res = await fetch('/api/portfolio-analyse/ticker-isin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: e.symbolYahoo }),
+      })
+      const j = (await res.json()) as {
+        ok?: boolean
+        isin?: string | null
+        name?: string | null
+        symbolYahoo?: string | null
+        symbolCandidates?: string[]
+      }
+      if (j.ok && j.isin && istGueltigeIsin(j.isin)) {
+        e = {
+          ...e,
+          isin: j.isin,
+          name: j.name?.trim() || e.name,
+          symbolYahoo: j.symbolYahoo || e.symbolYahoo,
+          symbolCandidates: j.symbolCandidates?.length ? j.symbolCandidates : e.symbolCandidates,
+        }
+      }
+    } catch {
+      /* Sync versucht Server-seitig nochmal */
+    }
+  }
+  const next = fuegeZurWatchlistHinzu(e)
+  await syncWatchlistZurCloudAwait(next)
   return next
 }
 
@@ -104,17 +143,47 @@ export function fuegeZurWatchlistHinzu(eintrag: WatchlistEintrag): WatchlistEint
 // damit Scan/Deep Research/Kaufempfehlung (auch Cron) die Titel kennen.
 // ---------------------------------------------------------------------------
 
-/** Spiegelt die Watchlist fire-and-forget in die Cloud (nur Einträge mit gültiger ISIN). */
+/** ISIN nachziehen (Kenntnisse), damit Radar/Scrape nicht nur 4/12 Titel sieht. */
+export function anreichereWatchlistIsinLokal(e: WatchlistEintrag): WatchlistEintrag {
+  if (e.isin && istGueltigeIsin(e.isin)) return e
+  const isin = loesePortfolioIsin({
+    isin: e.isin,
+    symbolYahoo: e.symbolYahoo,
+    ticker: e.symbolYahoo,
+    firmenname: e.name,
+  })
+  return isin && istGueltigeIsin(isin) ? { ...e, isin } : e
+}
+
+/** Spiegelt die Watchlist fire-and-forget in die Cloud (ISIN wo möglich angereichert). */
 export function syncWatchlistZurCloud(eintraege: WatchlistEintrag[]): void {
   if (typeof window === 'undefined') return
-  const mitIsin = eintraege.filter((e) => e.isin && istGueltigeIsin(e.isin))
-  void fetch('/api/portfolio-analyse/watchlist-sync', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ eintraege: mitIsin }),
-  }).catch(() => {
-    /* Sync darf die UI nie blockieren */
-  })
+  void syncWatchlistZurCloudAwait(eintraege)
+}
+
+/** Awaitable Sync — nach Erfolg Universum/Radar nachziehen. */
+export async function syncWatchlistZurCloudAwait(
+  eintraege: WatchlistEintrag[],
+): Promise<{ ok: boolean; anzahl?: number; fehler?: string }> {
+  if (typeof window === 'undefined') return { ok: false, fehler: 'Nur im Browser.' }
+  const payload = eintraege
+    .map(anreichereWatchlistIsinLokal)
+    .filter((e) => e.name?.trim() && (e.isin || e.symbolYahoo))
+  try {
+    const res = await fetch('/api/portfolio-analyse/watchlist-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eintraege: payload }),
+    })
+    const j = (await res.json()) as { ok?: boolean; anzahl?: number; fehler?: string }
+    if (!res.ok || !j.ok) return { ok: false, fehler: j.fehler ?? 'Watchlist-Sync fehlgeschlagen.' }
+    // Depot-Cache irrelevant, aber Radar-Scans außerhalb Watchlist bereinigen
+    const { syncNachkaufUniversum } = await import('@/lib/portfolio-analyse/universum-sync-client')
+    syncNachkaufUniversum()
+    return { ok: true, anzahl: j.anzahl }
+  } catch (e) {
+    return { ok: false, fehler: e instanceof Error ? e.message : 'Watchlist-Sync fehlgeschlagen.' }
+  }
 }
 
 /**
@@ -122,13 +191,52 @@ export function syncWatchlistZurCloud(eintraege: WatchlistEintrag[]): void {
  * (Einträge von anderen Geräten kommen dazu). Ergebnis wird lokal
  * gespeichert und zurück in die Cloud gespiegelt.
  */
+function mergeWatchlisten(...listen: WatchlistEintrag[][]): WatchlistEintrag[] {
+  const map = new Map<string, WatchlistEintrag>()
+  for (const liste of listen) {
+    for (const roh of liste) {
+      const e = anreichereWatchlistIsinLokal(roh)
+      const key = watchlistSchluessel(e)
+      if (!key) continue
+      const prev = map.get(key)
+      if (!prev) {
+        map.set(key, e)
+        continue
+      }
+      map.set(key, {
+        ...prev,
+        ...e,
+        isin: e.isin && istGueltigeIsin(e.isin) ? e.isin : prev.isin,
+        symbolYahoo: e.symbolYahoo || prev.symbolYahoo,
+        symbolCandidates: [...new Set([...(prev.symbolCandidates ?? []), ...(e.symbolCandidates ?? [])])],
+        name: e.name || prev.name,
+        hinzugefuegtAm:
+          prev.hinzugefuegtAm && e.hinzugefuegtAm
+            ? prev.hinzugefuegtAm < e.hinzugefuegtAm
+              ? prev.hinzugefuegtAm
+              : e.hinzugefuegtAm
+            : prev.hinzugefuegtAm || e.hinzugefuegtAm,
+      })
+    }
+  }
+  return [...map.values()]
+}
+
 export async function ladeWatchlistMitCloudMerge(): Promise<WatchlistEintrag[]> {
   const { holeClientStateCache, pullClientState } = await import('@/lib/client-state/client-state-sync')
   await pullClientState()
+  const lokal = ladeWatchlist().map(anreichereWatchlistIsinLokal)
+  // Client-State hat oft die volle Liste — nie mit kurzer Radar-Cloud überschreiben.
   const ausState = holeClientStateCache('watchlist')
-  if (ausState) return ladeWatchlist()
+  if (ausState) {
+    const merged = mergeWatchlisten(lokal)
+    if (merged.length > 0) {
+      speichereWatchlist(merged)
+      return merged
+    }
+    return lokal
+  }
 
-  const lokal = ladeWatchlist()
   try {
     const res = await fetch('/api/portfolio-analyse/watchlist-sync')
     const j = (await res.json()) as {
@@ -137,22 +245,20 @@ export async function ladeWatchlistMitCloudMerge(): Promise<WatchlistEintrag[]> 
     }
     if (j.ok && Array.isArray(j.eintraege)) {
       const cloud: WatchlistEintrag[] = j.eintraege
-        .filter((e) => e.isin && istGueltigeIsin(e.isin) && e.name)
-        .map((e) => ({
-          isin: e.isin!.trim().toUpperCase(),
-          name: e.name!,
-          symbolYahoo: e.symbolYahoo ?? null,
-          symbolCandidates: Array.isArray(e.symbolCandidates) ? e.symbolCandidates : [],
-          hinzugefuegtAm: e.hinzugefuegtAm ?? new Date().toISOString(),
-        }))
-      // Cloud ist die volle Liste (Löschen muss ankommen). Leere Cloud + lokale Daten = Erst-Upload.
-      if (cloud.length > 0) {
-        speichereWatchlist(cloud)
-        return cloud
-      }
-      if (lokal.length > 0) {
-        speichereWatchlist(lokal)
-        return lokal
+        .filter((e) => e.name)
+        .map((e) =>
+          anreichereWatchlistIsinLokal({
+            isin: e.isin?.trim().toUpperCase() || null,
+            name: e.name!,
+            symbolYahoo: e.symbolYahoo ?? null,
+            symbolCandidates: Array.isArray(e.symbolCandidates) ? e.symbolCandidates : [],
+            hinzugefuegtAm: e.hinzugefuegtAm ?? new Date().toISOString(),
+          }),
+        )
+      const merged = mergeWatchlisten(lokal, cloud)
+      if (merged.length > 0) {
+        speichereWatchlist(merged)
+        return merged
       }
       return lokal
     }

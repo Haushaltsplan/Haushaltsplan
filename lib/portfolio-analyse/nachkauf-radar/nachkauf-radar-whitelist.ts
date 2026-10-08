@@ -48,7 +48,7 @@ export type WhitelistSektor =
  *                → Max. 200 € / Monat.
  *
  * spekulativ   – Small/Mid-Cap oder sehr hohe Bewertungen mit erhöhter Ergebnisvolatilität.
- *                Beispiele: Balchem, Datadog.
+ *                Beispiel: Balchem (im Depot). Datadog entfernt (verkauft).
  *                → Max. 100 € / Monat.
  */
 export type RisikoKlasse = 'konservativ' | 'moderat' | 'spekulativ'
@@ -392,9 +392,9 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     kaufTrigger: { peMax: 24, notiz: 'WKL unter 24×: Legal/Compliance-SaaS mit 85 % wiederkehrenden Umsätzen.' },
   },
 
-  // ── SPEKULATIV ───────────────────────────────────────────────────────────────
-  // Small/Mid-Cap oder sehr hohe Bewertungen mit erhöhter Ergebnisvolatilität.
-  // Maximalbetrag bei der Kaufempfehlung: 100 €.
+  // ── SPEKULATIV (Metadaten) ─────────────────────────────────────────────────
+  // Nur noch KaufTrigger/Risikoklasse, wenn der Titel im Depot/Watchlist liegt.
+  // Universum = Depot ∪ Watchlist — verkaufte Titel (z. B. Datadog) gehören nicht hierher.
 
   {
     isin: 'US0576652004',
@@ -406,15 +406,6 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     kaufTrigger: { peMax: 32, notiz: 'BCPC unter 32×: Nischenchemie mit hohen Wechselkosten im Lebensmittel-/Pharmabereich.' },
     cik: '0000009326',
   },
-  {
-    isin: 'US23804L1035',
-    name: 'Datadog',
-    sektor: 'Technologie',
-    risikoKlasse: 'spekulativ',
-    historischerMedianPe: 70,
-    kaufTrigger: { peMax: 50, notiz: 'DDOG unter 50× (NTM): Observability wird Mission-Critical — NRR > 115 % als Qualitätsanker.' },
-    cik: '0001561550',
-  },
 ]
 
 /** true wenn ISIN in der festen Qualitäts-Whitelist steht. */
@@ -425,16 +416,15 @@ export function istWhitelistIsin(isin: string): boolean {
 
 export type KandidatenQuelle = NonNullable<WhitelistPosition['quelle']>
 
-/** Watchlist-Neukauf: nicht im Depot und nicht auf der festen Whitelist. */
+/** Watchlist-Neukauf: nicht im Depot (Universum = Depot ∪ Watchlist). */
 export function istWatchlistNeukauf(
-  isin: string,
+  _isin: string,
   depotGewichtPct?: number | null,
   quelle?: KandidatenQuelle | null,
 ): boolean {
-  if (quelle === 'depot' || quelle === 'whitelist') return false
+  if (quelle === 'depot') return false
   if ((depotGewichtPct ?? 0) > 0) return false
-  if (quelle === 'watchlist') return true
-  return !istWhitelistIsin(isin)
+  return quelle === 'watchlist'
 }
 
 /**

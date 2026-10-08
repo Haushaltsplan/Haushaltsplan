@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import { ladeNachkaufWatchlistAusCloud } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
+import { ladeEffektiveNachkaufWatchlist } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import { ladeDepotAktieAnfragen } from '@/lib/portfolio-analyse/depot-gewichte-server'
 import type { FundamentaldatenAnfrage } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   try {
     const [depot, watchlist] = await Promise.all([
       ladeDepotAktieAnfragen(),
-      ladeNachkaufWatchlistAusCloud(),
+      ladeEffektiveNachkaufWatchlist(),
     ])
     const ziele: FundamentaldatenAnfrage[] = []
     const gesehen = new Set<string>()

@@ -18,7 +18,7 @@ import {
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   findeWatchlistIdx,
-  fuegeZurWatchlistHinzu,
+  fuegeZurWatchlistHinzuAsync,
   ladeWatchlist,
   WATCHLIST_CHANGED_EVENT,
   watchlistEintragAusMeta,
@@ -157,9 +157,10 @@ export function PortfolioFundamentaldatenClient() {
       wkn: null,
       assetType: 'EQUITY',
     }
-    fuegeZurWatchlistHinzu(watchlistEintragAusMeta(metaLike, selected.isin))
-    setWatchlistVersion((v) => v + 1)
-    setWatchHinweis(`${selected.name} zur Watchlist hinzugefügt.`)
+    void fuegeZurWatchlistHinzuAsync(watchlistEintragAusMeta(metaLike, selected.isin)).then(() => {
+      setWatchlistVersion((v) => v + 1)
+      setWatchHinweis(`${selected.name} zur Watchlist hinzugefügt.`)
+    })
   }, [selected])
 
   const zumVergleich = useCallback(() => {

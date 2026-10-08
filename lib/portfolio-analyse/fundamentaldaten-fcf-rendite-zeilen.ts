@@ -21,9 +21,10 @@ function wert(zeilen: FundamentalMetrikZeile[], id: string, key: string): number
   return v != null && Number.isFinite(v) ? v : null
 }
 
-/** 1 / pfcf in Prozent. Nur bei positivem Multiple (wie Radar). */
+/** 1 / pfcf in Prozent. Nur bei positivem, plausiblem Multiple (wie Radar). */
 export function fcfRenditeAusPfcf(pfcf: number | null | undefined): number | null {
-  if (pfcf == null || !(pfcf > 0)) return null
+  // >800× = typischer Einheiten-Mix in Schätz-Spalten, kein echtes MC/FCF.
+  if (pfcf == null || !(pfcf > 0) || pfcf >= 800) return null
   const y = (1 / pfcf) * 100
   if (!Number.isFinite(y) || y <= 0 || y >= 100) return null
   return Math.round(y * 100) / 100
@@ -153,7 +154,15 @@ export function ergaenzeFcfRenditeKeyMetrics(
   keyMetrics: FundamentalKeyMetric[],
   paket: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] },
 ): FundamentalKeyMetric[] {
-  const { ltm, fy } = fcfRenditeKennzahlen(paket.zeilen, paket.perioden)
+  const { ltm, fy: fyZeile } = fcfRenditeKennzahlen(paket.zeilen, paket.perioden)
+  const fyAusMetric = fcfRenditeAusPfcf(
+    keyMetrics.find((m) => m.id === 'ntm_mc_fcf')?.zahl ?? null,
+  )
+  const ltmAusMetric = fcfRenditeAusPfcf(
+    keyMetrics.find((m) => m.id === 'ltm_pfcf')?.zahl ?? null,
+  )
+  const fy = fyAusMetric ?? fyZeile
+  const ltmFinal = ltmAusMetric ?? ltm
   let out = keyMetrics
   if (fy != null) {
     out = upsertKeyMetric(
@@ -162,10 +171,16 @@ export function ergaenzeFcfRenditeKeyMetrics(
       'ntm_mc_fcf',
     )
   }
-  if (ltm != null) {
+  if (ltmFinal != null) {
     out = upsertKeyMetric(
       out,
-      { id: 'ltm_fcf_rendite', label: 'LTM FCF-Rendite', wert: pctAnzeige(ltm), zahl: ltm, gruppe: 'bewertung_ltm' },
+      {
+        id: 'ltm_fcf_rendite',
+        label: 'LTM FCF-Rendite',
+        wert: pctAnzeige(ltmFinal),
+        zahl: ltmFinal,
+        gruppe: 'bewertung_ltm',
+      },
       'ltm_pfcf',
     )
   }

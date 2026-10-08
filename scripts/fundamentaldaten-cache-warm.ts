@@ -15,7 +15,7 @@ import {
   fundamentaldatenCacheKey,
   ladeFundamentaldatenPaketCache,
 } from '../lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
-import { ladeNachkaufWatchlistAusCloud } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
+import { ladeEffektiveNachkaufWatchlist } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import { ladeDepotAktieAnfragen } from '../lib/portfolio-analyse/depot-gewichte-server'
 import { runWithPrimaeremOwner } from '../lib/request-owner'
 import type { WhitelistPosition } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
@@ -129,7 +129,7 @@ async function main() {
 
   const { depot, watchlist } = await runWithPrimaeremOwner(async () => ({
     depot: await ladeDepotAktieAnfragen(),
-    watchlist: await ladeNachkaufWatchlistAusCloud(),
+    watchlist: await ladeEffektiveNachkaufWatchlist(),
   }))
   const gesehen = new Set<string>()
   const kandidaten: WhitelistPosition[] = []

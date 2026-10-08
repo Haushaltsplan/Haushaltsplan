@@ -2,6 +2,7 @@
  * Reinvestitionsquote & Incremental ROIC — Zinseszins-Motor.
  */
 
+import { historischeJahresKeys, istQuartalsPerioden } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { wertAusMapFuerIso } from '@/lib/portfolio-analyse/fundamentaldaten-wert-fuer-iso'
 
@@ -10,9 +11,14 @@ function w(zeilen: FundamentalMetrikZeile[], id: string, key: string): number | 
 }
 
 function histKeys(perioden: FundamentalPeriode[]): string[] {
-  return perioden
-    .filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung && /^\d{4}-\d{2}-\d{2}$/.test(p.iso))
-    .map((p) => p.iso)
+  // FY+Kalender-Duplikate nicht als „4 Quartale“ summieren
+  if (istQuartalsPerioden(perioden)) {
+    return perioden
+      .filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung && /^\d{4}-\d{2}-\d{2}$/.test(p.iso))
+      .map((p) => p.iso)
+      .sort()
+  }
+  return historischeJahresKeys(perioden)
 }
 
 export type ReinvestitionKennzahlen = {
@@ -48,17 +54,7 @@ export function berechneReinvestition(
     }
   }
 
-  const quartal =
-    keys.length >= 3 &&
-    (() => {
-      const gaps: number[] = []
-      for (let i = 1; i < Math.min(keys.length, 8); i++) {
-        gaps.push((Date.parse(keys[i]!) - Date.parse(keys[i - 1]!)) / 86_400_000)
-      }
-      gaps.sort((a, b) => a - b)
-      const med = gaps[Math.floor(gaps.length / 2)] ?? 0
-      return med >= 60 && med <= 130
-    })()
+  const quartal = istQuartalsPerioden(perioden)
 
   const sumFlow = (id: string): number | null => {
     if (!quartal || keys.length < 4) return w(zeilen, id, keys[keys.length - 1]!)
@@ -100,14 +96,40 @@ export function berechneReinvestition(
   }
 }
 
-/** PEG = Forward-KGV / erwartetes EPS-Wachstum (%). */
+/**
+ * PEG-Wachstum: Forward-CAGR zuerst (klassisches PEG), dann hist. CAGR, dann Yahoo.
+ * Extremwerte (Turnaround von ~0 EPS, Einheiten-Mix) werden verworfen.
+ */
+export function waehlePegWachstumPct(opts: {
+  fwdEpsCagr2?: number | null
+  epsCagr3?: number | null
+  yahooEpsPct?: number | null
+}): number | null {
+  const min = 2
+  const max = 80
+  for (const g of [opts.fwdEpsCagr2, opts.epsCagr3, opts.yahooEpsPct]) {
+    if (g != null && Number.isFinite(g) && g >= min && g <= max) return g
+  }
+  return null
+}
+
+/** PEG = Forward-KGV / erwartetes EPS-Wachstum (% p.a.). */
 export function berechnePegRatio(
   forwardPe: number | null | undefined,
   epsWachstumPct: number | null | undefined,
   finvizPeg?: number | null,
 ): number | null {
-  if (forwardPe != null && forwardPe > 0 && epsWachstumPct != null && epsWachstumPct > 0.5) {
-    return Math.round((forwardPe / epsWachstumPct) * 100) / 100
+  if (
+    forwardPe != null &&
+    forwardPe > 0 &&
+    forwardPe < 500 &&
+    epsWachstumPct != null &&
+    epsWachstumPct >= 2 &&
+    epsWachstumPct <= 80
+  ) {
+    const peg = Math.round((forwardPe / epsWachstumPct) * 100) / 100
+    if (peg > 0 && peg < 50) return peg
+    return null
   }
   if (finvizPeg != null && finvizPeg > 0 && finvizPeg < 50) {
     return Math.round(finvizPeg * 100) / 100

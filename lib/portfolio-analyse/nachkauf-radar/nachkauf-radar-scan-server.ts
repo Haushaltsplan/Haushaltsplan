@@ -1,7 +1,7 @@
 /**
  * Nachkauf-Radar — Scan-Server (Stufe A).
  *
- * 1. Eigentümer: feste Whitelist + Watchlist. Gast: eigenes Depot + eigene Watchlist.
+ * 1. Universum: aktuelles Depot ∪ Watchlist (keine feste Whitelist mehr).
  * 2. Für jede Position: Fundamentaldaten + gecachte KI-Summaries
  * 3. Regelbasierter Score inkl. historischer Relative Bewertung + Kaufzonen-Trigger
  * 4. Gemini Flash: kurze Begründung pro Titel

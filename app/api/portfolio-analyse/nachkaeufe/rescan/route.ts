@@ -1,6 +1,6 @@
 /**
  * Einzel-Rescan: Scannt einen Titel aus dem aktuellen Universum
- * (Whitelist ∪ Depot ∪ Watchlist) neu und persistiert das Ergebnis.
+ * (Depot ∪ Watchlist) neu und persistiert das Ergebnis.
  * POST /api/portfolio-analyse/nachkaeufe/rescan
  * Body: { ticker?: string; isin?: string }
  */
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         ok: false,
-        fehler: `Kein Radar-Kandidat (Whitelist/Depot/Watchlist) für ticker="${ticker}" oder isin="${isin}".`,
+        fehler: `Kein Radar-Kandidat (Depot/Watchlist) für ticker="${ticker}" oder isin="${isin}".`,
       },
       { status: 404 },
     )

@@ -13,9 +13,15 @@ export function letzterVerfuegbarerWert(
   const ttm = zeile.werte[FUNDAMENTAL_TTM_KEY]
   if (ttm != null && Number.isFinite(ttm)) return ttm
 
-  const keys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  const keys = historischeJahresKeys(perioden)
   for (let i = keys.length - 1; i >= 0; i--) {
     const v = zeile.werte[keys[i]!]
+    if (v != null && Number.isFinite(v)) return v
+  }
+  // Fallback: irgendein Hist-Wert (auch Kalender-Duplikat), falls FY-Key ohne Wert
+  const rohKeys = perioden?.filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  for (let i = rohKeys.length - 1; i >= 0; i--) {
+    const v = zeile.werte[rohKeys[i]!]
     if (v != null && Number.isFinite(v)) return v
   }
 
@@ -32,6 +38,10 @@ export function istQuartalsPerioden(perioden: FundamentalPeriode[] | undefined):
     .map((p) => p.iso)
     .sort()
   if (!keys || keys.length < 3) return false
+  // FY+Kalender-Duplikate (z. B. 30.09. + 31.12.) haben oft ~90-Tage-Lücken,
+  // sind aber keine echte Quartalsserie — mind. 3 verschiedene Monate nötig.
+  const monate = new Set(keys.map((k) => k.slice(5, 7)))
+  if (monate.size < 3) return false
   const gaps: number[] = []
   for (let i = 1; i < keys.length; i++) {
     gaps.push((Date.parse(keys[i]!) - Date.parse(keys[i - 1]!)) / 86_400_000)
@@ -39,6 +49,56 @@ export function istQuartalsPerioden(perioden: FundamentalPeriode[] | undefined):
   gaps.sort((a, b) => a - b)
   const med = gaps[Math.floor(gaps.length / 2)]!
   return med >= 60 && med <= 130
+}
+
+/**
+ * Eine Hist-ISO pro Kalenderjahr für CAGR/Trends.
+ * Sonst verdoppeln FY-Ende + Kalenderjahr (Visa 30.09. + 31.12.) die Punkte und
+ * drücken 3J-CAGR auf ~⅓ des echten Wachstums.
+ */
+export function historischeJahresKeys(perioden: FundamentalPeriode[] | undefined): string[] {
+  const kandidaten = (perioden ?? [])
+    .filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung && /^\d{4}-\d{2}-\d{2}$/.test(p.iso))
+    .map((p) => p.iso)
+    .sort()
+  if (kandidaten.length === 0) return []
+
+  const monatCount = new Map<string, number>()
+  for (const iso of kandidaten) {
+    const md = iso.slice(5)
+    monatCount.set(md, (monatCount.get(md) ?? 0) + 1)
+  }
+  let dominantMd = kandidaten[kandidaten.length - 1]!.slice(5)
+  let bestN = 0
+  for (const [md, n] of monatCount) {
+    if (n > bestN) {
+      bestN = n
+      dominantMd = md
+    }
+  }
+  const dominantShare = bestN / kandidaten.length
+  const monate = new Set([...monatCount.keys()].map((md) => md.slice(0, 2)))
+  // Echte Quartale (mehrere Monate, kein dominantes FY) unverändert lassen.
+  const jährlich =
+    monate.size <= 2 || dominantShare >= 0.4 || !istQuartalsPerioden(perioden)
+
+  if (!jährlich) return kandidaten
+
+  const byYear = new Map<number, string>()
+  for (const iso of kandidaten) {
+    const y = Number(iso.slice(0, 4))
+    const md = iso.slice(5)
+    const prev = byYear.get(y)
+    if (!prev) {
+      byYear.set(y, iso)
+      continue
+    }
+    const prevMd = prev.slice(5)
+    if (md === dominantMd && prevMd !== dominantMd) byYear.set(y, iso)
+  }
+  return [...byYear.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, iso]) => iso)
 }
 
 /**
@@ -101,8 +161,52 @@ export function historischeWerteAusZeile(
   zeile: FundamentalMetrikZeile | undefined,
   perioden: FundamentalPeriode[] | undefined,
 ): number[] {
-  const keys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
-  return keys.map((k) => zeile?.werte[k]).filter((v): v is number => v != null && Number.isFinite(v))
+  if (!zeile) return []
+  const kandidaten = (perioden ?? [])
+    .filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung && /^\d{4}-\d{2}-\d{2}$/.test(p.iso))
+    .map((p) => p.iso)
+    .sort()
+
+  // Echte Quartalsserie: alle Punkte behalten (CAGR nutzt dann t vs t−12).
+  if (istQuartalsPerioden(perioden)) {
+    return kandidaten
+      .map((k) => zeile.werte[k])
+      .filter((v): v is number => v != null && Number.isFinite(v))
+  }
+
+  // Pro Jahr: Preferenz dominantes FY-Ende, sonst anderer Stichtag mit Wert (EPS oft nur 31.12.).
+  const monatCount = new Map<string, number>()
+  for (const iso of kandidaten) {
+    const md = iso.slice(5)
+    monatCount.set(md, (monatCount.get(md) ?? 0) + 1)
+  }
+  let dominantMd = '12-31'
+  let bestN = 0
+  for (const [md, n] of monatCount) {
+    if (n > bestN) {
+      bestN = n
+      dominantMd = md
+    }
+  }
+
+  const byYear = new Map<number, { iso: string; wert: number }>()
+  for (const iso of kandidaten) {
+    const v = zeile.werte[iso]
+    if (v == null || !Number.isFinite(v)) continue
+    const y = Number(iso.slice(0, 4))
+    const md = iso.slice(5)
+    const prev = byYear.get(y)
+    if (!prev) {
+      byYear.set(y, { iso, wert: v })
+      continue
+    }
+    if (md === dominantMd && prev.iso.slice(5) !== dominantMd) {
+      byYear.set(y, { iso, wert: v })
+    }
+  }
+  return [...byYear.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, x]) => x.wert)
 }
 
 export function effektiverSteuersatz(
@@ -157,9 +261,15 @@ export function berechneIncrementalValueSpread(opts: {
   wacc: number | null | undefined
   roicAnzeige: number | null | undefined
   valueSpread: number | null | undefined
+  /** Bei NOPAT-Rückgang ist iROIC=0 kein sinnvoller Spread-Input. */
+  incrementalRoicRegime?: string | null
 }): number | null {
+  const regime = opts.incrementalRoicRegime
+  if (regime === 'schrumpfend' || regime === 'unzureichend') return null
   const roiic = opts.incrementalRoicPct
   if (roiic == null || !Number.isFinite(roiic)) return null
+  // 0 % iROIC ohne Regime-Kontext: oft Cache-Platzhalter, kein echter Spread.
+  if (roiic === 0) return null
   if (opts.wacc != null && Number.isFinite(opts.wacc)) return roiic - opts.wacc
   const roic = opts.roicAnzeige
   const spread = opts.valueSpread

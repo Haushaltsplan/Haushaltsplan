@@ -40,7 +40,7 @@ import {
 } from '@/lib/portfolio-analyse/screener/screener-vorlagen-store'
 import {
   findeWatchlistIdx,
-  fuegeZurWatchlistHinzu,
+  fuegeZurWatchlistHinzuAsync,
   ladeWatchlist,
   WATCHLIST_CHANGED_EVENT,
 } from '@/lib/portfolio-analyse/watchlist-client'
@@ -746,7 +746,7 @@ export function PortfolioScreenerClient() {
 
   const merke = useCallback((z: ScreenerZeile) => {
     if (findeWatchlistIdx(ladeWatchlist(), { symbol: z.ticker }) >= 0) return
-    fuegeZurWatchlistHinzu({
+    void fuegeZurWatchlistHinzuAsync({
       isin: null,
       name: z.name,
       symbolYahoo: z.ticker,

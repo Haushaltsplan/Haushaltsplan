@@ -43,7 +43,6 @@ import {
   ladeFundamentaldatenAusLocalCache,
   ladeFundamentaldatenCacheZiele,
   ladeFundamentaldatenClient,
-  mergenFundamentaldatenZiele,
   type AlleAktualisierenFortschritt,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import { keyMetricNavZiel } from '@/lib/portfolio-analyse/fundamentaldaten-key-metric-nav'
@@ -74,11 +73,13 @@ const UNTER_TABS = [
 export function PaFundamentalInhalt({
   anfrage,
   selectionKey,
-  alleScrapZiele,
 }: {
   anfrage: FundamentaldatenAnfrage | null
   selectionKey?: string
-  /** Zusätzliche Titel (Depot-Dropdown / Watchlist), mergen mit Whitelist+Cloud-Watchlist. */
+  /**
+   * @deprecated Batch-Scrape nutzt nur Server Depot∪Watchlist (cache-ziele).
+   * Prop bleibt für Call-Sites kompatibel, wird ignoriert.
+   */
   alleScrapZiele?: FundamentaldatenAnfrage[] | null
 }) {
   const { live, buchungen } = usePortfolioAnalyse()
@@ -250,17 +251,17 @@ export function PaFundamentalInhalt({
 
   const aktualisiereAllePakete = useCallback(async () => {
     if (alleLaeuft || aktualisiere) return
-    const extra = alleScrapZiele ?? []
-    let serverZiele: FundamentaldatenAnfrage[] = []
+    let ziele: FundamentaldatenAnfrage[] = []
     try {
-      serverZiele = await ladeFundamentaldatenCacheZiele()
+      // Strikt nur Server: Depot ∪ Cloud-Watchlist — kein Client-Merge (sonst
+      // alte localStorage-/Whitelist-Reste wie verkaufte Titel mitgeschrapt).
+      ziele = await ladeFundamentaldatenCacheZiele()
     } catch (e) {
       setFehler(e instanceof Error ? e.message : 'Cache-Ziele fehlgeschlagen')
       return
     }
-    const ziele = mergenFundamentaldatenZiele(serverZiele, extra, effektiveAnfrage ? [effektiveAnfrage] : [])
     if (ziele.length === 0) {
-      setFehler('Keine Titel zum Aktualisieren.')
+      setFehler('Keine Titel zum Aktualisieren (Depot/Watchlist leer).')
       return
     }
     const okStart = window.confirm(
@@ -323,7 +324,7 @@ export function PaFundamentalInhalt({
       setAlleLaeuft(false)
       alleAbortRef.current = null
     }
-  }, [alleLaeuft, aktualisiere, alleScrapZiele, effektiveAnfrage])
+  }, [alleLaeuft, aktualisiere])
 
   const starteJsonExport = useCallback(async () => {
     if (!daten?.ok || exportLaeuft) return

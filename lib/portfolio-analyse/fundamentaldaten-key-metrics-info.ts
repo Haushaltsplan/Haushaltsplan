@@ -229,7 +229,8 @@ export const KEY_METRIC_INFO = {
     schlecht: 'Schwach trotz EPS-Wachstum — Cash kommt nicht beim Aktionär an.',
   },
   rule_of_40: {
-    schauen: 'Rule of 40 ≈ Umsatzwachstum % + Gewinn-/FCF-Marge — Balance Wachstum vs. Profitabilität (v. a. Software).',
+    schauen:
+      'Rule of 40 = Umsatz-CAGR 3J + beste Marge (FCF / EBIT / EBITDA). Balance Wachstum vs. Profitabilität (v. a. Software/Netzwerke).',
     gut: 'Um oder über 40: gesundes Wachstum-Profit-Profil.',
     schlecht: 'Klar darunter bei teurer Bewertung — zu wenig Wachstum oder zu wenig Marge.',
   },

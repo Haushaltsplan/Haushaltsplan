@@ -239,6 +239,17 @@ const DEPOT_CACHE_MS = 3 * 60 * 1000
 const depotCache = new Map<string, { at: number; paket: LivePortfolioServerPaket | null }>()
 const depotInflight = new Map<string, Promise<LivePortfolioServerPaket | null>>()
 
+/** Nach Kauf/Verkauf/Import — sonst liefert ladeNachkaufKandidaten bis 3 Min. alte Positionen. */
+export function invalidateLivePortfolioCache(ownerUserId?: string | null): void {
+  if (ownerUserId) {
+    depotCache.delete(ownerUserId)
+    depotInflight.delete(ownerUserId)
+    return
+  }
+  depotCache.clear()
+  depotInflight.clear()
+}
+
 async function ladeLivePortfolioServerUncached(): Promise<LivePortfolioServerPaket | null> {
   const [buchungen, snapshot] = await Promise.all([ladeBuchungenAdmin(), ladeSnapshotAdmin()])
   if (buchungen.length === 0 && !snapshot?.positionen?.length) return null

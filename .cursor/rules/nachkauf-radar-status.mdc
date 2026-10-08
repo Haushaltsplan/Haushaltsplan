@@ -6,21 +6,23 @@ alwaysApply: true
 # Nachkauf-Radar — Projektstatus
 
 ## Was ist das?
-Emotion-freier Nachkauf-Assistent für 32 festgelegte Qualitätsaktien (Whitelist)
-**plus aktuelles Depot und Watchlist** (Cloud-Sync, siehe unten).
+Emotion-freier Nachkauf-Assistent für **aktuelles Depot ∪ Watchlist** (Cloud-Sync).
 Monatsbudget (Standard 500 €) wird per KI risiko-adjustiert auf Kandidaten verteilt.
+Die alte 32er-Whitelist ist nur noch optionale Metadaten (Risikoklasse/KaufTrigger), **kein Universum**.
 
-## Universum — Whitelist ∪ Depot ∪ Watchlist (Okt 2026)
+## Universum — Depot ∪ Watchlist (Okt 2026)
 
 - Browser-Watchlist (`pa-watchlist-v1` localStorage) wird von der Watchlist-Seite automatisch
   nach Supabase gespiegelt: Tabelle `nachkauf_radar_watchlist` via `/api/portfolio-analyse/watchlist-sync`
   (GET = Cloud-Stand, POST = Vollabgleich; Client-Helfer in `lib/portfolio-analyse/watchlist-client.ts`).
-- `ladeNachkaufKandidaten()` = **Whitelist ∪ Live-Depot ∪ Watchlist** (Duplikate: whitelist > depot > watchlist).
-  Watchlist-Extras: `quelle: 'watchlist'`, `risikoKlasse: 'spekulativ'`; Depot-Extras: `quelle: 'depot'`, `moderat`.
-- Scan, Rescan, Cron, Quartals-KI, Kaufempfehlung nutzen nur diese Liste — entfernte/verkaufte Titel
-  werden nicht mitgescrapt.
-- Beim Watchlist-Entfernen: Scan + Deep Research löschen, außer ISIN noch in Whitelist **oder** Depot.
-- `bereinigeNachkaufRadarAusserhalbKandidaten()` bei Sync, Scan-Start und Ergebnisse-GET.
+- `ladeNachkaufKandidaten()` = **Live-Depot ∪ Watchlist** (Priorität: depot > watchlist).
+  Watchlist: `quelle: 'watchlist'`, `risikoKlasse: 'spekulativ'`; Depot: `quelle: 'depot'`, `moderat`
+  (bzw. Whitelist-Metadaten falls ISIN noch dort steht).
+- Scan, Rescan, Cron, Quartals-KI, Kaufempfehlung, Fundamental-Batch nutzen nur diese Liste —
+  verkaufte / von Watchlist entfernte Titel werden nicht mitgescrapt.
+- Beim Watchlist-Entfernen: Scan + Deep Research löschen, außer ISIN noch im Depot.
+- `bereinigeNachkaufRadarAusserhalbKandidaten()` bei Watchlist-Sync, Scan-Start, Ergebnisse-GET
+  und nach Kauf/Verkauf/Import via `/api/portfolio-analyse/universum-sync` (inkl. Depot-Cache-Invalidierung).
 - Migration: `supabase/migrations/20260720190000_nachkauf_radar_watchlist.sql`
 
 ## Ampel-Kalibrierung (Aug 2026 — geometrisches Kern-Modell)
@@ -100,7 +102,7 @@ components/portfolio-analyse/
 
 - **konservativ** (15 Pos.): MA, V, MSFT, GOOGL, MCD, WM, ODFL, UNP, ROL, CTAS, LIN, HD, HRMS, SPGI, MSCI → max. 350 €/Monat
 - **moderat** (15 Pos.): ASML, UNH, TMO, RMD, ZTS, NOW, STMN, HLMA, SIKA, KNSL, GGG, VEEV, ATD, ANET, WKL → max. 200 €/Monat
-- **spekulativ** (2 Pos.): BCPC, DDOG → max. 100 €/Monat
+- **spekulativ**: Watchlist-Neukäufe (nicht im Depot) → max. 100 €/Monat
 
 ## Kaufempfehlung-Logik (kaufempfehlung/route.ts → POST)
 
@@ -145,7 +147,7 @@ components/portfolio-analyse/
 - **Euro-Allokation ist regelbasiert** (`berechneRegelAllokation`); KI darf nur kürzen/streichen, nicht erhöhen.
 - **Struktur-Signale** (Verwässerung, FCF-Conv., NRR/Ro40, Zinsdeckung, GAAP-Lücke, KGV-Perzentil) in `scoreDetail.strukturSignale` + UI.
 - Score: KGV-Perzentil **oder** Median-Premium (nicht additiv); Timing ohne Roh-Drawdown-Doppelung; Kombiniert 55 % Qualität / 45 % Timing.
-- Watchlist-Neukauf: `risikoKlasse spekulativ` (≤100 €), Score ≥ **84** + Deep Research; Whitelist-Kauf ≥76.
+- Watchlist-Neukauf: `risikoKlasse spekulativ` (≤100 €), Score ≥ **84** + Deep Research; Depot-Kauf ≥76.
 - Performance-Panel immer sichtbar; Tracking speichert regelbasierte Beträge vs. SPY.
 
 ## Prompt-Qualität

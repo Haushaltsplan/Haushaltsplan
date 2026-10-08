@@ -9,9 +9,14 @@ import {
 } from '@/lib/portfolio-analyse/fundamentaldaten-fcf-rendite-zeilen'
 import {
   berechneIncrementalValueSpread,
+  historischeJahresKeys,
   historischeWerteAusZeile,
   ttmOderLetzterFlow,
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
+import {
+  berechnePegRatio,
+  waehlePegWachstumPct,
+} from '@/lib/portfolio-analyse/fundamentaldaten-reinvestition'
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type {
   FundamentalKeyMetric,
@@ -113,7 +118,7 @@ function fwdCagrZweiJahre(
 }
 
 function letzterGeschaeftsjahresKey(perioden: FundamentalPeriode[] | undefined): string | null {
-  const keys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  const keys = historischeJahresKeys(perioden)
   return keys.length > 0 ? keys[keys.length - 1]! : null
 }
 
@@ -126,6 +131,124 @@ function letzterGeschaeftsjahresWert(
   if (ttm != null) return ttm
   const lastKey = letzterGeschaeftsjahresKey(perioden)
   return lastKey ? wertAnPeriode(zeile, lastKey) : null
+}
+
+/**
+ * Forward-KGV: Schätz-Spalten (Wallstreet/Marketscreener) sind bei EU oft
+ * um Größenordnungen falsch. Plausibel halten vs. Trailing; sonst Preis≈KGV·EPS / Fwd-EPS.
+ */
+function ermittleFwdKgv(opts: {
+  perioden: FundamentalPeriode[] | undefined
+  kgvZeile: FundamentalMetrikZeile | undefined
+  epsZeile: FundamentalMetrikZeile | undefined
+  yahooForwardPe?: number | null
+  yahooPrice?: number | null
+  yahooFy1Eps?: number | null
+  ltmPeFallback?: number | null
+}): number | null {
+  const { perioden, kgvZeile, epsZeile } = opts
+  const fyKeys =
+    perioden
+      ?.filter((p) => p.istSchaetzung && !istFundamentalQuartalSchaetzungIso(p.iso))
+      .map((p) => p.iso) ?? []
+  let fyKgv: number | null = null
+  let fyEps: number | null = null
+  for (const k of fyKeys) {
+    if (fyKgv == null) fyKgv = wertAnPeriode(kgvZeile, k)
+    if (fyEps == null) fyEps = wertAnPeriode(epsZeile, k)
+    if (fyKgv != null && fyEps != null) break
+  }
+  const histKgv = letzterGeschaeftsjahresWert(kgvZeile, perioden)
+  const histEps = letzterGeschaeftsjahresWert(epsZeile, perioden)
+  const ltmPe = opts.ltmPeFallback ?? histKgv
+  const ausYahooPe =
+    opts.yahooForwardPe != null && opts.yahooForwardPe > 0 && opts.yahooForwardPe < 500
+      ? opts.yahooForwardPe
+      : null
+  const ausPreisEps =
+    opts.yahooPrice != null &&
+    opts.yahooFy1Eps != null &&
+    opts.yahooPrice > 0 &&
+    opts.yahooFy1Eps > 0
+      ? opts.yahooPrice / opts.yahooFy1Eps
+      : null
+  const ausHistPreis =
+    histKgv != null && histEps != null && fyEps != null && histKgv > 0 && histEps > 0 && fyEps > 0
+      ? (histKgv * histEps) / fyEps
+      : null
+
+  const plausibel = (pe: number | null): pe is number => {
+    if (pe == null || !Number.isFinite(pe) || pe <= 0 || pe >= 500) return false
+    if (ltmPe != null && ltmPe > 5) {
+      // Schätz-KGV darf nicht um Größenordnungen vom Trailing abweichen (Scraping-Einheiten).
+      if (pe < ltmPe * 0.35 || pe > ltmPe * 2.8) return false
+    }
+    return true
+  }
+
+  for (const k of [ausYahooPe, ausPreisEps, fyKgv, ausHistPreis]) {
+    if (plausibel(k)) return Math.round(k * 100) / 100
+  }
+  // Wenn nur Rekonstruktion aus Hist-Preis bleibt (fyKgv verworfen): etwas lockerer.
+  if (ausHistPreis != null && ausHistPreis > 0 && ausHistPreis < 500) {
+    return Math.round(ausHistPreis * 100) / 100
+  }
+  if (ausYahooPe != null) return Math.round(ausYahooPe * 100) / 100
+  if (ausPreisEps != null && ausPreisEps < 500) return Math.round(ausPreisEps * 100) / 100
+  return null
+}
+
+/**
+ * Forward-Multiples (EV/Umsatz, EV/EBITDA, MC/FCF): Schätz-Spalten oft Einheiten-Mix
+ * (z. B. EV/Umsatz 22 000× statt 18×). Gegen Trailing prüfen, sonst skalieren/LTM.
+ */
+function ermittleFwdMultiple(opts: {
+  fyRoh: number | null | undefined
+  ltm: number | null | undefined
+  yahoo?: number | null
+  histNiveau?: number | null
+  fyNiveau?: number | null
+  /** Harte Obergrenze (EV/Umsatz viel niedriger als PE-Cap). */
+  absMax?: number
+}): number | null {
+  const absMax = opts.absMax ?? 500
+  const ltm = opts.ltm != null && Number.isFinite(opts.ltm) && opts.ltm > 0 ? opts.ltm : null
+  const skalier =
+    ltm != null &&
+    opts.histNiveau != null &&
+    opts.fyNiveau != null &&
+    opts.histNiveau > 0 &&
+    opts.fyNiveau > 0
+      ? ltm * (opts.histNiveau / opts.fyNiveau)
+      : null
+
+  const ok = (v: number | null | undefined): v is number => {
+    if (v == null || !Number.isFinite(v) || v <= 0 || v >= absMax) return false
+    if (ltm != null && ltm > 0.2) {
+      if (v < ltm * 0.25 || v > ltm * 4) return false
+    }
+    return true
+  }
+
+  for (const k of [opts.yahoo, opts.fyRoh, skalier]) {
+    if (ok(k)) return Math.round(k * 100) / 100
+  }
+  if (skalier != null && skalier > 0 && skalier < absMax) return Math.round(skalier * 100) / 100
+  if (ltm != null && ltm < absMax) return Math.round(ltm * 100) / 100
+  return null
+}
+
+function ersterFySchaetzWert(
+  zeile: FundamentalMetrikZeile | undefined,
+  perioden: FundamentalPeriode[] | undefined,
+): number | null {
+  if (!zeile || !perioden) return null
+  for (const p of perioden) {
+    if (!p.istSchaetzung || istFundamentalQuartalSchaetzungIso(p.iso)) continue
+    const v = zeile.werte[p.iso]
+    if (v != null && Number.isFinite(v)) return v
+  }
+  return null
 }
 
 function multiple(v: number | null | undefined): string {
@@ -473,14 +596,21 @@ export function baueKeyMetrics(
   const revCagr2 = fwdCagrZweiJahre(umsatzSchaetz0, umsatzWachstumZ, jahresKeys, null)
   const epsCagr2 = fwdCagrZweiJahre(epsSchaetz0, epsWachstumZ, jahresKeys, revCagr2)
 
+  // Yahoo: FY0/FY1-EBITDA (nicht NTM↔FY1 — das ist kein sauberes 1J-Fenster).
   const ebitdaCagr2Yahoo =
-    yahoo?.ntmEbitdaUsd != null && yahoo?.fy1EbitdaUsd != null && yahoo.ntmEbitdaUsd > 0 && yahoo.fy1EbitdaUsd > 0
+    yahoo?.ntmEbitdaUsd != null &&
+    yahoo?.fy1EbitdaUsd != null &&
+    yahoo.ntmEbitdaUsd > 0 &&
+    yahoo.fy1EbitdaUsd > 0
       ? cagrProzent([yahoo.ntmEbitdaUsd, yahoo.fy1EbitdaUsd], 1)
       : null
   const ebitdaCagr2YahooOk =
-    ebitdaCagr2Yahoo != null && Math.abs(ebitdaCagr2Yahoo) <= FWD_CAGR_ABS_MAX ? ebitdaCagr2Yahoo : null
+    ebitdaCagr2Yahoo != null && Math.abs(ebitdaCagr2Yahoo) <= FWD_CAGR_ABS_MAX
+      ? ebitdaCagr2Yahoo
+      : null
   const ebitdaCagr2Ms = fwdCagrZweiJahre(ebitdaSchaetz0, undefined, jahresKeys, revCagr2)
-  const ebitdaCagr2 = ebitdaCagr2YahooOk ?? ebitdaCagr2Ms
+  // Ohne EBITDA-Consensus: bei stabilen Compoundern ≈ Umsatz-CAGR (besser als „–“).
+  const ebitdaCagr2 = ebitdaCagr2YahooOk ?? ebitdaCagr2Ms ?? revCagr2
 
   out.push(
     {
@@ -564,7 +694,7 @@ export function baueKeyMetrics(
       ? yahoo.enterpriseValue / ltmUmsatzUsd
       : null
 
-  // Forward = erstes FY-Schätz-Multiple aus der Bewertungstabelle (kein NTM)
+  // Forward = FY-Schätz-Multiple (plausibel vs. Trailing; EU-Schätz-KGV oft Müll)
   const ersteFySchaetzKeys =
     perioden
       ?.filter((p) => p.istSchaetzung && !istFundamentalQuartalSchaetzungIso(p.iso))
@@ -578,30 +708,57 @@ export function baueKeyMetrics(
     return null
   }
 
-  const fwdKgv =
-    fyWert(kgvZeile) ??
-    (yahoo?.currentPrice != null && yahoo?.fy1Eps != null && yahoo.fy1Eps > 0
-      ? yahoo.currentPrice / yahoo.fy1Eps
-      : null) ??
-    yahoo?.forwardPE ??
-    null
+  const ltmKgvFuerFwd =
+    yahoo?.trailingPE ?? letzterGeschaeftsjahresWert(kgvZeile, perioden) ?? null
+  const fwdKgv = ermittleFwdKgv({
+    perioden,
+    kgvZeile,
+    epsZeile: roh?.zeilen.find((z) => z.id === 'eps'),
+    yahooForwardPe: yahoo?.forwardPE,
+    yahooPrice: yahoo?.currentPrice,
+    yahooFy1Eps: yahoo?.fy1Eps,
+    ltmPeFallback: ltmKgvFuerFwd,
+  })
 
   const ltmFcfUsd = (() => {
     const mio = ttmOderLetzterFlow(fcfZeile, perioden)
     return mio != null ? mio * 1_000_000 : null
   })()
-  const fwdMcFcf =
-    fyWert(pfcfZeile) ??
-    (yahoo?.marketCap != null && ltmFcfUsd != null && ltmFcfUsd > 0 && yahoo?.revenueGrowth != null
-      ? yahoo.marketCap / (ltmFcfUsd * (1 + yahoo.revenueGrowth))
-      : null)
-
-  const fwdEvRevenue = fyWert(evRevZeile) ?? yahoo?.enterpriseToRevenue ?? null
-  const fwdEvEbitda = fyWert(evEbitdaZeile) ?? yahoo?.enterpriseToEbitda ?? null
   const ltmPfcf =
     yahoo?.marketCap != null && ltmFcfUsd != null && ltmFcfUsd > 0
       ? yahoo.marketCap / ltmFcfUsd
       : letzterGeschaeftsjahresWert(pfcfZeile, perioden)
+  const ltmEvEbitda =
+    letzterGeschaeftsjahresWert(evEbitdaZeile, perioden) ?? yahoo?.enterpriseToEbitda ?? null
+  const ebitdaZeileFuerFwd = roh?.zeilen.find((z) => z.id === 'ebitda')
+  const yahooFwdMcFcf =
+    yahoo?.marketCap != null && ltmFcfUsd != null && ltmFcfUsd > 0 && yahoo?.revenueGrowth != null
+      ? yahoo.marketCap / (ltmFcfUsd * (1 + yahoo.revenueGrowth))
+      : null
+  const fwdMcFcf = ermittleFwdMultiple({
+    fyRoh: fyWert(pfcfZeile),
+    ltm: ltmPfcf,
+    yahoo: yahooFwdMcFcf,
+    histNiveau: letzterGeschaeftsjahresWert(fcfZeile, perioden),
+    fyNiveau: ersterFySchaetzWert(fcfZeile, perioden),
+    absMax: 800,
+  })
+  const fwdEvRevenue = ermittleFwdMultiple({
+    fyRoh: fyWert(evRevZeile),
+    ltm: ltmEvRevenue ?? letzterGeschaeftsjahresWert(evRevZeile, perioden),
+    yahoo: yahoo?.enterpriseToRevenue,
+    histNiveau: letzterGeschaeftsjahresWert(umsatzZeile, perioden),
+    fyNiveau: ersterFySchaetzWert(umsatzZeile, perioden),
+    absMax: 200,
+  })
+  const fwdEvEbitda = ermittleFwdMultiple({
+    fyRoh: fyWert(evEbitdaZeile),
+    ltm: ltmEvEbitda,
+    yahoo: yahoo?.enterpriseToEbitda,
+    histNiveau: letzterGeschaeftsjahresWert(ebitdaZeileFuerFwd, perioden),
+    fyNiveau: ersterFySchaetzWert(ebitdaZeileFuerFwd, perioden),
+    absMax: 500,
+  })
   const fyFcfRendite = fcfRenditeAusPfcf(fwdMcFcf)
   const ltmFcfRendite = fcfRenditeAusPfcf(ltmPfcf)
   const divYieldPct =
@@ -851,15 +1008,114 @@ export function korrigiereFwdWachstumKeyMetrics(
   const eps3 = cagr3AusPaketZeile('eps', historisch)
   const rev5 = cagr5AusPaketZeile('umsatz', historisch)
   const eps5 = cagr5AusPaketZeile('eps', historisch)
+
+  const fwdKgv = historisch
+    ? ermittleFwdKgv({
+        perioden: historisch.perioden,
+        kgvZeile: historisch.zeilen.find((z) => z.id === 'kgv'),
+        epsZeile: historisch.zeilen.find((z) => z.id === 'eps'),
+        ltmPeFallback: kmPctAusMetric(keyMetrics.find((m) => m.id === 'ltm_pe')),
+      })
+    : null
+
+  const fwdEvRev = historisch
+    ? ermittleFwdMultiple({
+        fyRoh: ersterFySchaetzWert(
+          historisch.zeilen.find((z) => z.id === 'ev_rev'),
+          historisch.perioden,
+        ),
+        ltm:
+          kmPctAusMetric(keyMetrics.find((m) => m.id === 'ltm_ev_rev')) ??
+          letzterGeschaeftsjahresWert(
+            historisch.zeilen.find((z) => z.id === 'ev_rev'),
+            historisch.perioden,
+          ),
+        histNiveau: letzterGeschaeftsjahresWert(
+          historisch.zeilen.find((z) => z.id === 'umsatz'),
+          historisch.perioden,
+        ),
+        fyNiveau: ersterFySchaetzWert(
+          historisch.zeilen.find((z) => z.id === 'umsatz'),
+          historisch.perioden,
+        ),
+        absMax: 200,
+      })
+    : null
+  const fwdEvEbitda = historisch
+    ? ermittleFwdMultiple({
+        fyRoh: ersterFySchaetzWert(
+          historisch.zeilen.find((z) => z.id === 'ev_ebitda'),
+          historisch.perioden,
+        ),
+        ltm:
+          kmPctAusMetric(keyMetrics.find((m) => m.id === 'ltm_ev_ebitda')) ??
+          letzterGeschaeftsjahresWert(
+            historisch.zeilen.find((z) => z.id === 'ev_ebitda'),
+            historisch.perioden,
+          ),
+        histNiveau: letzterGeschaeftsjahresWert(
+          historisch.zeilen.find((z) => z.id === 'ebitda'),
+          historisch.perioden,
+        ),
+        fyNiveau: ersterFySchaetzWert(
+          historisch.zeilen.find((z) => z.id === 'ebitda'),
+          historisch.perioden,
+        ),
+        absMax: 500,
+      })
+    : null
+  const fwdMcFcf = historisch
+    ? ermittleFwdMultiple({
+        fyRoh: ersterFySchaetzWert(
+          historisch.zeilen.find((z) => z.id === 'pfcf'),
+          historisch.perioden,
+        ),
+        ltm:
+          kmPctAusMetric(keyMetrics.find((m) => m.id === 'ltm_pfcf')) ??
+          letzterGeschaeftsjahresWert(
+            historisch.zeilen.find((z) => z.id === 'pfcf'),
+            historisch.perioden,
+          ),
+        histNiveau: letzterGeschaeftsjahresWert(
+          historisch.zeilen.find((z) => z.id === 'fcf'),
+          historisch.perioden,
+        ),
+        fyNiveau: ersterFySchaetzWert(
+          historisch.zeilen.find((z) => z.id === 'fcf'),
+          historisch.perioden,
+        ),
+        absMax: 800,
+      })
+    : null
+
   return keyMetrics.map((k) => {
-    if (k.id === 'fwd_rev_cagr_2y') return { ...k, wert: pctRaw(rev) }
-    if (k.id === 'fwd_eps_cagr_2y') return { ...k, wert: pctRaw(eps) }
-    if (k.id === 'fwd_ebitda_cagr_2y' && ebitda != null) return { ...k, wert: pctRaw(ebitda) }
-    if (k.id === 'rev_cagr_3y' && historisch) return { ...k, wert: pctRaw(rev3) }
-    if (k.id === 'ebitda_cagr_3y' && historisch) return { ...k, wert: pctRaw(ebitda3) }
-    if (k.id === 'eps_cagr_3y' && historisch) return { ...k, wert: pctRaw(eps3) }
+    if (k.id === 'fwd_rev_cagr_2y') return { ...k, wert: pctRaw(rev), zahl: rev }
+    if (k.id === 'fwd_eps_cagr_2y') return { ...k, wert: pctRaw(eps), zahl: eps }
+    if (k.id === 'fwd_ebitda_cagr_2y') {
+      const e = ebitda ?? rev
+      return { ...k, wert: pctRaw(e), zahl: e }
+    }
+    if (k.id === 'rev_cagr_3y' && historisch) return { ...k, wert: pctRaw(rev3), zahl: rev3 }
+    if (k.id === 'ebitda_cagr_3y' && historisch) return { ...k, wert: pctRaw(ebitda3), zahl: ebitda3 }
+    if (k.id === 'eps_cagr_3y' && historisch) return { ...k, wert: pctRaw(eps3), zahl: eps3 }
     if (k.id === 'rev_cagr_5y' && historisch) return { ...k, wert: pctRaw(rev5), zahl: rev5 }
     if (k.id === 'eps_cagr_5y' && historisch) return { ...k, wert: pctRaw(eps5), zahl: eps5 }
+    if (k.id === 'ntm_pe' && fwdKgv != null) {
+      return { ...k, wert: multiple(fwdKgv), zahl: fwdKgv }
+    }
+    if (k.id === 'ntm_ev_rev' && fwdEvRev != null) {
+      return { ...k, wert: multiple(fwdEvRev), zahl: fwdEvRev }
+    }
+    if (k.id === 'ntm_ev_ebitda' && fwdEvEbitda != null) {
+      return { ...k, wert: multiple(fwdEvEbitda), zahl: fwdEvEbitda }
+    }
+    if (k.id === 'ntm_mc_fcf' && fwdMcFcf != null) {
+      return { ...k, wert: multiple(fwdMcFcf), zahl: fwdMcFcf }
+    }
+    if (k.id === 'ltm_ev_rev' || k.id === 'ltm_ev_ebitda' || k.id === 'ltm_pfcf') {
+      const z = k.zahl ?? kmPctAusMetric(k)
+      return z != null ? { ...k, zahl: z } : k
+    }
     return k
   })
 }
@@ -926,14 +1182,31 @@ export function korrigiereEffizienzKeyMetrics(
             ? ('neutral' as const)
             : ('negativ' as const),
   })
+  const regime =
+    w.incrementalRoicRegime ??
+    (/NOPAT rückläufig/i.test(keyMetrics.find((m) => m.id === 'incremental_roic')?.wert ?? '')
+      ? 'schrumpfend'
+      : /kapitalleicht/i.test(keyMetrics.find((m) => m.id === 'incremental_roic')?.wert ?? '')
+        ? 'kapitalleicht'
+        : null)
+  const roiicFuerSpread =
+    regime === 'schrumpfend' || regime === 'unzureichend'
+      ? null
+      : (w.incrementalRoicPct ?? roiicKm)
   const incrementalSpread =
     w.incrementalValueSpread ??
     berechneIncrementalValueSpread({
-      incrementalRoicPct: w.incrementalRoicPct ?? roiicKm,
+      incrementalRoicPct: roiicFuerSpread,
       wacc: waccKm,
       roicAnzeige: roicKm,
       valueSpread: valueSpreadKm,
+      incrementalRoicRegime: regime,
     })
+  const roiicKontext = {
+    incrementalRoicPct: roiicFuerSpread ?? w.incrementalRoicPct,
+    incrementalRoicRegime: regime ?? w.incrementalRoicRegime,
+    incrementalRoicBuchPct: w.incrementalRoicBuchPct,
+  }
   let out: FundamentalKeyMetric[] = keyMetrics.map((k): FundamentalKeyMetric => {
     if (k.id === 'ltm_brutto') {
       return {
@@ -1007,12 +1280,27 @@ export function korrigiereEffizienzKeyMetrics(
         zahl: w.beneishMScore ?? null,
       }
     }
+    if (k.id === 'incremental_roic') {
+      return {
+        ...k,
+        wert: roiicAnzeige(roiicKontext),
+        zahl:
+          regime === 'schrumpfend' &&
+          (roiicFuerSpread == null || roiicFuerSpread === 0)
+            ? null
+            : (roiicFuerSpread ?? k.zahl ?? null),
+      }
+    }
     if (k.id === 'reinvest_quote') {
       return {
         ...k,
         wert: pctMitVorzeichen(w.reinvestitionsquotePct),
         zahl: w.reinvestitionsquotePct ?? k.zahl ?? null,
       }
+    }
+    if (k.id === 'div_yield') {
+      const z = w.divYieldPct ?? kmPctAusMetric(k)
+      return z != null ? { ...k, wert: pctRaw(z), zahl: z } : k
     }
     if (k.id === 'aktien_verwaesserung') {
       const v = w.aktienVerwaesserungJaehrlichPct
@@ -1026,6 +1314,10 @@ export function korrigiereEffizienzKeyMetrics(
     }
     if (k.id === 'fcf_conversion') {
       return { ...k, wert: pctRaw(w.fcfConversion), zahl: w.fcfConversion ?? k.zahl ?? null }
+    }
+    if (k.id === 'rule_of_40') {
+      if (w.ruleOf40 == null) return k
+      return { ...k, wert: zahl(w.ruleOf40), zahl: w.ruleOf40 }
     }
     if (k.id === 'roic_5y_avg') return { ...k, wert: pctRaw(w.roic5yAvgPct), zahl: w.roic5yAvgPct ?? null }
     if (k.id === 'incremental_value_spread') {
@@ -1051,8 +1343,65 @@ export function korrigiereEffizienzKeyMetrics(
     if (k.id === 'fcf_je_aktie_cagr_5y') {
       return { ...k, wert: pctRaw(w.fcfJeAktieCagr5), zahl: w.fcfJeAktieCagr5 ?? null }
     }
+    if (k.id === 'ntm_pe' || k.id === 'ltm_pe') {
+      const z = k.zahl ?? kmPctAusMetric(k)
+      return z != null ? { ...k, zahl: z } : k
+    }
     return k
   })
+
+  // PEG aus FY-KGV + Fwd-/Hist-Wachstum neu (stale Cache z. B. 0,06× bei negativem EPS-CAGR).
+  {
+    const ntmPe = kmPctAusMetric(out.find((m) => m.id === 'ntm_pe'))
+    const fwdG = kmPctAusMetric(out.find((m) => m.id === 'fwd_eps_cagr_2y'))
+    const histG = w.epsCagr3 ?? kmPctAusMetric(out.find((m) => m.id === 'eps_cagr_3y'))
+    const growth = waehlePegWachstumPct({
+      fwdEpsCagr2: fwdG,
+      epsCagr3: histG,
+      yahooEpsPct: null,
+    })
+    const peg = berechnePegRatio(ntmPe, growth, null)
+    out = upsertNach(
+      out,
+      {
+        id: 'peg_ratio',
+        label: 'PEG (Fwd-KGV / EPS-Wachstum)',
+        wert: multiple(peg),
+        zahl: peg,
+        gruppe: 'bewertung_ntm',
+      },
+      'ntm_pe',
+    )
+  }
+
+  // Ältere Caches ohne WACC-Zeile: Kennzahl einfügen (nicht nur updaten).
+  if (waccKm != null) {
+    out = upsertNach(
+      out,
+      {
+        id: 'wacc',
+        label: 'WACC (geschätzt, CAPM)',
+        wert: pctRaw(waccKm),
+        zahl: waccKm,
+        gruppe: 'effizienz',
+      },
+      'ltm_roic_ex_gw',
+    )
+  }
+  if (valueSpreadKm != null) {
+    out = upsertNach(
+      out,
+      {
+        id: 'ltm_value_spread',
+        label: 'Value Spread (ROIC − WACC)',
+        wert: pctSigned(valueSpreadKm),
+        zahl: valueSpreadKm,
+        ton: valueSpreadKm >= 0 ? 'positiv' : 'negativ',
+        gruppe: 'effizienz',
+      },
+      'wacc',
+    )
+  }
   out = upsertNach(
     out,
     {

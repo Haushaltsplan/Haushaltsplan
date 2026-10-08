@@ -19,6 +19,7 @@ import { berechneEarningsQuality } from '@/lib/portfolio-analyse/fundamentaldate
 import {
   berechnePegRatio,
   berechneReinvestition,
+  waehlePegWachstumPct,
 } from '@/lib/portfolio-analyse/fundamentaldaten-reinvestition'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import type { MantraYahooFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
@@ -96,6 +97,8 @@ export type FundamentalKontextInput = {
   /** Sektor/Branche für Kapital-Profil (keine Ticker-Logik). */
   sektor?: string | null
   branche?: string | null
+  /** Erw. EPS-CAGR 2J (Consensus) — bevorzugte PEG-Basis. */
+  fwdEpsCagr2Pct?: number | null
 }
 
 function historischeWerte(
@@ -117,6 +120,14 @@ function berechneMargePct(zaehler: number | null, nenner: number | null): number
   return (zaehler / nenner) * 100
 }
 
+/** Yahoo growth: meist Dezimal (0,12); manchmal schon Prozent (12). */
+function yahooWachstumAlsPct(raw: number | null | undefined): number | null {
+  if (raw == null || !Number.isFinite(raw)) return null
+  if (Math.abs(raw) <= 2) return raw * 100
+  if (Math.abs(raw) <= 200) return raw
+  return null
+}
+
 function mittelLetzte(werte: number[], n = 5, min = 3): number | null {
   const xs = werte.filter((v) => Number.isFinite(v)).slice(-n)
   if (xs.length < min) return null
@@ -128,14 +139,24 @@ function quotientSerie(
   nenner: FundamentalMetrikZeile | undefined,
   perioden: FundamentalPeriode[] | undefined,
 ): number[] {
-  const keys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
-  const out: number[] = []
-  for (const k of keys) {
-    const z = zaehler?.werte[k]
-    const n = nenner?.werte[k]
-    if (z != null && n != null && n > 0 && Number.isFinite(z) && Number.isFinite(n)) out.push(z / n)
+  // Pseudo-Zeile Quotient → gleiche Jahres-Deduplikation wie Umsatz/EPS (kein FY+Kalender-Doppel).
+  if (!zaehler || !nenner) return []
+  const quotienten: FundamentalMetrikZeile = {
+    id: '_quotient',
+    label: '_quotient',
+    gruppe: 'finanzdaten',
+    einheit: 'ratio',
+    werte: {},
   }
-  return out
+  const keys = perioden?.filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  for (const k of keys) {
+    const z = zaehler.werte[k]
+    const n = nenner.werte[k]
+    if (z != null && n != null && n > 0 && Number.isFinite(z) && Number.isFinite(n)) {
+      quotienten.werte[k] = z / n
+    }
+  }
+  return historischeWerteAusZeile(quotienten, perioden)
 }
 
 /** Yahoo payoutRatio ist oft leer — Fallbacks aus GuV/Cashflow oder Div-Rendite × KGV. */
@@ -421,6 +442,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     wacc,
     roicAnzeige,
     valueSpread,
+    incrementalRoicRegime: ctx.incrementalRoicRegime ?? null,
   })
 
   // Quartal: kein FY-M&A in die Reinvestitionsquote mischen
@@ -440,13 +462,19 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const bruttoHist = scheinBrutto ? [] : bruttoHistRoh
   const margeStab = berechneBruttomargenStabilitaet(bruttoHistRoh)
 
-  const fwdPe = ctx.yahoo?.forwardPE ?? ctx.yahoo?.trailingPE ?? null
-  const epsWachstumPct =
-    ctx.yahoo?.earningsGrowth != null ? ctx.yahoo.earningsGrowth * 100 : epsCagr3
+  // PEG nur mit Forward-KGV (Trailing bei Turnarounds oft absurd hoch).
+  const fwdPe = ctx.yahoo?.forwardPE ?? null
+  const yahooEpsWachstumPct = yahooWachstumAlsPct(ctx.yahoo?.earningsGrowth)
+  const epsWachstumPct = waehlePegWachstumPct({
+    fwdEpsCagr2: ctx.fwdEpsCagr2Pct ?? null,
+    epsCagr3,
+    yahooEpsPct: yahooEpsWachstumPct,
+  })
   const pegRatio = berechnePegRatio(fwdPe, epsWachstumPct, null)
 
-  const revGrowthPct =
-    ctx.yahoo?.revenueGrowth != null ? ctx.yahoo.revenueGrowth * 100 : umsatzCagr3
+  // Rule of 40: Umsatz-CAGR 3J (konsistent zur Anzeige) + beste Cash-/Gewinnmarge.
+  // Yahoo-YoY nur Fallback — sonst weicht Ro40 von der gezeigten CAGR ab.
+  const revGrowthPct = umsatzCagr3 ?? yahooWachstumAlsPct(ctx.yahoo?.revenueGrowth)
 
   const ruleOf40 =
     revGrowthPct != null
@@ -456,7 +484,9 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
             ebitMarge ?? Number.NEGATIVE_INFINITY,
             ebitdaMarge ?? Number.NEGATIVE_INFINITY,
           )
-          return Number.isFinite(marge) ? revGrowthPct + marge : null
+          return Number.isFinite(marge)
+            ? Math.round((revGrowthPct + marge) * 100) / 100
+            : null
         })()
       : null
 

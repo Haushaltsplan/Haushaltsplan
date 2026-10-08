@@ -12,7 +12,7 @@ import { watchlistHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigati
 import {
   entferneAusWatchlist,
   findeWatchlistIdx,
-  fuegeZurWatchlistHinzu,
+  fuegeZurWatchlistHinzuAsync,
   ladeWatchlist,
   ladeWatchlistMitCloudMerge,
   watchlistEintragAusMeta,
@@ -112,7 +112,7 @@ export function PortfolioWatchlistClient() {
       }
       setHinzufuegenLaden(true)
       try {
-        const next = fuegeZurWatchlistHinzu(neu)
+        const next = await fuegeZurWatchlistHinzuAsync(neu)
         setEintraege(next)
         setSelectedKey(watchlistSchluessel(neu))
         router.replace(watchlistHref({ isin: neu.isin, symbol: neu.symbolYahoo }), { scroll: false })

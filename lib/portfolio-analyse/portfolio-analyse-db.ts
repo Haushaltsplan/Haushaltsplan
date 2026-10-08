@@ -7,6 +7,7 @@ import {
   PORTFOLIO_UPSERT_BATCH,
 } from '@/lib/portfolio-analyse/limits'
 import { normalisiereIsinFuerDb } from '@/lib/portfolio-analyse/parse-hilfen'
+import { syncNachkaufUniversum } from '@/lib/portfolio-analyse/universum-sync-client'
 import type {
   PortfolioBuchung,
   PortfolioDbBuchung,
@@ -354,6 +355,8 @@ export async function speicherePortfolioImport(
     }
   }
 
+  // Kauf/Import → Depot∪Watchlist-Universum + Radar-Scans anpassen
+  syncNachkaufUniversum()
   return { ok: true, eingefuegt, hinweis }
 }
 
@@ -372,6 +375,8 @@ export async function loeschePortfolioBuchung(id: string): Promise<{ ok: boolean
   if ((count ?? 0) === 0) {
     return { ok: false, message: 'Buchung nicht gefunden oder keine Berechtigung.' }
   }
+  // Verkauf/Korrektur → verkaufte Titel aus Radar werfen
+  syncNachkaufUniversum()
   return { ok: true }
 }
 
@@ -386,5 +391,6 @@ export async function loescheAllePortfolioAnalyseDaten(): Promise<{ ok: boolean;
     .delete()
     .neq('id', '00000000-0000-0000-0000-000000000000')
   if (sErr) return { ok: false, message: sErr.message }
+  syncNachkaufUniversum()
   return { ok: true }
 }

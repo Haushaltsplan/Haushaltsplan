@@ -33,7 +33,7 @@ import type {
 
 function historischQuelleLabel(q: NachkaufScanEintrag['bewertung']['historischQuelle']): string {
   if (q === 'macrotrends') return ' (SEC)'
-  if (q === 'whitelist') return ' (Whitelist)'
+  if (q === 'whitelist') return '' // Whitelist ist kein Universum mehr
   return ''
 }
 

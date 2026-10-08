@@ -873,6 +873,23 @@ function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): Fundamentald
   const roiicAusCache = cleaned.keyMetrics.find((m) => m.id === 'incremental_roic')?.zahl ?? null
   const meta = cleaned.mantraMeta
   // Beta/Marktkap/Schulden aus mantraMeta — sonst WACC=null und Value Spread wird fälschlich geleert.
+  const fwdKms = korrigiereFwdWachstumKeyMetrics(cleaned.keyMetrics, schaetz, cleaned)
+  const fwdEpsCagr2Pct =
+    fwdKms.find((m) => m.id === 'fwd_eps_cagr_2y')?.zahl ?? null
+  const iroicMetric = cleaned.keyMetrics.find((m) => m.id === 'incremental_roic')
+  const iroicWert = iroicMetric?.wert ?? ''
+  const regimeAusCache: 'schrumpfend' | 'kapitalleicht' | 'unzureichend' | null =
+    /NOPAT rückläufig/i.test(iroicWert)
+      ? 'schrumpfend'
+      : /kapitalleicht/i.test(iroicWert)
+        ? 'kapitalleicht'
+        : /unzureichend|keine Daten|–\s*\(/i.test(iroicWert)
+          ? 'unzureichend'
+          : null
+  const roiicZahl =
+    regimeAusCache === 'schrumpfend' || regimeAusCache === 'unzureichend'
+      ? null
+      : roiicAusCache
   const kontext = baueKontextWerte({
     yahoo: meta
       ? {
@@ -885,15 +902,14 @@ function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): Fundamentald
     roh: { perioden: cleaned.perioden, zeilen: cleaned.zeilen },
     schaetzungen: schaetz,
     yahooFinanz: meta?.yahooFinanz ?? null,
-    incrementalRoicPct: roiicAusCache,
+    incrementalRoicPct: roiicZahl,
+    incrementalRoicRegime: regimeAusCache,
+    fwdEpsCagr2Pct,
   })
   return {
     ...cleaned,
     keyMetrics: korrigiereEffizienzKeyMetrics(
-      ergaenzeFcfRenditeKeyMetrics(
-        korrigiereFwdWachstumKeyMetrics(cleaned.keyMetrics, schaetz, cleaned),
-        cleaned,
-      ),
+      ergaenzeFcfRenditeKeyMetrics(fwdKms, cleaned),
       cleaned,
       kontext,
     ),

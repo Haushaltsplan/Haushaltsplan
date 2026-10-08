@@ -12,7 +12,6 @@ import { jsonMitOwner } from '@/lib/request-owner'
 import {
   ladeNachkaufWatchlistAusCloud,
   syncNachkaufWatchlistZurCloud,
-  type NachkaufWatchlistEintrag,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 
 export const runtime = 'nodejs'
@@ -39,11 +38,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, fehler: 'eintraege[] fehlt.' }, { status: 400 })
   }
 
-  const eintraege: NachkaufWatchlistEintrag[] = roh
+  const eintraege = roh
     .map((e) => {
       const r = (e ?? {}) as Record<string, unknown>
       return {
-        isin: String(r.isin ?? '').trim().toUpperCase(),
+        isin: String(r.isin ?? '').trim().toUpperCase() || null,
         name: String(r.name ?? '').trim(),
         symbolYahoo: r.symbolYahoo != null ? String(r.symbolYahoo).trim() || null : null,
         symbolCandidates: Array.isArray(r.symbolCandidates)
@@ -55,7 +54,7 @@ export async function POST(req: Request) {
             : new Date().toISOString(),
       }
     })
-    .filter((e) => e.isin && e.name)
+    .filter((e) => e.name && (e.isin || e.symbolYahoo))
 
   const result = await syncNachkaufWatchlistZurCloud(eintraege)
   if (!result.ok) {

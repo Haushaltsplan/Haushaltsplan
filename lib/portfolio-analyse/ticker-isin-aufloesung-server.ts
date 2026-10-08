@@ -55,6 +55,17 @@ const BEKANNTE_US_TICKER_ISIN: Record<string, string> = {
   VEEV: 'US9224751084',
   ANET: 'US0404132054',
   DDOG: 'US23804L1035',
+  // Watchlist-Ticker ohne Eintrag in ISIN_KENNTNISSE (sonst fallen sie aus dem Radar)
+  ELMD: 'US2854091087',
+  QLYS: 'US74758T3032',
+  ALLE: 'IE00BFRT3W74',
+  HUBB: 'US4435106079',
+  GE: 'US3696043013',
+  IDXX: 'US45168D1046',
+  IX1: 'US45168D1046',
+  NSSC: 'US6304021057',
+  NS1: 'US6304021057',
+  AXON: 'US05464C1009',
 }
 
 // Kenntnisse-Whitelist automatisch eintragen (Nachkauf + Portfolio)
@@ -127,19 +138,19 @@ async function divvydiaryIsinFuerSymbol(symbol: string): Promise<string | null> 
   return null
 }
 
-/** ISIN für Yahoo-/US-Ticker auflösen (Finnhub → Kenntnisse → Fallback-Map → DivvyDiary). */
+/** ISIN für Yahoo-/US-Ticker auflösen (Map/Kenntnisse zuerst — schnell; dann Finnhub/DivvyDiary). */
 export async function loeseIsinFuerTicker(symbol: string): Promise<string | null> {
   const sym = symbol.trim()
   if (!sym) return null
-
-  const viaFinnhub = await finnhubIsinFuerSymbol(sym)
-  if (viaFinnhub) return viaFinnhub
 
   const viaKenntnis = isinAusYahooSymbol(sym)
   if (viaKenntnis) return viaKenntnis
 
   const basis = normTicker(sym)
   if (BEKANNTE_US_TICKER_ISIN[basis]) return BEKANNTE_US_TICKER_ISIN[basis]
+
+  const viaFinnhub = await finnhubIsinFuerSymbol(sym)
+  if (viaFinnhub) return viaFinnhub
 
   return divvydiaryIsinFuerSymbol(sym)
 }

@@ -1,3 +1,4 @@
+import { historischeJahresKeys } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import {
   FUNDAMENTAL_TTM_KEY,
   type FundamentaldatenPaket,
@@ -50,18 +51,7 @@ const MAX_EV_REV = 30
 const MAX_PFCF = 80
 
 function geschaeftsjahresKeys(perioden: FundamentalPeriode[], max = 5): string[] {
-  return perioden
-    .filter(
-      (p) =>
-        !p.istLtm &&
-        !p.istNtm &&
-        !p.istSchaetzung &&
-        p.iso !== FUNDAMENTAL_TTM_KEY &&
-        /^\d{4}-\d{2}-\d{2}$/.test(p.iso),
-    )
-    .map((p) => p.iso)
-    .sort()
-    .slice(-max)
+  return historischeJahresKeys(perioden).filter((iso) => iso !== FUNDAMENTAL_TTM_KEY).slice(-max)
 }
 
 function werteAusZeile(
