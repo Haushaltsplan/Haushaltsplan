@@ -871,11 +871,20 @@ function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): Fundamentald
   if (cleaned.keyMetrics.length === 0) return cleaned
   const schaetz = schaetzungenRohAusPaket(cleaned)
   const roiicAusCache = cleaned.keyMetrics.find((m) => m.id === 'incremental_roic')?.zahl ?? null
+  const meta = cleaned.mantraMeta
+  // Beta/Marktkap/Schulden aus mantraMeta — sonst WACC=null und Value Spread wird fälschlich geleert.
   const kontext = baueKontextWerte({
-    yahoo: null,
+    yahoo: meta
+      ? {
+          beta: meta.beta ?? undefined,
+          marketCap: meta.marketCapUsd ?? undefined,
+          totalDebt: meta.totalDebtUsd ?? undefined,
+          totalCash: meta.totalCashUsd ?? undefined,
+        }
+      : null,
     roh: { perioden: cleaned.perioden, zeilen: cleaned.zeilen },
     schaetzungen: schaetz,
-    yahooFinanz: null,
+    yahooFinanz: meta?.yahooFinanz ?? null,
     incrementalRoicPct: roiicAusCache,
   })
   return {

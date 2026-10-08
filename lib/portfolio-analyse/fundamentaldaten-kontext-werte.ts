@@ -340,6 +340,11 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
       : roicAnzeige != null
         ? 'ROIC ex Goodwill'
         : undefined
+  /** Für Value Spread dieselbe ROIC-Basis wie in der LTM-ROIC-Anzeige (inkl. ex-GW-Fallback). */
+  const roicFuerSpread =
+    roicAnzeige ??
+    roic ??
+    (roicExGoodwill != null && Number.isFinite(roicExGoodwill) ? roicExGoodwill : null)
 
   const wacc = schaetzeWaccPct({
     beta: ctx.yahoo?.beta,
@@ -350,7 +355,10 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     taxProvisionUsd: yt?.taxProvisionUsd,
   })
 
-  const valueSpread = roicAnzeige != null && wacc != null ? roicAnzeige - wacc : null
+  const valueSpread =
+    roicFuerSpread != null && wacc != null
+      ? Math.round((roicFuerSpread - wacc) * 100) / 100
+      : null
 
   let roe = letzterWert(roeZeile, perioden)
   if (roe == null && ctx.yahoo?.returnOnEquity != null && Number.isFinite(ctx.yahoo.returnOnEquity)) {

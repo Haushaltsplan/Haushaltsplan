@@ -783,6 +783,18 @@ export function korrigiereFwdWachstumKeyMetrics(
   })
 }
 
+/** Prozent-Kennzahl aus `zahl` oder Anzeige-String („26,4 %“ / „(1,2 %)“). */
+function kmPctAusMetric(m: FundamentalKeyMetric | undefined): number | null {
+  if (!m) return null
+  if (m.zahl != null && Number.isFinite(m.zahl)) return m.zahl
+  const roh = m.wert?.trim()
+  if (!roh || roh === '–' || roh === '-') return null
+  const neg = /^\(.*\)$/.test(roh.replace(/\s/g, ''))
+  const n = Number(roh.replace(/[()%\s]/g, '').replace(',', '.'))
+  if (!Number.isFinite(n)) return null
+  return neg ? -Math.abs(n) : n
+}
+
 /**
  * Effizienz-Kennzahlen aus GuV/Bilanz neu ableiten (Cache-Read).
  * Behebt Schein-Bruttomarge 100 %, ROIC≈ROE und unsinniges ROIC-ex-Goodwill
@@ -796,6 +808,17 @@ export function korrigiereEffizienzKeyMetrics(
   if (!kontextWerte) return keyMetrics
   const w = kontextWerte
   const roiicKm = keyMetrics.find((m) => m.id === 'incremental_roic')?.zahl ?? null
+  const roicKm =
+    w.roicAnzeige ??
+    w.roic ??
+    w.roicExGoodwill ??
+    kmPctAusMetric(keyMetrics.find((m) => m.id === 'ltm_roic')) ??
+    kmPctAusMetric(keyMetrics.find((m) => m.id === 'ltm_roic_ex_gw'))
+  const waccKm = w.wacc ?? kmPctAusMetric(keyMetrics.find((m) => m.id === 'wacc'))
+  const valueSpreadKm =
+    roicKm != null && waccKm != null
+      ? Math.round((roicKm - waccKm) * 100) / 100
+      : (w.valueSpread ?? null)
   const iSpreadAnzeige = (zahl: number | null | undefined) => ({
     wert: pctSigned(zahl),
     zahl: zahl ?? null,
@@ -812,9 +835,9 @@ export function korrigiereEffizienzKeyMetrics(
     w.incrementalValueSpread ??
     berechneIncrementalValueSpread({
       incrementalRoicPct: w.incrementalRoicPct ?? roiicKm,
-      wacc: w.wacc,
-      roicAnzeige: w.roicAnzeige ?? w.roic,
-      valueSpread: w.valueSpread,
+      wacc: waccKm,
+      roicAnzeige: roicKm,
+      valueSpread: valueSpreadKm,
     })
   let out: FundamentalKeyMetric[] = keyMetrics.map((k): FundamentalKeyMetric => {
     if (k.id === 'ltm_brutto') {
@@ -836,8 +859,15 @@ export function korrigiereEffizienzKeyMetrics(
     if (k.id === 'ltm_ebit') return { ...k, wert: pctRaw(w.ebitMarge) }
     if (k.id === 'ltm_roa') return { ...k, wert: pctRaw(w.roa) }
     if (k.id === 'ltm_roe') return { ...k, wert: pctRaw(w.roe) }
-    if (k.id === 'ltm_roic') return { ...k, wert: pctRaw(w.roicAnzeige ?? w.roic) }
+    if (k.id === 'ltm_roic') {
+      const roic = w.roicAnzeige ?? w.roic ?? w.roicExGoodwill
+      return { ...k, wert: pctRaw(roic), zahl: roic ?? k.zahl ?? null }
+    }
     if (k.id === 'ltm_roic_ex_gw') return { ...k, wert: pctRaw(w.roicExGoodwill) }
+    if (k.id === 'wacc') {
+      if (waccKm == null) return k
+      return { ...k, wert: pctRaw(waccKm), zahl: waccKm }
+    }
     if (k.id === 'net_debt_ebitda') {
       const v = w.netDebtEbitda
       return {
@@ -857,11 +887,12 @@ export function korrigiereEffizienzKeyMetrics(
     if (k.id === 'eps_cagr_3y') return { ...k, wert: pctRaw(w.epsCagr3), zahl: w.epsCagr3 ?? null }
     if (k.id === 'eps_cagr_5y') return { ...k, wert: pctRaw(w.epsCagr5), zahl: w.epsCagr5 ?? null }
     if (k.id === 'ltm_value_spread') {
+      const spread = valueSpreadKm ?? kmPctAusMetric(k)
       return {
         ...k,
-        wert: pctSigned(w.valueSpread),
-        ton:
-          w.valueSpread == null ? undefined : w.valueSpread >= 0 ? 'positiv' : 'negativ',
+        wert: pctSigned(spread),
+        zahl: spread,
+        ton: spread == null ? undefined : spread >= 0 ? 'positiv' : 'negativ',
       }
     }
     if (k.id === 'fcf_conversion') return { ...k, wert: pctRaw(w.fcfConversion) }
