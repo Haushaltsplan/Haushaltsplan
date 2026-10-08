@@ -188,7 +188,7 @@ export function PortfolioTitelVergleichClient() {
               Titelvergleich ({state.eintraege.length})
             </h2>
             <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
-              Bis {TITEL_VERGLEICH_MAX} Unternehmen Side-by-Side · Fundamentaldaten &amp; pers. Div-Rendite
+              Bis {TITEL_VERGLEICH_MAX} Titel · Bewertung, Wachstum, Schätzungen, Hist. 5J/10J, Qualität
             </p>
           </div>
           {state.eintraege.length > 0 ? (
@@ -286,16 +286,25 @@ export function PortfolioTitelVergleichClient() {
                     {laden && !sp ? (
                       <p className="mt-3 text-xs text-[var(--app-text-muted)]">Lade …</p>
                     ) : (
-                      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
-                        {zeilen.slice(0, 6).map((z) => (
-                          <div key={z.id} className="contents">
-                            <dt className="text-[var(--app-text-muted)]">{z.label}</dt>
-                            <dd className="text-right tabular-nums text-[var(--app-text)]">
-                              {fmtWert(sp?.werte[z.id as TitelVergleichKennzahlId], z.format)}
-                            </dd>
+                      <div className="mt-3 max-h-[28rem] space-y-3 overflow-y-auto pr-1">
+                        {gruppen.map(({ gruppe, zeilen: gz }) => (
+                          <div key={gruppe}>
+                            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-teal-300/90">
+                              {gruppe}
+                            </p>
+                            <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px]">
+                              {gz.map((z) => (
+                                <div key={z.id} className="contents">
+                                  <dt className="text-[var(--app-text-muted)]">{z.label}</dt>
+                                  <dd className="text-right tabular-nums text-[var(--app-text)]">
+                                    {fmtWert(sp?.werte[z.id as TitelVergleichKennzahlId], z.format)}
+                                  </dd>
+                                </div>
+                              ))}
+                            </dl>
                           </div>
                         ))}
-                      </dl>
+                      </div>
                     )}
                     <Link
                       href={fundamentaldatenHref({
@@ -321,7 +330,7 @@ export function PortfolioTitelVergleichClient() {
               <div
                 className="inline-grid min-w-full border border-white/[0.06] bg-[var(--app-surface)]"
                 style={{
-                  gridTemplateColumns: `minmax(11rem,14rem) repeat(${Math.max(state.eintraege.length, 1)}, minmax(14rem, 18rem))`,
+                  gridTemplateColumns: `minmax(13rem,16rem) repeat(${Math.max(state.eintraege.length, 1)}, minmax(14rem, 18rem))`,
                 }}
               >
                 {/* Header row */}

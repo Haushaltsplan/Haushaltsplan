@@ -532,6 +532,13 @@ export function baueKeyMetrics(
       : letzterGeschaeftsjahresWert(pfcfZeile, perioden)
   const fyFcfRendite = fcfRenditeAusPfcf(fwdMcFcf)
   const ltmFcfRendite = fcfRenditeAusPfcf(ltmPfcf)
+  const divYieldPct =
+    w?.divYieldPct ??
+    (yahoo?.dividendYield != null && yahoo.dividendYield > 0
+      ? yahoo.dividendYield < 0.2
+        ? yahoo.dividendYield * 100
+        : yahoo.dividendYield
+      : null)
 
   out.push(
     {
@@ -592,20 +599,15 @@ export function baueKeyMetrics(
     {
       id: 'div_yield',
       label: 'Dividendenrendite',
-      wert: pctRaw(
-        w?.divYieldPct ??
-          (yahoo?.dividendYield != null && yahoo.dividendYield > 0
-            ? yahoo.dividendYield < 0.2
-              ? yahoo.dividendYield * 100
-              : yahoo.dividendYield
-            : null),
-      ),
+      wert: pctRaw(divYieldPct),
+      zahl: divYieldPct,
       gruppe: 'bewertung_ltm',
     },
     {
       id: 'payout',
       label: 'Ausschüttungsquote',
       wert: pctRaw(w?.payoutPct),
+      zahl: w?.payoutPct ?? null,
       gruppe: 'bewertung_ltm',
     },
     {

@@ -370,11 +370,24 @@ export function PaFundamentalInhalt({
     if (!pos || pos.stueck <= 0 || !(pos.einstandEur > 0)) return base
     if (base.some((m) => m.id === 'pers_div_yield')) return base
     const divKm = base.find((m) => m.id === 'div_yield')
-    const yieldPct = divKm?.zahl != null && Number.isFinite(divKm.zahl) ? divKm.zahl : null
+    let yieldPct: number | null =
+      divKm?.zahl != null && Number.isFinite(divKm.zahl) ? divKm.zahl : null
+    // Alte Cache-Pakete: div_yield hatte oft nur `wert`, kein `zahl` → sonst TTM-Fallback.
+    if (yieldPct == null && divKm?.wert) {
+      const n = Number(
+        divKm.wert
+          .replace(/%/g, '')
+          .trim()
+          .replace(/\./g, '')
+          .replace(',', '.'),
+      )
+      if (Number.isFinite(n) && n > 0) yieldPct = n
+    }
+    const kurs = pos.kursLiveEur ?? pos.kursEur
     const pers = berechnePersoenlicheDivRenditeProzent({
       einstandEur: pos.einstandEur,
       stueck: pos.stueck,
-      kursLiveEur: pos.kursLiveEur ?? pos.kursEur,
+      kursLiveEur: kurs,
       dividendYieldPct: yieldPct,
       ttmDividendenEur: divTtmMap.get(isin) ?? null,
     })
