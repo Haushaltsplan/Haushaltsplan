@@ -160,6 +160,7 @@ const SUB_NAV = [
   { href: '/portfolioanalyse/dividenden', label: 'Dividenden' },
   { href: '/portfolioanalyse/earnings', label: 'Quartalszahlen' },
   { href: '/portfolioanalyse/fundamentaldaten', label: 'Fundamentaldaten' },
+  { href: '/portfolioanalyse/vergleich', label: 'Vergleich', nurDesktop: true },
   { href: '/portfolioanalyse/nachkaeufe', label: 'Nachkauf-Radar' },
   { href: '/portfolioanalyse/watchlist', label: 'Watchlist' },
   { href: '/portfolioanalyse/dcf', label: 'DCF' },
@@ -188,7 +189,7 @@ export function PaSubNav() {
           aria-label="Portfolio-Bereich"
           data-no-swipe-nav
         >
-          {SUB_NAV.map((item) => {
+          {SUB_NAV.filter((item) => !('nurDesktop' in item && item.nurDesktop)).map((item) => {
             const aktiv = paSubNavAktiv(pathname, item.href)
             return (
               <Link

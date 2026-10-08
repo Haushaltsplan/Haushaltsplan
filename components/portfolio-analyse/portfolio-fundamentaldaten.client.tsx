@@ -23,6 +23,10 @@ import {
   WATCHLIST_CHANGED_EVENT,
   watchlistEintragAusMeta,
 } from '@/lib/portfolio-analyse/watchlist-client'
+import {
+  fuegeZumTitelVergleichHinzu,
+  vergleichHref,
+} from '@/lib/portfolio-analyse/titel-vergleich-store'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
 export function PortfolioFundamentaldatenClient() {
@@ -158,6 +162,21 @@ export function PortfolioFundamentaldatenClient() {
     setWatchHinweis(`${selected.name} zur Watchlist hinzugefügt.`)
   }, [selected])
 
+  const zumVergleich = useCallback(() => {
+    if (!selected) return
+    const r = fuegeZumTitelVergleichHinzu({
+      isin: selected.isin,
+      name: selected.name,
+      symbolYahoo: selected.symbolYahoo,
+    })
+    if (!r.ok) {
+      setWatchHinweis(r.fehler ?? 'Vergleich voll.')
+      return
+    }
+    setWatchHinweis(`${selected.name} zum Vergleich hinzugefügt.`)
+    router.push(vergleichHref())
+  }, [selected, router])
+
   const anfrage = useMemo(
     () =>
       selected
@@ -213,6 +232,15 @@ export function PortfolioFundamentaldatenClient() {
                   </button>
                 ) : selected && aufWatchlist ? (
                   <span className="text-[11px] text-[var(--app-text-muted)]">Auf Watchlist</span>
+                ) : null}
+                {selected ? (
+                  <button
+                    type="button"
+                    onClick={zumVergleich}
+                    className="hidden text-[11px] font-medium text-teal-300 hover:text-teal-200 hover:underline sm:inline"
+                  >
+                    + Vergleich
+                  </button>
                 ) : null}
                 <Link href={WATCHLIST_PFAD} className="text-[11px] text-teal-400 hover:underline">
                   Watchlist verwalten

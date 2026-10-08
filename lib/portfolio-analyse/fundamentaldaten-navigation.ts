@@ -1,6 +1,7 @@
 export const FUNDAMENTALDATEN_PFAD = '/portfolioanalyse/fundamentaldaten'
 export const DCF_PFAD = '/portfolioanalyse/dcf'
 export const WATCHLIST_PFAD = '/portfolioanalyse/watchlist'
+export const VERGLEICH_PFAD = '/portfolioanalyse/vergleich'
 
 export type FundamentalKandidat = {
   isin: string | null
@@ -48,6 +49,10 @@ export function watchlistHref(opts: { isin?: string | null; symbol?: string | nu
   const symbol = opts.symbol?.trim()
   if (symbol) return `${WATCHLIST_PFAD}?symbol=${encodeURIComponent(symbol)}`
   return WATCHLIST_PFAD
+}
+
+export function vergleichHref(): string {
+  return VERGLEICH_PFAD
 }
 
 export function findeFundamentalPositionIdx(

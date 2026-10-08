@@ -26,7 +26,13 @@ import {
   type FundamentalChartWahlId,
 } from '@/components/portfolio-analyse/pa-fundamental-qualitaets-charts'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
+import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { chartAnalyseSchluessel } from '@/lib/portfolio-analyse/chart-analyse-store'
+import {
+  berechnePersoenlicheDivRenditeProzent,
+  dividendenTtmJeIsin,
+} from '@/lib/portfolio-analyse/dividenden-yoc'
+import type { FundamentalKeyMetric } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { bewerteChartInfoFuerAktie } from '@/lib/portfolio-analyse/fundamental-chart-info-check'
 import {
   downloadFundamentaldatenJson,
@@ -75,6 +81,7 @@ export function PaFundamentalInhalt({
   /** Zusätzliche Titel (Depot-Dropdown / Watchlist), mergen mit Whitelist+Cloud-Watchlist. */
   alleScrapZiele?: FundamentaldatenAnfrage[] | null
 }) {
+  const { live, buchungen } = usePortfolioAnalyse()
   const [unterTab, setUnterTab] = useState<(typeof UNTER_TABS)[number]['id']>('uebersicht')
   const [daten, setDaten] = useState<FundamentaldatenPaket | null>(null)
   const [laden, setLaden] = useState(false)
@@ -353,6 +360,40 @@ export function PaFundamentalInhalt({
     return s
   }, [zeilenBereinigt])
 
+  const divTtmMap = useMemo(() => dividendenTtmJeIsin(buchungen), [buchungen])
+
+  const metrikenMitYoC = useMemo((): FundamentalKeyMetric[] => {
+    const base = daten?.keyMetrics ?? []
+    if (!daten?.ok || !anfrage?.isin) return base
+    const isin = anfrage.isin.toUpperCase()
+    const pos = live?.positionen.find((p) => p.isin?.toUpperCase() === isin)
+    if (!pos || pos.stueck <= 0 || !(pos.einstandEur > 0)) return base
+    if (base.some((m) => m.id === 'pers_div_yield')) return base
+    const divKm = base.find((m) => m.id === 'div_yield')
+    const yieldPct = divKm?.zahl != null && Number.isFinite(divKm.zahl) ? divKm.zahl : null
+    const pers = berechnePersoenlicheDivRenditeProzent({
+      einstandEur: pos.einstandEur,
+      stueck: pos.stueck,
+      kursLiveEur: pos.kursLiveEur ?? pos.kursEur,
+      dividendYieldPct: yieldPct,
+      ttmDividendenEur: divTtmMap.get(isin) ?? null,
+    })
+    if (pers == null) return base
+    const persMetric: FundamentalKeyMetric = {
+      id: 'pers_div_yield',
+      label: 'Pers. Div-Rendite',
+      wert: `${pers.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`,
+      zahl: pers,
+      ton: 'positiv',
+      gruppe: 'bewertung_ltm',
+    }
+    const idx = base.findIndex((m) => m.id === 'div_yield')
+    if (idx < 0) return [...base, persMetric]
+    const next = [...base]
+    next.splice(idx + 1, 0, persMetric)
+    return next
+  }, [daten, anfrage?.isin, live?.positionen, divTtmMap])
+
   if (!anfrage) {
     return (
       <PaCard className="flex min-h-[28rem] items-center justify-center p-8 text-center text-sm text-[var(--app-text-muted)]">
@@ -537,7 +578,7 @@ export function PaFundamentalInhalt({
                 ticker={daten.ticker}
                 firmenname={daten.firmenname}
                 isin={anfrage?.isin}
-                metriken={daten.keyMetrics}
+                metriken={metrikenMitYoC}
                 onMetricClick={navigiereZuMetrik}
                 verfuegbareZeilenIds={verfuegbareZeilenIds}
                 guvQuelle={daten.guvQuelle}

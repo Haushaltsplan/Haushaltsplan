@@ -10,6 +10,11 @@ import {
   dividendenRenditeProzentParqet,
   kaufVolumenJeIsin,
 } from '@/lib/portfolio-analyse/auswertungen'
+import {
+  berechneAktuelleDivRenditeAusTtm,
+  berechnePersoenlicheDivRenditeProzent,
+  dividendenTtmJeIsin,
+} from '@/lib/portfolio-analyse/dividenden-yoc'
 import { formatEur, formatProzent, formatStueck, rundePositionStueck } from '@/lib/portfolio-analyse/berechnung'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import {
@@ -269,6 +274,7 @@ function WertpapierZeile({
   meta,
   dividendenEur,
   kaufVolumenEur,
+  ttmDividendenEur,
   perf,
   onOeffnen,
   onVerkaufen,
@@ -277,6 +283,7 @@ function WertpapierZeile({
   meta: Map<string, IsinMetadata>
   dividendenEur: number
   kaufVolumenEur: number
+  ttmDividendenEur: number
   perf: PositionPeriodPerf
   onOeffnen?: () => void
   onVerkaufen?: (position: LivePosition) => void
@@ -288,6 +295,13 @@ function WertpapierZeile({
   const positiv = gv >= 0
   const divPositiv = dividendenEur > 0
   const divPct = dividendenRenditeProzentParqet(dividendenEur, kaufVolumenEur, p.einstandEur)
+  const persDivPct = berechnePersoenlicheDivRenditeProzent({
+    einstandEur: p.einstandEur,
+    stueck: p.stueck,
+    kursLiveEur: kurs,
+    ttmDividendenEur: ttmDividendenEur > 0 ? ttmDividendenEur : null,
+  })
+  const aktDivPct = berechneAktuelleDivRenditeAusTtm(ttmDividendenEur, p.wertLiveEur)
   const [menuOffen, setMenuOffen] = useState(false)
 
   useEffect(() => {
@@ -311,6 +325,13 @@ function WertpapierZeile({
     )
   } else {
     metaTeile.push('Div —')
+  }
+  if (persDivPct != null) {
+    const aktTeil =
+      aktDivPct != null && Math.abs(aktDivPct - persDivPct) >= 0.05
+        ? ` · akt. ${formatProzent(aktDivPct)}`
+        : ''
+    metaTeile.push(`Pers. Div ${formatProzent(persDivPct)}${aktTeil}`)
   }
   metaTeile.push(
     `${p.gewichtProzent.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`,
@@ -440,6 +461,7 @@ export function PaWertpapiereListe({
   )
 
   const divMap = useMemo(() => dividendenJeIsin(buchungen), [buchungen])
+  const divTtmMap = useMemo(() => dividendenTtmJeIsin(buchungen), [buchungen])
   const kaufVolMap = useMemo(() => kaufVolumenJeIsin(buchungen), [buchungen])
 
   /** Seit Kauf: Kursgewinn + erhaltene Dividenden (wie Parqet „im Plus/Minus“). */
@@ -526,6 +548,7 @@ export function PaWertpapiereListe({
                 perf={perf}
                 dividendenEur={p.isin ? (divMap.get(p.isin.toUpperCase()) ?? 0) : 0}
                 kaufVolumenEur={p.isin ? (kaufVolMap.get(p.isin.toUpperCase()) ?? 0) : 0}
+                ttmDividendenEur={p.isin ? (divTtmMap.get(p.isin.toUpperCase()) ?? 0) : 0}
                 onOeffnen={fundamentalHref ? () => router.push(fundamentalHref) : undefined}
                 onVerkaufen={setVerkaufPosition}
               />
