@@ -108,7 +108,7 @@ export async function berechneBeta5JVsSp500(opts: {
   if (uniq.length === 0) return null
 
   let marktSerie: YahooKursPunkt[] = []
-  let marktSymbol = MARKT_KANDIDATEN[0]
+  let marktSymbol: (typeof MARKT_KANDIDATEN)[number] = MARKT_KANDIDATEN[0]
   for (const m of MARKT_KANDIDATEN) {
     const s = await ladeYahooMonatsAdjKurse(m, von, bis)
     if (s.length >= 37) {
