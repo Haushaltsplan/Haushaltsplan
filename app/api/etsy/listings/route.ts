@@ -38,11 +38,16 @@ export async function GET(req: Request) {
         rankPosition: r?.bestPosition ?? null,
         rankKeyword: r?.keyword ?? null,
         rankCheckedAt: r?.checkedAt ?? null,
+        rankHasWeak: r?.hasWeak ?? false,
+        rankWeakKeyword: r?.weakKeyword ?? null,
       }
     })
 
     enriched.sort((a, b) => {
-      // Schwach rankende zuerst (hohe Seite), dann niedriger Score
+      // Schwache Keywords zuerst, dann hohe Seite, dann niedriger Score
+      const wa = a.rankHasWeak ? 1 : 0
+      const wb = b.rankHasWeak ? 1 : 0
+      if (wa !== wb) return wb - wa
       const ra = a.rankPage ?? 99
       const rb = b.rankPage ?? 99
       if (ra !== rb) return rb - ra

@@ -223,6 +223,12 @@ export type EtsyAuditOptionen = {
   hauptbegriff?: string | null
   /** Merkliste, Top-Drechsler-Tags, Saison (ladeEtsyEigeneSignale) */
   eigeneSignale?: EtsyEigeneSignale | null
+  /**
+   * Geschützte Optimierung: Ziel-Keyword vorne pushen,
+   * Schutz-Keywords (Seite 1–2) nicht entfernen/nach hinten schieben.
+   */
+  zielKeyword?: string | null
+  schutzKeywords?: string[]
 }
 
 export async function auditiereEtsyListing(
@@ -258,6 +264,24 @@ export async function auditiereEtsyListing(
   const alleRegelIssues = [...regelReport.issues, ...marktRegelIssues]
 
   const marktBlock = baueMarktPromptBlock(markt)
+  const ziel = opts?.zielKeyword?.trim().toLowerCase() || null
+  const schutz = [...new Set((opts?.schutzKeywords ?? []).map((k) => k.trim().toLowerCase()).filter(Boolean))]
+    .filter((k) => k !== ziel)
+    .slice(0, 8)
+  const schutzBlock =
+    ziel
+      ? [
+          '',
+          '### GESCHÜTZTE OPTIMIERUNG (verbindlich)',
+          `ZIEL-KEYWORD: „${ziel}“ — muss wortgleich in den ersten 50 Titel-Zeichen stehen, als eigener Tag (≤20 Zeichen) und in den ersten 2 Sätzen der optimized_description_intro.`,
+          schutz.length
+            ? `SCHUTZ-KEYWORDS (bereits gut gerankt — NICHT entfernen, NICHT aus Titel/Intro streichen, als Tags behalten): ${schutz.map((k) => `„${k}“`).join(', ')}.`
+            : 'Keine Schutz-Keywords — trotzdem keine unnötigen Long-Tails opfern.',
+          'Platz für das Ziel nur durch schwache Einwort-/Duplikat-/Stemming-Tags freimachen, nie durch Schutz-Keywords.',
+          'optimized_title: Ziel vorne, Schutz-Keywords weiter enthalten wenn sie schon im Titel waren oder als Exact Match sinnvoll sind.',
+          'optimized_tags: genau 13; Ziel + alle Schutz-Keywords müssen als Tags vorkommen.',
+        ].join('\n')
+      : ''
   const messages: CoachMessage[] = [
     {
       role: 'user',
@@ -266,6 +290,7 @@ export async function auditiereEtsyListing(
         (hb.hauptbegriff
           ? `\n\nHAUPTBEGRIFF (${hb.festgelegt ? 'vom Verkäufer festgelegt' : 'automatisch erkannt'}): „${hb.hauptbegriff}“ — muss in den ersten 50 Titel-Zeichen, als Tag und in den ersten 2 Sätzen stehen; optimized_* entsprechend ausrichten.`
           : '') +
+        schutzBlock +
         (marktBlock ? `\n\n${marktBlock}` : '') +
         '\n\nBereits bekannte Regel-Issues:\n' +
         (alleRegelIssues.map((i) => `- [${i.severity}] ${i.field}: ${i.message}`).join('\n') ||

@@ -372,15 +372,53 @@ export type EtsyRankKurz = {
   keyword: string
   found: boolean
   checkedAt: string
+  /** Mindestens ein getracktes Keyword: nicht gefunden oder Seite ≥ 3 */
+  hasWeak: boolean
+  weakKeyword: string | null
 }
 
-/** Beste gefundene Position je Listing (niedrigste Seite, dann Position). */
+export type EtsyRankCacheZeile = {
+  keyword: string
+  page: number | null
+  position: number | null
+  found: boolean
+  note: string | null
+  checkedAt: string
+  provider: string | null
+}
+
+/** Alle Rank-Cache-Zeilen eines Listings (für Top-5-Anzeige). */
+export async function ladeEtsyRankCacheFuerListing(
+  ownerUserId: string,
+  listingId: number,
+): Promise<EtsyRankCacheZeile[]> {
+  const { data, error } = await createSupabaseAdmin()
+    .from('etsy_seo_rank_cache')
+    .select('keyword, page, position, found, note, checked_at, provider')
+    .eq('owner_user_id', ownerUserId)
+    .eq('listing_id', listingId)
+    .order('checked_at', { ascending: false })
+  if (error || !data) return []
+  return data.map((r) => ({
+    keyword: String(r.keyword || ''),
+    page: r.page != null ? Number(r.page) : null,
+    position: r.position != null ? Number(r.position) : null,
+    found: Boolean(r.found),
+    note: r.note != null ? String(r.note) : null,
+    checkedAt: String(r.checked_at),
+    provider: r.provider != null ? String(r.provider) : null,
+  }))
+}
+
+/**
+ * Rank-Kurzinfo je Listing: beste gefundene Position + Schwach-Flag
+ * (nicht gefunden oder Seite ≥ 3 unter allen getrackten Keywords).
+ */
 export async function ladeEtsyRankMap(ownerUserId: string): Promise<Map<number, EtsyRankKurz>> {
   const { data, error } = await createSupabaseAdmin()
     .from('etsy_seo_rank_cache')
     .select('listing_id, keyword, page, position, found, checked_at')
     .eq('owner_user_id', ownerUserId)
-    .eq('found', true)
   const map = new Map<number, EtsyRankKurz>()
   if (error || !data) return map
   for (const r of data) {
@@ -388,24 +426,44 @@ export async function ladeEtsyRankMap(ownerUserId: string): Promise<Map<number, 
     if (!Number.isFinite(listingId)) continue
     const page = r.page != null ? Number(r.page) : null
     const position = r.position != null ? Number(r.position) : null
+    const found = Boolean(r.found)
+    const keyword = String(r.keyword || '')
+    const checkedAt = String(r.checked_at)
+    const schwach = !found || page == null || page >= 3
     const prev = map.get(listingId)
-    const better =
-      !prev ||
-      (page != null &&
-        (prev.bestPage == null ||
-          page < prev.bestPage ||
-          (page === prev.bestPage &&
-            position != null &&
-            (prev.bestPosition == null || position < prev.bestPosition))))
-    if (better) {
+    if (!prev) {
       map.set(listingId, {
         listingId,
-        bestPage: page,
-        bestPosition: position,
-        keyword: String(r.keyword || ''),
-        found: true,
-        checkedAt: String(r.checked_at),
+        bestPage: found ? page : null,
+        bestPosition: found ? position : null,
+        keyword: found ? keyword : keyword,
+        found,
+        checkedAt,
+        hasWeak: schwach,
+        weakKeyword: schwach ? keyword : null,
       })
+      continue
+    }
+    if (schwach) {
+      prev.hasWeak = true
+      if (!prev.weakKeyword) prev.weakKeyword = keyword
+    }
+    const better =
+      found &&
+      page != null &&
+      (prev.bestPage == null ||
+        page < prev.bestPage ||
+        (page === prev.bestPage &&
+          position != null &&
+          (prev.bestPosition == null || position < prev.bestPosition)))
+    if (better) {
+      prev.bestPage = page
+      prev.bestPosition = position
+      prev.keyword = keyword
+      prev.found = true
+      prev.checkedAt = checkedAt
+    } else if (checkedAt > prev.checkedAt) {
+      prev.checkedAt = checkedAt
     }
   }
   return map

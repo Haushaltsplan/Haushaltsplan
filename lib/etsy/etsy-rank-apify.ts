@@ -12,6 +12,8 @@ import {
 } from '@/lib/etsy/etsy-seo-audit-cache'
 import type { EtsyRankKeywordResult, EtsyRankTrackingResult } from '@/lib/etsy/etsy-seo-audit-types'
 import { ladeEtsyShopListings } from '@/lib/etsy/etsy-listings-server'
+import { listingProduktGruppe } from '@/lib/etsy/etsy-top-keywords'
+import { ladeTopKeywordsProGruppe } from '@/lib/etsy/etsy-top-keywords-server'
 import {
   etsyCircuitOffen,
   markiereEtsyApifyFehler,
@@ -237,9 +239,9 @@ export type EtsyShopRankLauf = {
 }
 
 /**
- * Shop-weites Tracking: jedes Fokus-Keyword wird nur einmal gesucht und gegen
- * alle Listings ausgewertet. Fokus = bisher getrackte Keywords je Listing,
- * sonst die ersten 3 Mehrwort-Tags.
+ * Shop-weites Tracking: jedes Keyword wird nur einmal gesucht und gegen
+ * passende Listings ausgewertet.
+ * Priorität: Top-5 je Produktgruppe (Schale/Vase) → Hauptbegriff → Fokus-Cache → Mehrwort-Tags.
  */
 export async function trackListingRanks(opts: {
   ownerUserId: string
@@ -251,29 +253,51 @@ export async function trackListingRanks(opts: {
     state: 'active',
     limit: Math.min(100, opts.maxListings ?? 100),
   })
-  const [fokus, hauptbegriffe] = await Promise.all([
+  const [fokus, hauptbegriffe, topProGruppe] = await Promise.all([
     ladeEtsyFokusKeywords(opts.ownerUserId),
     ladeEtsyHauptbegriffe(opts.ownerUserId).catch(() => new Map<number, string>()),
+    ladeTopKeywordsProGruppe(opts.ownerUserId, 5).catch(() => null),
   ])
 
   const keywordZuListings = new Map<string, number[]>()
-  for (const l of listings) {
-    const eigene = fokus.get(l.listingId)
-    const hb = hauptbegriffe.get(l.listingId)
-    const basis =
-      eigene && eigene.length > 0 ? eigene : l.tags.filter((t) => t.trim().includes(' ')).slice(0, 3)
-    const kws = [...new Set([...(hb ? [hb] : []), ...basis].map((k) => k.trim().toLowerCase()))]
-    for (const k of kws.slice(0, 3)) {
-      if (!k) continue
-      const arr = keywordZuListings.get(k) ?? []
-      arr.push(l.listingId)
-      keywordZuListings.set(k, arr)
-    }
+  const addKw = (keyword: string, listingId: number) => {
+    const k = keyword.trim().toLowerCase()
+    if (!k) return
+    const arr = keywordZuListings.get(k) ?? []
+    if (!arr.includes(listingId)) arr.push(listingId)
+    keywordZuListings.set(k, arr)
   }
 
-  // Keywords mit den meisten Listings zuerst — ein Such-Request deckt viele ab.
+  for (const l of listings) {
+    const gruppe = listingProduktGruppe(l.title, l.tags ?? [])
+    const top =
+      topProGruppe?.[gruppe]?.map((t) => t.keyword) ??
+      topProGruppe?.allgemein?.map((t) => t.keyword) ??
+      []
+    for (const k of top.slice(0, 5)) addKw(k, l.listingId)
+
+    const hb = hauptbegriffe.get(l.listingId)
+    if (hb) addKw(hb, l.listingId)
+
+    const eigene = fokus.get(l.listingId)
+    const basis =
+      eigene && eigene.length > 0 ? eigene : (l.tags ?? []).filter((t) => t.trim().includes(' ')).slice(0, 3)
+    for (const k of basis.slice(0, 2)) addKw(k, l.listingId)
+  }
+
+  // Top-Gruppen-Keywords zuerst (viele Listings), dann Rest nach Abdeckung.
+  const topSet = new Set(
+    topProGruppe
+      ? [...topProGruppe.schale, ...topProGruppe.vase, ...topProGruppe.allgemein].map((t) => t.keyword)
+      : [],
+  )
   const keywords = [...keywordZuListings.entries()]
-    .sort((a, b) => b[1].length - a[1].length)
+    .sort((a, b) => {
+      const ta = topSet.has(a[0]) ? 1 : 0
+      const tb = topSet.has(b[0]) ? 1 : 0
+      if (ta !== tb) return tb - ta
+      return b[1].length - a[1].length
+    })
     .slice(0, maxKeywords)
 
   const proListing = new Map<number, EtsyRankKeywordResult[]>()

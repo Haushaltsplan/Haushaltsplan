@@ -29,6 +29,21 @@ type ListingRow = EtsyShopListingKurz & {
   rankPosition?: number | null
   rankKeyword?: string | null
   rankCheckedAt?: string | null
+  rankHasWeak?: boolean
+  rankWeakKeyword?: string | null
+}
+
+type TopRankZeile = {
+  keyword: string
+  page: number | null
+  position: number | null
+  found: boolean
+  note?: string
+  nachfrage?: number | null
+  chance?: 'hoch' | 'mittel' | 'niedrig' | null
+  quellen?: Array<'etsy_tags' | 'etsy_suggest' | 'google_de' | 'amazon_de'>
+  ausMerkliste?: boolean
+  checkedAt?: string | null
 }
 
 type HistoriePunkt = { id: string; overallScore: number; createdAt: string }
@@ -67,7 +82,20 @@ function istSchwach(l: ListingRow): boolean {
 }
 
 function istSchlechtGerankt(l: ListingRow): boolean {
+  if (l.rankHasWeak) return true
   return l.rankPage != null && l.rankPage >= 3
+}
+
+function rankAmpelClass(r: { found: boolean; page: number | null }): string {
+  if (!r.found || r.page == null) return 'bg-rose-500/20 text-rose-300'
+  if (r.page >= 3) return 'bg-rose-500/20 text-rose-300'
+  if (r.page === 2) return 'bg-amber-500/20 text-amber-300'
+  return 'bg-emerald-500/20 text-emerald-300'
+}
+
+function rankAmpelLabel(r: { found: boolean; page: number | null; position: number | null }): string {
+  if (!r.found || r.page == null) return 'nicht gefunden'
+  return `S.${r.page}${r.position != null ? ` #${r.position}` : ''}`
 }
 
 function hatUnvollstaendigeTags(l: ListingRow): boolean {
@@ -103,6 +131,8 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
   const [confirmPush, setConfirmPush] = useState<'title' | 'tags' | 'intro' | 'all' | null>(null)
 
   const [rank, setRank] = useState<EtsyRankTrackingResult | null>(null)
+  const [topRankZeilen, setTopRankZeilen] = useState<TopRankZeile[]>([])
+  const [topRankGruppe, setTopRankGruppe] = useState<string | null>(null)
   const [rankKeywords, setRankKeywords] = useState('')
 
   const [hauptbegriffGespeichert, setHauptbegriffGespeichert] = useState<string | null>(null)
@@ -291,6 +321,24 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     setConfirmPush(null)
     setShowDiff(true)
     void ladeHauptbegriff(j.listing.listingId)
+    void ladeTopRanks(j.listing.listingId)
+  }
+
+  async function ladeTopRanks(listingId: number) {
+    try {
+      const res = await fetch(`/api/etsy/listings/${listingId}/rank`, { cache: 'no-store' })
+      const j = (await res.json()) as {
+        error?: string
+        gruppe?: string
+        results?: TopRankZeile[]
+      }
+      if (!res.ok || !j.results) return
+      setTopRankGruppe(j.gruppe ?? null)
+      setTopRankZeilen(j.results)
+      setRankKeywords(j.results.map((r) => r.keyword).join(', '))
+    } catch {
+      /* optional */
+    }
   }
 
   async function ladeHauptbegriff(listingId: number) {
@@ -547,28 +595,101 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     }
   }
 
-  async function rankCheck() {
+  async function rankCheck(nutzeTop5 = true) {
     if (!selectedId) return
     setBusy(true)
     setBusyKind('rank')
     try {
-      const keywords = rankKeywords
-        .split(',')
-        .map((k) => k.trim())
-        .filter(Boolean)
+      const keywords = nutzeTop5
+        ? []
+        : rankKeywords
+            .split(',')
+            .map((k) => k.trim())
+            .filter(Boolean)
       const res = await fetch(`/api/etsy/listings/${selectedId}/rank`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keywords }),
+        body: JSON.stringify(keywords.length ? { keywords } : {}),
       })
-      const j = (await res.json()) as { error?: string; rank?: EtsyRankTrackingResult }
+      const j = (await res.json()) as {
+        error?: string
+        rank?: EtsyRankTrackingResult
+        gruppe?: string
+        topKeywords?: Array<{ keyword: string; nachfrage: number | null; chance: TopRankZeile['chance']; quellen: TopRankZeile['quellen']; ausMerkliste: boolean }>
+      }
       if (!res.ok || !j.rank) {
         toast.error(j.error ?? 'Rank-Check fehlgeschlagen.')
         return
       }
       setRank(j.rank)
+      if (j.gruppe) setTopRankGruppe(j.gruppe)
+      const meta = new Map((j.topKeywords ?? []).map((t) => [t.keyword, t]))
+      setTopRankZeilen(
+        j.rank.results.map((r) => {
+          const m = meta.get(r.keyword)
+          return {
+            keyword: r.keyword,
+            page: r.page,
+            position: r.position,
+            found: r.found,
+            note: r.note,
+            nachfrage: m?.nachfrage ?? null,
+            chance: m?.chance ?? null,
+            quellen: m?.quellen ?? [],
+            ausMerkliste: m?.ausMerkliste ?? false,
+          }
+        }),
+      )
       const found = j.rank.results.filter((r) => r.found).length
       toast.success(`Rank (${j.rank.provider}): ${found}/${j.rank.results.length} gefunden`)
+      void ladeListings()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler')
+    } finally {
+      setBusy(false)
+      setBusyKind(null)
+    }
+  }
+
+  async function optimiereFuerKeyword(zielKeyword: string) {
+    if (!selectedId) return
+    const schutzKeywords = topRankZeilen
+      .filter((r) => r.keyword !== zielKeyword && r.found && r.page != null && r.page < 3)
+      .map((r) => r.keyword)
+    setBusy(true)
+    setBusyKind('optimize')
+    try {
+      const res = await fetch(`/api/etsy/listings/${selectedId}/audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true, zielKeyword, schutzKeywords }),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        listing?: EtsyShopListingDetail
+        audit?: EtsySeoAuditResult
+        fromCache?: boolean
+        auditedAt?: string
+        regelReport?: EtsySeoRegelReport
+        historie?: HistoriePunkt[]
+      }
+      if (!res.ok || !j.audit || !j.listing) {
+        toast.error(j.error ?? 'Optimierung fehlgeschlagen.')
+        return
+      }
+      applyAuditPayload({
+        listing: j.listing,
+        audit: j.audit,
+        fromCache: j.fromCache,
+        auditedAt: j.auditedAt,
+        regelReport: j.regelReport,
+        historie: j.historie,
+      })
+      toast.success(
+        schutzKeywords.length
+          ? `Für „${zielKeyword}“ optimiert · ${schutzKeywords.length} Keywords geschützt — Diff prüfen`
+          : `Für „${zielKeyword}“ optimiert — Diff prüfen & pushen`,
+      )
       void ladeListings()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
@@ -775,7 +896,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                 ['alle', 'Alle'],
                 ['tags-fehlen', `Tags fehlen (${scoreStats.tagsFehlen})`],
                 ['schwach', 'Schwach (Score)'],
-                ['schlecht-rank', 'Schlecht gerankt (≥S.3)'],
+                ['schlecht-rank', 'Schlecht gerankt (S.≥3 / fehlt)'],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -818,7 +939,8 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             )}
           </div>
           <p className="text-xs text-[var(--app-text-muted)]">
-            Aktive Listings · Stift = bearbeiten/neu optimieren. Schlecht gerankt = nach Rank-Check Seite ≥3.
+            Aktive Listings · Stift = bearbeiten/neu optimieren. Schlecht gerankt = Top-Keyword Seite ≥3 oder nicht
+            gefunden.
           </p>
 
           {sichtbareListings.length === 0 ? (
@@ -847,9 +969,11 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                       <p className="text-xs text-[var(--app-text-muted)]">
                         #{l.listingId}
                         {l.priceEur != null ? ` · ${l.priceEur} €` : ''}
-                        {l.rankPage != null
-                          ? ` · Rank S.${l.rankPage}${l.rankPosition != null ? ` #${l.rankPosition}` : ''}${l.rankKeyword ? ` („${l.rankKeyword}“)` : ''}`
-                          : ' · noch kein Rank'}
+                        {l.rankHasWeak
+                          ? ` · schwach${l.rankWeakKeyword ? ` („${l.rankWeakKeyword}“)` : ''}`
+                          : l.rankPage != null
+                            ? ` · Rank S.${l.rankPage}${l.rankPosition != null ? ` #${l.rankPosition}` : ''}${l.rankKeyword ? ` („${l.rankKeyword}“)` : ''}`
+                            : ' · noch kein Rank'}
                         {l.cachedAt
                           ? ` · Audit ${new Date(l.cachedAt).toLocaleDateString('de-DE')}`
                           : ''}
@@ -1271,38 +1395,119 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
               </div>
             )}
 
-            <div className="border-t border-[var(--app-border)] pt-3">
-              <p className="text-xs font-medium text-[var(--app-text-muted)]">
-                Rank Tracking (Etsy-Suche → Fallback API-Relevanz
-                {rank ? ` · genutzt: ${rank.provider === 'etsy_api_relevanz' ? 'API-Relevanz (Proxy)' : rank.provider}` : ''}
-                {', '}optional Apify)
-              </p>
-              <input
-                value={rankKeywords}
-                onChange={(e) => setRankKeywords(e.target.value)}
-                placeholder="Keywords, kommagetrennt"
-                className="mt-2 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm"
-              />
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void rankCheck()}
-                className="mt-2 rounded-lg bg-teal-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
-              >
-                Position prüfen
-              </button>
-              {rank && (
-                <ul className="mt-2 space-y-1 text-xs text-[var(--app-text-muted)]">
-                  {rank.results.map((r) => (
-                    <li key={r.keyword}>
-                      <strong className="text-[var(--app-text)]">{r.keyword}</strong>:{' '}
-                      {r.found
-                        ? `Seite ${r.page}, Platz ${r.position}`
-                        : r.note || 'nicht gefunden'}
-                    </li>
-                  ))}
+            <div className="border-t border-[var(--app-border)] pt-3 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium text-[var(--app-text)]">
+                  Top-Suchbegriffe
+                  {topRankGruppe === 'schale'
+                    ? ' (Schalen)'
+                    : topRankGruppe === 'vase'
+                      ? ' (Vasen)'
+                      : topRankGruppe
+                        ? ` (${topRankGruppe})`
+                        : ''}
+                  <span className="font-normal text-[var(--app-text-muted)]">
+                    {' '}
+                    · Seite 1–2 = gut · ≥3 / fehlt = schwach
+                    {rank
+                      ? ` · ${rank.provider === 'etsy_api_relevanz' ? 'API-Relevanz' : rank.provider}`
+                      : ''}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void rankCheck(true)}
+                  className="rounded-lg bg-teal-800 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                >
+                  {busyKind === 'rank' ? 'Prüft…' : 'Ranks aktualisieren'}
+                </button>
+              </div>
+
+              {topRankZeilen.length === 0 ? (
+                <p className="text-xs text-[var(--app-text-muted)]">
+                  Noch keine Top-Keywords geladen — Audit öffnen oder Ranks aktualisieren.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {topRankZeilen.map((r) => {
+                    const schwach = !r.found || r.page == null || r.page >= 3
+                    return (
+                      <li
+                        key={r.keyword}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--app-border)] px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-sm font-medium text-[var(--app-text)]">{r.keyword}</span>
+                            <span
+                              className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold tabular-nums ${rankAmpelClass(r)}`}
+                            >
+                              {rankAmpelLabel(r)}
+                            </span>
+                            {r.ausMerkliste && (
+                              <span className="rounded-md bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-300">
+                                Merkliste
+                              </span>
+                            )}
+                            {r.chance && (
+                              <span className="rounded-md bg-[var(--app-surface-muted)] px-1.5 py-0.5 text-[10px] text-[var(--app-text-muted)]">
+                                Chance {r.chance}
+                              </span>
+                            )}
+                          </div>
+                          {(r.quellen?.length || r.note) && (
+                            <p className="mt-0.5 text-[10px] text-[var(--app-text-muted)]">
+                              {r.quellen?.length
+                                ? r.quellen
+                                    .map((q) =>
+                                      q === 'etsy_suggest'
+                                        ? 'Etsy'
+                                        : q === 'etsy_tags'
+                                          ? 'Etsy-Tags'
+                                          : q === 'google_de'
+                                            ? 'Google'
+                                            : 'Amazon',
+                                    )
+                                    .join(' · ')
+                                : null}
+                              {r.note && !r.found ? ` · ${r.note}` : ''}
+                            </p>
+                          )}
+                        </div>
+                        {schwach && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void optimiereFuerKeyword(r.keyword)}
+                            className="shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-100 disabled:opacity-50"
+                          >
+                            {busyKind === 'optimize' ? 'Optimiert…' : `Für „${r.keyword}“ optimieren`}
+                          </button>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
+
+              <details className="text-xs text-[var(--app-text-muted)]">
+                <summary className="cursor-pointer">Eigene Keywords prüfen</summary>
+                <input
+                  value={rankKeywords}
+                  onChange={(e) => setRankKeywords(e.target.value)}
+                  placeholder="Keywords, kommagetrennt"
+                  className="mt-2 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)]"
+                />
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void rankCheck(false)}
+                  className="mt-2 rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-xs disabled:opacity-50"
+                >
+                  Diese Keywords prüfen
+                </button>
+              </details>
             </div>
           </PageSectionPanel>
         </PageSection>
