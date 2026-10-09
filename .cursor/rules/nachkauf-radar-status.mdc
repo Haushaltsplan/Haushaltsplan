@@ -100,9 +100,13 @@ components/portfolio-analyse/
 
 ## Risikoklassen (in Whitelist hinterlegt)
 
-- **konservativ** (15 Pos.): MA, V, MSFT, GOOGL, MCD, WM, ODFL, UNP, ROL, CTAS, LIN, HD, HRMS, SPGI, MSCI → max. 350 €/Monat
-- **moderat** (15 Pos.): ASML, UNH, TMO, RMD, ZTS, NOW, STMN, HLMA, SIKA, KNSL, GGG, VEEV, ATD, ANET, WKL → max. 200 €/Monat
-- **spekulativ**: Watchlist-Neukäufe (nicht im Depot) → max. 100 €/Monat
+Basis-Caps bei **500 €** Monatsbudget (`risikoCapsFuerBudget` in `nachkauf-radar-whitelist.ts`):
+
+- **konservativ**: max. **350 €** bei 500 € → skaliert linear (`budget/500`)
+- **moderat**: max. **200 €** bei 500 €
+- **spekulativ**: max. **100 €** bei 500 € (Watchlist-Neukäufe + spekulative Titel)
+
+Beispiel 2000 €: konservativ 1400 / moderat 800 / spekulativ 400. Klumpen-Cap bleibt 20 % des Budgets.
 
 ## Kaufempfehlung-Logik (kaufempfehlung/route.ts → POST)
 
@@ -115,10 +119,10 @@ components/portfolio-analyse/
 
 ## Budget-Feature (UI + Server)
 
-- UI: Buttons 200/300/500/750/1000 € + freies Zahlen-Input → `kaufBudget` State
+- UI: Buttons 200/300/500/750/1000/2000 € + freies Zahlen-Input → `kaufBudget` State
 - POST body: `{ budget: number }` → Route liest `body.budget` (Fallback 500)
 - Server: `generiereKaufempfehlung(ergebnisse, budgetEur = 500)`
-- Caps skalieren mit Budget: Risikoklasse-Cap wird mit `Math.min(RISIKO_CAP[rk], budgetEur)` begrenzt
+- Caps: `risikoCapsFuerBudget(budgetEur)` — linear skaliert, auf 10 € gerundet, nie über Budget
 
 ## Deployment
 

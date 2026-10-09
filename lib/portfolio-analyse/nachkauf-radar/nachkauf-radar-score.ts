@@ -26,7 +26,7 @@ import type {
   SparplanPosten,
 } from './nachkauf-radar-types'
 import type { WhitelistPosition } from './nachkauf-radar-whitelist'
-import { risikoKlasseFuerIsin, type RisikoKlasse } from './nachkauf-radar-whitelist'
+import { risikoCapsFuerBudget, risikoKlasseFuerIsin, type RisikoKlasse } from './nachkauf-radar-whitelist'
 import type { NachkaufZusatzSignale } from './nachkauf-zusatz-signale-server'
 import { berechnePrognoseMomentumDelta } from './nachkauf-prognose-server'
 import { disziplinSparplanFaktor } from './nachkauf-disziplin-server'
@@ -57,13 +57,6 @@ import {
 // ---------------------------------------------------------------------------
 // Risiko-Hilfsfunktion
 // ---------------------------------------------------------------------------
-
-/** Maximale monatliche Investition je Risikoklasse für den Sparplan. */
-const SPARPLAN_RISIKO_CAP: Record<RisikoKlasse, number> = {
-  konservativ: 350,
-  moderat: 200,
-  spekulativ: 100,
-}
 
 function risikoKlasseVon(e: NachkaufScanEintrag): RisikoKlasse {
   return risikoKlasseFuerIsin(e.isin, e.depotGewichtPct, e.kandidatenQuelle)
@@ -578,7 +571,7 @@ const SPARPLAN_BUDGET_EUR = 500
 /**
  * Verteilt das Monatsbudget proportional auf Kandidaten (regelbasiert).
  * - Klumpenrisiko-Positionen erhalten max. 20 % des Budgets.
- * - Risikoklasse begrenzt den Maximalbetrag (konservativ 350 €, moderat 200 €, spekulativ 100 €).
+ * - Risikoklasse begrenzt den Maximalbetrag (bei 500 €: 350/200/100 — skaliert linear mit Budget).
  * - Trigger-Positionen erhalten einen 20 % Bonus-Gewichtung.
  * - Mindestposten: 100 € (sonst weggelassen).
  * - Bewertungsrabatt wirkt nur schwach (max. +5 %), da Score schon Bewertung enthält.
@@ -591,6 +584,7 @@ export function berechneRegelAllokation(
 
   const MAX_KLUMPEN = budgetEur * 0.2
   const MIN_POS = 100
+  const risikoCaps = risikoCapsFuerBudget(budgetEur)
 
   const gewichte = kandidaten.map((e) => {
     let g = e.score
@@ -611,8 +605,8 @@ export function berechneRegelAllokation(
   for (const { eintrag, gewicht } of gewichte) {
     const risiko = risikoKlasseVon(eintrag)
     const maxBetrag = eintrag.klumpenrisiko
-      ? Math.min(SPARPLAN_RISIKO_CAP[risiko], MAX_KLUMPEN)
-      : Math.min(SPARPLAN_RISIKO_CAP[risiko], budgetEur)
+      ? Math.min(risikoCaps[risiko], MAX_KLUMPEN)
+      : Math.min(risikoCaps[risiko], budgetEur)
 
     let betrag = (gewicht / summeGewichte) * budgetEur
     betrag = Math.min(betrag, maxBetrag)
@@ -643,7 +637,7 @@ export function berechneRegelAllokation(
       const risiko = risikoKlasseVon(kandidaten[target]!)
       posten[target]!.betragEur = Math.min(
         posten[target]!.betragEur + restBudget,
-        Math.min(SPARPLAN_RISIKO_CAP[risiko], budgetEur),
+        Math.min(risikoCaps[risiko], budgetEur),
       )
     }
   }

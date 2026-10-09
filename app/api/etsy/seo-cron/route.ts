@@ -21,7 +21,7 @@ import {
 } from '@/lib/etsy/etsy-seo-audit-cache'
 import { listingFingerprint } from '@/lib/etsy/etsy-seo-diff'
 import { ladeEtsyListingDetail } from '@/lib/etsy/etsy-listings-server'
-import { trackListingRanks } from '@/lib/etsy/etsy-rank-apify'
+import { trackeFokusRankMatrix } from '@/lib/etsy/etsy-rank-apify'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { NextResponse } from 'next/server'
 
@@ -67,7 +67,7 @@ async function run(opts: { reaudit: boolean; rank: boolean }) {
 
     if (opts.rank && zeitUebrig()) {
       try {
-        const lauf = await trackListingRanks({ ownerUserId, maxKeywords: 20 })
+        const lauf = await trackeFokusRankMatrix({ ownerUserId })
         entry.rank = { keywords: lauf.keywords, listings: lauf.listings, provider: lauf.provider }
       } catch (e) {
         entry.rank = {

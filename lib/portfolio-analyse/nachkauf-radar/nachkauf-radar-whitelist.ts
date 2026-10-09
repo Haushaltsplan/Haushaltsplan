@@ -41,17 +41,47 @@ export type WhitelistSektor =
  *
  * konservativ  – Mega/Large-Cap-Oligopolisten, rezessionssicher, sehr vorhersehbare Cashflows.
  *                Beispiele: Mastercard, Visa, McDonald's, Waste Management, Linde.
- *                → Max. 350 € / Monat.
+ *                → Max. 350 € / Monat bei 500 € Budget (skaliert linear).
  *
  * moderat      – Qualitätsunternehmen mit spezifischen Risiken (Regulierung, Bewertungsprämie,
  *                KI-Disruption, Zyklizität). Beispiele: ASML, UnitedHealth, Wolters Kluwer.
- *                → Max. 200 € / Monat.
+ *                → Max. 200 € / Monat bei 500 € Budget (skaliert linear).
  *
  * spekulativ   – Small/Mid-Cap oder sehr hohe Bewertungen mit erhöhter Ergebnisvolatilität.
  *                Beispiel: Balchem (im Depot). Datadog entfernt (verkauft).
- *                → Max. 100 € / Monat.
+ *                → Max. 100 € / Monat bei 500 € Budget (skaliert linear).
  */
 export type RisikoKlasse = 'konservativ' | 'moderat' | 'spekulativ'
+
+/** Referenz-Monatsbudget, auf dem die Basis-Caps 350/200/100 liegen. */
+export const RISIKO_CAP_BASIS_BUDGET_EUR = 500
+
+/** Absolute Caps bei {@link RISIKO_CAP_BASIS_BUDGET_EUR} €. */
+export const RISIKO_CAP_BEI_500: Record<RisikoKlasse, number> = {
+  konservativ: 350,
+  moderat: 200,
+  spekulativ: 100,
+}
+
+/**
+ * Risikoklassen-Caps skalieren linear mit dem Monatsbudget.
+ * Beispiel: 500 → 350/200/100, 2000 → 1400/800/400. Nie über Budget.
+ */
+export function risikoCapsFuerBudget(budgetEur: number): Record<RisikoKlasse, number> {
+  const b = Math.max(0, Number.isFinite(budgetEur) ? budgetEur : 0)
+  const scale = b / RISIKO_CAP_BASIS_BUDGET_EUR
+  const round10 = (n: number) => Math.round(n / 10) * 10
+  return {
+    konservativ: Math.min(b, Math.max(0, round10(RISIKO_CAP_BEI_500.konservativ * scale))),
+    moderat: Math.min(b, Math.max(0, round10(RISIKO_CAP_BEI_500.moderat * scale))),
+    spekulativ: Math.min(b, Math.max(0, round10(RISIKO_CAP_BEI_500.spekulativ * scale))),
+  }
+}
+
+export function risikoCapLabel(rk: RisikoKlasse, budgetEur: number): string {
+  const name = rk === 'konservativ' ? 'Konservativ' : rk === 'moderat' ? 'Moderat' : 'Spekulativ'
+  return `${name} (≤ ${risikoCapsFuerBudget(budgetEur)[rk]} €)`
+}
 
 export type WhitelistPosition = {
   isin: string

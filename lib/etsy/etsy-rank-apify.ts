@@ -41,7 +41,9 @@ function positionAus(
   if (!reihenfolge) {
     return { keyword, page: null, position: null, found: false, note: 'Suche nicht erreichbar' }
   }
+  const n = reihenfolge.listingIds.length
   const proxy = reihenfolge.provider === 'etsy_api_relevanz' ? ' (API-Relevanz)' : ''
+  const duenn = n < 24 ? ' · Probe dünn' : ''
   const idx = reihenfolge.listingIds.indexOf(listingId)
   if (idx < 0) {
     return {
@@ -49,7 +51,9 @@ function positionAus(
       page: null,
       position: null,
       found: false,
-      note: `Nicht in den ersten ${reihenfolge.listingIds.length} Treffern${proxy}.`,
+      note: n === 0
+        ? `Keine Treffer geliefert${proxy}.`
+        : `Nicht in den ersten ${n} Treffern${proxy}${duenn}.`,
     }
   }
   return {
@@ -57,7 +61,7 @@ function positionAus(
     page: Math.floor(idx / SEITE) + 1,
     position: idx + 1,
     found: true,
-    note: proxy ? proxy.trim() : undefined,
+    note: `${proxy.trim()}${duenn}`.trim() || undefined,
   }
 }
 
@@ -331,6 +335,63 @@ export async function trackListingRanks(opts: {
   return {
     shopId,
     keywords: keywords.length,
+    listings: proListing.size,
+    provider: providerAus(reihen),
+    ergebnisse,
+  }
+}
+
+/**
+ * Shop-Matrix: die 5 festen Schalen-Keywords je einmal suchen,
+ * Positionen für alle aktiven Listings speichern.
+ */
+export async function trackeFokusRankMatrix(opts: {
+  ownerUserId: string
+  maxListings?: number
+}): Promise<EtsyShopRankLauf> {
+  const { ETSY_RANK_FOKUS_KEYWORDS } = await import('@/lib/etsy/etsy-rank-fokus')
+  const { shopId, listings } = await ladeEtsyShopListings(opts.ownerUserId, {
+    state: 'active',
+    limit: Math.min(100, opts.maxListings ?? 100),
+  })
+  const listingIds = listings.map((l) => l.listingId)
+  const proListing = new Map<number, EtsyRankKeywordResult[]>()
+  const reihen: Array<EtsySuchReihenfolge | null> = []
+  const providerJeListing = new Map<number, EtsySuchReihenfolge['provider']>()
+
+  for (const keyword of ETSY_RANK_FOKUS_KEYWORDS) {
+    const r = await sucheEtsyReihenfolge(keyword)
+    reihen.push(r)
+    for (const id of listingIds) {
+      const arr = proListing.get(id) ?? []
+      arr.push(positionAus(r, keyword, id))
+      proListing.set(id, arr)
+      if (r) providerJeListing.set(id, r.provider)
+    }
+  }
+
+  const checkedAt = new Date().toISOString()
+  const ergebnisse: EtsyRankTrackingResult[] = []
+  for (const [listingId, results] of proListing) {
+    const provider = providerJeListing.get(listingId) ?? 'unavailable'
+    if (provider !== 'unavailable') {
+      try {
+        await speichereEtsyRankErgebnisse({
+          ownerUserId: opts.ownerUserId,
+          listingId,
+          results,
+          provider,
+        })
+      } catch (e) {
+        console.warn('[etsy-rank] fokus matrix cache:', e instanceof Error ? e.message : e)
+      }
+    }
+    ergebnisse.push({ listingId, checkedAt, provider, results })
+  }
+
+  return {
+    shopId,
+    keywords: ETSY_RANK_FOKUS_KEYWORDS.length,
     listings: proListing.size,
     provider: providerAus(reihen),
     ergebnisse,

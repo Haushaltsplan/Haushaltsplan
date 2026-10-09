@@ -11,7 +11,12 @@ import {
 import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/pa-earnings-call-analyse'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaSectionTitle, PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
-import { istWatchlistNeukauf, risikoKlasseFuerIsin, type RisikoKlasse } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
+import {
+  istWatchlistNeukauf,
+  risikoCapsFuerBudget,
+  risikoKlasseFuerIsin,
+  type RisikoKlasse,
+} from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 import { KAPITAL_PROFIL_HINWEIS, KAPITAL_PROFIL_LABEL } from '@/lib/portfolio-analyse/kapital-profil'
 import { clientZugriffRolle } from '@/lib/zugriff-client'
 import { portfolioEmpfehlungVon, type PortfolioEmpfehlungTyp } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
@@ -571,12 +576,15 @@ function TitelKarte({
   onClick,
   onDeepResearch,
   deepLaden,
+  budgetEur = 500,
 }: {
   eintrag: NachkaufScanEintrag
   aktiv: boolean
   onClick: () => void
   onDeepResearch: (e: NachkaufScanEintrag) => void
   deepLaden: boolean
+  /** Monatsbudget — bestimmt die skalierten Risiko-Caps in den Badges. */
+  budgetEur?: number
 }) {
   const cfg = ampelConfig(eintrag.ampel)
   const portfolio = portfolioEmpfehlungVon(eintrag)
@@ -635,7 +643,7 @@ function TitelKarte({
         {istWatchlistNeukauf(eintrag.isin, eintrag.depotGewichtPct, eintrag.kandidatenQuelle) && (
           <span
             className="inline-flex rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300 ring-1 ring-sky-500/20"
-            title="Watchlist-Neukauf: Cap spekulativ ≤100 €, Score-Hürde ≥84 + Deep Research."
+            title={`Watchlist-Neukauf: Cap spekulativ ≤${risikoCapsFuerBudget(budgetEur).spekulativ} €, Score-Hürde ≥84 + Deep Research.`}
           >
             ☆ Watchlist
           </span>
@@ -655,12 +663,12 @@ function TitelKarte({
                 : 'bg-red-500/10 text-red-400 ring-red-500/20'
           const label =
             rk === 'konservativ' ? 'Konservativ' : rk === 'moderat' ? 'Moderat' : 'Spekulativ'
-          const cap =
-            rk === 'konservativ' ? '≤ 350 €' : rk === 'moderat' ? '≤ 200 €' : '≤ 100 €'
+          const capEur = risikoCapsFuerBudget(budgetEur)[rk]
+          const cap = `≤ ${capEur} €`
           return (
             <span
               className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${cfg}`}
-              title={`Risikoklasse: ${label} — max. ${cap}/Monat bei der Kaufempfehlung`}
+              title={`Risikoklasse: ${label} — max. ${cap}/Monat bei ${budgetEur} € Budget`}
             >
               {label} {cap}
             </span>
@@ -2300,32 +2308,43 @@ export function NachkaufRadarClient() {
             </div>
 
             {/* Budget-Eingabe */}
-            <div className="mt-3 flex items-center gap-3 rounded-xl border border-violet-500/10 bg-violet-950/20 px-3 py-2">
-              <span className="text-[11px] text-[var(--app-text-muted)]">Monatsbudget:</span>
-              <div className="flex items-center gap-1">
-                {[200, 300, 500, 750, 1000].map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setKaufBudget(v)}
-                    className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition-all ${kaufBudget === v ? 'bg-violet-600 text-white' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'}`}
-                  >
-                    {v} €
-                  </button>
-                ))}
-                <input
-                  type="number"
-                  min={100}
-                  max={10000}
-                  step={50}
-                  value={kaufBudget}
-                  onChange={(ev) => {
-                    const v = parseInt(ev.target.value, 10)
-                    if (!isNaN(v) && v >= 100) setKaufBudget(v)
-                  }}
-                  className="ml-1 w-20 rounded-md border border-violet-500/20 bg-[var(--app-surface-muted)] px-2 py-0.5 text-[11px] text-[var(--app-text)] focus:outline-none focus:ring-1 focus:ring-violet-500"
-                />
+            <div className="mt-3 space-y-1.5 rounded-xl border border-violet-500/10 bg-violet-950/20 px-3 py-2">
+              <div className="flex items-center gap-3">
+                <span className="text-[11px] text-[var(--app-text-muted)]">Monatsbudget:</span>
+                <div className="flex flex-wrap items-center gap-1">
+                  {[200, 300, 500, 750, 1000, 2000].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setKaufBudget(v)}
+                      className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition-all ${kaufBudget === v ? 'bg-violet-600 text-white' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'}`}
+                    >
+                      {v} €
+                    </button>
+                  ))}
+                  <input
+                    type="number"
+                    min={100}
+                    max={10000}
+                    step={50}
+                    value={kaufBudget}
+                    onChange={(ev) => {
+                      const v = parseInt(ev.target.value, 10)
+                      if (!isNaN(v) && v >= 100) setKaufBudget(v)
+                    }}
+                    className="ml-1 w-20 rounded-md border border-violet-500/20 bg-[var(--app-surface-muted)] px-2 py-0.5 text-[11px] text-[var(--app-text)] focus:outline-none focus:ring-1 focus:ring-violet-500"
+                  />
+                </div>
               </div>
+              {(() => {
+                const caps = risikoCapsFuerBudget(kaufBudget)
+                return (
+                  <p className="text-[10px] text-[var(--app-text-muted)]">
+                    Caps bei {kaufBudget} €: konservativ ≤{caps.konservativ} € · moderat ≤{caps.moderat} € ·
+                    spekulativ ≤{caps.spekulativ} €
+                  </p>
+                )
+              })()}
             </div>
 
             {kaufempfehlungLaeuft && (
@@ -2474,6 +2493,7 @@ export function NachkaufRadarClient() {
                     onClick={() => setSelectedTicker(e.ticker)}
                     onDeepResearch={starteDeepResearch}
                     deepLaden={deepLadenTicker === e.ticker}
+                    budgetEur={kaufBudget}
                   />
                 ))}
               </div>

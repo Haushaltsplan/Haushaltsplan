@@ -1,8 +1,10 @@
 'use client'
 
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
+import { EtsyInfoHint } from '@/components/etsy/etsy-info-hint'
 import type { EtsyTagTausch } from '@/lib/etsy/etsy-cockpit-types'
 import { keywordProduktGruppe } from '@/lib/etsy/etsy-keyword-auto'
+import { ETSY_SEO_INFO } from '@/lib/etsy/etsy-seo-info'
 import type {
   EtsyAutoKeyword,
   EtsyAutoKeywordScan,
@@ -627,7 +629,15 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
 
   return (
     <>
-      <PageSection titleId="etsy-keywords-merkliste" title={`Favoriten · ${gemerkt.length}`}>
+      <PageSection
+        titleId="etsy-keywords-merkliste"
+        title={
+          <span className="inline-flex items-center gap-2">
+            Favoriten · {gemerkt.length}
+            <EtsyInfoHint info={ETSY_SEO_INFO.keywordsTab} label="Erklärung: Keyword-Favoriten" />
+          </span>
+        }
+      >
         <PageSectionPanel density="compact" className="space-y-2">
           {gemerkt.length === 0 ? (
             <p className="text-sm text-[var(--app-text-muted)]">
@@ -667,7 +677,24 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
         </PageSectionPanel>
       </PageSection>
 
-      <PageSection titleId="etsy-keywords-auto" title="Für deine Produkte">
+      <PageSection
+        titleId="etsy-keywords-auto"
+        title={
+          <span className="inline-flex items-center gap-2">
+            Für deine Produkte
+            <EtsyInfoHint
+              info={{
+                was: 'Automatischer Scan: aus deinen Listings Suchfelder ableiten und mit Etsy/Google/Amazon abgleichen — so siehst du, welche Käuferphrasen bei dir fehlen.',
+                wie: '„Scan starten“ klicken, Tabelle lesen, starke Phrasen merken. Die Rank-Matrix unter „Meine Listings“ nutzt weiterhin die fünf festen Schalen-Begriffe.',
+                gut: 'Chancen mit hoher Nachfrage und Status „fehlt“ oder „selten“ zuerst merken und später in Tags einbauen.',
+                achtung:
+                  'Scan kann Minuten dauern und hängt von erreichbaren Suggest-APIs ab. Ergebnisse sind Signale, keine offiziellen Etsy-Suchvolumen.',
+              }}
+              label="Erklärung: Auto-Scan"
+            />
+          </span>
+        }
+      >
         <PageSectionPanel density="compact" className="space-y-3">
           {!verbunden ? (
             <p className="text-sm text-[var(--app-text-muted)]">

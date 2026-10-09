@@ -15,6 +15,8 @@ import {
 } from '@/lib/ki-coach-backend'
 import {
   istWatchlistNeukauf,
+  risikoCapLabel,
+  risikoCapsFuerBudget,
   risikoKlasseFuerIsin,
   type RisikoKlasse,
 } from './nachkauf-radar-whitelist'
@@ -38,20 +40,6 @@ export const MIN_SCORE_KAUF_TRIGGER = 74
 export const MIN_SCORE_KAUF_STANDARD = 82
 /** Watchlist-Neukauf: noch höhere Hürde (keine kuratierte Qualitätshistorie). */
 export const MIN_SCORE_WATCHLIST_NEUKAUF = 84
-
-/** Maximale monatliche Investition je Risikoklasse. */
-const RISIKO_CAP: Record<RisikoKlasse, number> = {
-  konservativ: 350,
-  moderat: 200,
-  spekulativ: 100,
-}
-
-/** Lesbare Labels für die Anzeige im Prompt und UI. */
-const RISIKO_LABEL: Record<RisikoKlasse, string> = {
-  konservativ: 'Konservativ (≤ 350 €)',
-  moderat: 'Moderat (≤ 200 €)',
-  spekulativ: 'Spekulativ (≤ 100 €)',
-}
 
 /** Blockiert Nachkäufe nur bei bestätigtem Verkaufssignal (nicht bei bloßem Beobachten). */
 function hatAktivesVerkaufSignal(e: NachkaufScanEintrag): boolean {
@@ -193,6 +181,7 @@ function kuerzerMemo(memo: string): string {
 }
 
 function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number): string {
+  const risikoCaps = risikoCapsFuerBudget(budgetEur)
   return kandidaten.map((e) => {
     const dr = e.tiefenAnalyse
     const premium = e.bewertung.premiumDiscountPct != null
@@ -208,10 +197,10 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
       ? `${e.insiderKaeufe.length} Insider-Käufe in letzten 90 Tagen`
       : 'keine Insider-Käufe'
     const risiko = risikoKlasseVon(e)
-    const risikoLabel = RISIKO_LABEL[risiko]
+    const risikoLabel = risikoCapLabel(risiko, budgetEur)
     const maxBetrag = e.klumpenrisiko
-      ? Math.min(Math.min(RISIKO_CAP[risiko], budgetEur), Math.round(budgetEur * 0.2))
-      : Math.min(RISIKO_CAP[risiko], budgetEur)
+      ? Math.min(risikoCaps[risiko], Math.round(budgetEur * 0.2))
+      : Math.min(risikoCaps[risiko], budgetEur)
 
     const prognose =
       e.datenSignale?.prognoseProfil && e.datenSignale.prognoseProfil.anzahlJahre >= 2
@@ -312,9 +301,10 @@ function bauePrompt(
   const basisText = basisAllokation.length > 0
     ? basisAllokation.map((p) => `  • ${p.ticker}: ${p.betragEur} € (${p.begruendung})`).join('\n')
     : '  • Regelbasiert: kein Kauf empfohlen'
-  const capKonservativ = Math.min(RISIKO_CAP.konservativ, budgetEur)
-  const capModerat = Math.min(RISIKO_CAP.moderat, budgetEur)
-  const capSpekulativ = Math.min(RISIKO_CAP.spekulativ, budgetEur)
+  const caps = risikoCapsFuerBudget(budgetEur)
+  const capKonservativ = caps.konservativ
+  const capModerat = caps.moderat
+  const capSpekulativ = caps.spekulativ
   const klumpenCap = Math.round(budgetEur * 0.2)
 
   const basisVerkaufText = basisVerkauf.length > 0
@@ -344,9 +334,10 @@ Ziel: Markt outperformen durch disziplinierte Kapitalallokation — nicht durch 
 - **Watchlist-Kandidaten** (als solche markiert) sind noch nicht im Depot: Ein Kauf eröffnet eine NEUE Position. Cap spekulativ (≤ ${capSpekulativ} €). Score-Hürde ≥ ${MIN_SCORE_WATCHLIST_NEUKAUF}. Bevorzuge bestehende Depot-Positionen bei vergleichbarem Chance/Risiko.
 
 ## Risiko-adjustierte Positionsobergrenzen (HART, nicht überschreiten)
+Basis 500 € → 350/200/100; bei ${budgetEur} € Budget linear skaliert:
 - **Konservativ**: max. **${capKonservativ} €** — Mastercard, Visa, Microsoft, …
 - **Moderat**: max. **${capModerat} €** — ASML, UnitedHealth, Wolters Kluwer, …
-- **Spekulativ**: max. **${capSpekulativ} €** — Balchem, Datadog
+- **Spekulativ**: max. **${capSpekulativ} €** — Balchem, Watchlist-Neukäufe
 
 ## Regelbasierte Basis-Allokation (Käufe)
 ${basisText}

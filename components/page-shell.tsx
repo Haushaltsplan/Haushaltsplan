@@ -111,7 +111,7 @@ export function PageSection({
   density = 'default',
 }: {
   titleId: string
-  title: string
+  title: ReactNode
   children: ReactNode
   density?: 'default' | 'compact'
 }) {

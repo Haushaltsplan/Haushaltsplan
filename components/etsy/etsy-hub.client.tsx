@@ -1,36 +1,21 @@
 'use client'
 
 import { PageChrome, PageHero } from '@/components/page-shell'
-import { EtsyBetrieb } from '@/components/etsy/etsy-betrieb.client'
 import { EtsyCockpit } from '@/components/etsy/etsy-cockpit.client'
-import { EtsyGeld } from '@/components/etsy/etsy-geld.client'
+import { EtsyInfoHint } from '@/components/etsy/etsy-info-hint'
 import { EtsyKeywords } from '@/components/etsy/etsy-keywords.client'
 import { EtsyKonkurrenz } from '@/components/etsy/etsy-konkurrenz.client'
-import { EtsyKunden } from '@/components/etsy/etsy-kunden.client'
 import { EtsyKiAgentClient } from '@/components/etsy/etsy-ki-agent.client'
 import { EtsySeoUeberwachung } from '@/components/etsy/etsy-seo-ueberwachung.client'
-import { EtsyStrategie } from '@/components/etsy/etsy-strategie.client'
-import { EtsyWachstum } from '@/components/etsy/etsy-wachstum.client'
 import { EtsyZahlen } from '@/components/etsy/etsy-zahlen.client'
 import type { EtsyCockpitModul } from '@/lib/etsy/etsy-cockpit-types'
+import { ETSY_SEO_INFO } from '@/lib/etsy/etsy-seo-info'
 import { oeffneEtsyOAuthUrl } from '@/lib/etsy/etsy-oauth-open'
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import toast from 'react-hot-toast'
 
-type Modul = 'cockpit' | EtsyCockpitModul
-const MODULE: readonly Modul[] = [
-  'cockpit',
-  'agent',
-  'seo',
-  'keywords',
-  'konkurrenz',
-  'geld',
-  'betrieb',
-  'zahlen',
-  'wachstum',
-  'kunden',
-  'strategie',
-]
+type Modul = 'cockpit' | 'agent' | 'seo' | 'keywords' | 'konkurrenz' | 'zahlen'
+const MODULE: readonly Modul[] = ['cockpit', 'agent', 'seo', 'keywords', 'konkurrenz', 'zahlen']
 
 /** Hochzählen, wenn ETSY_SCOPES erweitert wird — zeigt einmalig den Hinweis „neu verbinden“. */
 const SCOPE_VERSION = '2026-09-transactions'
@@ -44,13 +29,24 @@ type Status = {
   shopName: string | null
 }
 
+const TAB_INFO: Record<Modul, (typeof ETSY_SEO_INFO)[keyof typeof ETSY_SEO_INFO]> = {
+  cockpit: ETSY_SEO_INFO.cockpit,
+  agent: ETSY_SEO_INFO.neuesListing,
+  seo: ETSY_SEO_INFO.uebersicht,
+  keywords: ETSY_SEO_INFO.keywordsTab,
+  konkurrenz: ETSY_SEO_INFO.konkurrenz,
+  zahlen: ETSY_SEO_INFO.zahlen,
+}
+
 export function EtsyHubClient() {
-  const [modul, setModul] = useState<Modul>('cockpit')
+  const [modul, setModul] = useState<Modul>('seo')
   const [seoFokus, setSeoFokus] = useState<{ listingId: number; force?: boolean; nonce: number } | null>(null)
 
   const oeffne = useCallback((ziel: EtsyCockpitModul, listingId?: number, force?: boolean) => {
+    const erlaubt: Modul[] = ['agent', 'seo', 'keywords', 'konkurrenz', 'zahlen']
     if (ziel === 'seo' && listingId) setSeoFokus({ listingId, force, nonce: Date.now() })
-    setModul(ziel)
+    if (erlaubt.includes(ziel as Modul)) setModul(ziel as Modul)
+    else setModul('seo')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [])
   const [status, setStatus] = useState<Status | null>(null)
@@ -135,54 +131,26 @@ export function EtsyHubClient() {
 
   const verbunden = Boolean(status?.connected)
 
-  const tabsPrimär = [
+  const tabs = [
+    ['seo', 'Meine Listings', 'Ranks & Optimierung', 'border-teal-500/60 bg-teal-500/10'],
     ['cockpit', 'Cockpit', 'Heute zu tun', 'border-emerald-500/60 bg-emerald-500/10'],
     ['agent', 'Neues Listing', 'Fotos → Entwurf', 'border-amber-500/60 bg-amber-500/10'],
-    ['seo', 'Meine Listings', 'Prüfen & verbessern', 'border-teal-500/60 bg-teal-500/10'],
     ['keywords', 'Keywords', 'Was Käufer suchen', 'border-sky-500/60 bg-sky-500/10'],
-    ['konkurrenz', 'Konkurrenz', 'Verkäufe Top 10 DE', 'border-violet-500/60 bg-violet-500/10'],
-  ] as const
-
-  const tabsShop = [
-    ['geld', 'Geld', 'Marge & P&L', 'border-lime-500/60 bg-lime-500/10'],
-    ['betrieb', 'Betrieb', 'Bestellungen', 'border-orange-500/60 bg-orange-500/10'],
-    ['zahlen', 'Zahlen', 'Funnel & Zombies', 'border-cyan-500/60 bg-cyan-500/10'],
-    ['wachstum', 'Wachstum', 'Saison & Reviews', 'border-pink-500/60 bg-pink-500/10'],
-    ['kunden', 'Kunden', 'CRM & Gravur', 'border-fuchsia-500/60 bg-fuchsia-500/10'],
-    ['strategie', 'Strategie', 'CEO-Briefing', 'border-yellow-500/60 bg-yellow-500/10'],
+    ['konkurrenz', 'Konkurrenz', 'Top-Shops DE', 'border-violet-500/60 bg-violet-500/10'],
+    ['zahlen', 'Zahlen', 'Views & Funnel', 'border-cyan-500/60 bg-cyan-500/10'],
   ] as const
 
   return (
-    <PageChrome density="compact" className="max-w-3xl">
+    <PageChrome density="compact" className="max-w-6xl">
       <PageHero
         density="compact"
         eyebrow="Omnia"
-        title="Etsy"
-        description="Shop-Betriebssystem: SEO, Geld, Bestellungen, Funnel, Saison und Strategie — ein Cockpit für den ganzen Laden."
+        title="Etsy SEO"
+        description="Ranks unter den wichtigsten Schalen-Suchbegriffen sehen und mit einem Klick verbessern — klar, ohne Ballast."
       />
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-        {tabsPrimär.map(([id, titel, sub, aktivStil]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setModul(id)}
-            className={`rounded-2xl border px-3 py-3 text-left transition sm:px-4 ${
-              id === 'cockpit' ? 'col-span-2 sm:col-span-1 ' : ''
-            }${
-              modul === id
-                ? aktivStil
-                : 'border-[var(--app-border)] bg-[var(--app-surface)] hover:bg-[var(--app-surface-muted)]'
-            }`}
-          >
-            <p className="text-sm font-semibold text-[var(--app-text)]">{titel}</p>
-            <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">{sub}</p>
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {tabsShop.map(([id, titel, sub, aktivStil]) => (
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        {tabs.map(([id, titel, sub, aktivStil]) => (
           <button
             key={id}
             type="button"
@@ -193,15 +161,19 @@ export function EtsyHubClient() {
                 : 'border-[var(--app-border)] bg-[var(--app-surface)] hover:bg-[var(--app-surface-muted)]'
             }`}
           >
-            <p className="text-sm font-semibold text-[var(--app-text)]">{titel}</p>
+            <p className="flex items-center gap-1.5 text-sm font-semibold text-[var(--app-text)]">
+              {titel}
+              <EtsyInfoHint info={TAB_INFO[id]} label={`Erklärung: ${titel}`} />
+            </p>
             <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">{sub}</p>
           </button>
         ))}
       </div>
 
       <section className="app-section-shell">
-        <div className="app-surface-card-header px-4 py-2.5 sm:px-5">
+        <div className="app-surface-card-header flex items-center gap-2 px-4 py-2.5 sm:px-5">
           <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">Shop verbinden</h2>
+          <EtsyInfoHint info={ETSY_SEO_INFO.shopVerbinden} label="Erklärung: Shop verbinden" />
         </div>
         <div className="px-4 py-3 sm:px-5 sm:py-4">
           {statusLoading ? (
@@ -262,28 +234,18 @@ export function EtsyHubClient() {
         </div>
       </section>
 
-      {modul === 'cockpit' ? (
+      {modul === 'seo' ? (
+        <EtsySeoUeberwachung verbunden={verbunden} fokus={seoFokus} />
+      ) : modul === 'cockpit' ? (
         <EtsyCockpit verbunden={verbunden} statusLaedt={statusLoading} onOeffnen={oeffne} />
       ) : modul === 'agent' ? (
         <EtsyKiAgentClient hubModus verbunden={verbunden} onStatusRefresh={() => void ladeStatus()} />
-      ) : modul === 'seo' ? (
-        <EtsySeoUeberwachung verbunden={verbunden} fokus={seoFokus} />
       ) : modul === 'keywords' ? (
         <EtsyKeywords verbunden={verbunden} />
       ) : modul === 'konkurrenz' ? (
         <EtsyKonkurrenz />
-      ) : modul === 'geld' ? (
-        <EtsyGeld verbunden={verbunden} />
-      ) : modul === 'betrieb' ? (
-        <EtsyBetrieb verbunden={verbunden} />
-      ) : modul === 'zahlen' ? (
-        <EtsyZahlen verbunden={verbunden} onListing={(id) => oeffne('seo', id)} />
-      ) : modul === 'wachstum' ? (
-        <EtsyWachstum verbunden={verbunden} />
-      ) : modul === 'kunden' ? (
-        <EtsyKunden verbunden={verbunden} />
       ) : (
-        <EtsyStrategie verbunden={verbunden} onListing={(id) => oeffne('seo', id)} />
+        <EtsyZahlen verbunden={verbunden} onListing={(id) => oeffne('seo', id)} />
       )}
     </PageChrome>
   )
