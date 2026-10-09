@@ -1,19 +1,13 @@
 /**
- * Rank-Tracking: Etsy-Suche (HTML, meist DataDome-geblockt) → Fallback Open-API-Relevanz,
- * optional Apify-Actor wenn APIFY_API_TOKEN + APIFY_ETSY_ACTOR_ID gesetzt.
+ * Rank-Tracking für die Shop-Matrix:
+ * Primär Apify (echte Etsy-Suche) — Open-API-Proxy gilt nicht als brauchbares Ergebnis.
  */
 
 import 'server-only'
 
-import {
-  ladeEtsyFokusKeywords,
-  ladeEtsyHauptbegriffe,
-  speichereEtsyRankErgebnisse,
-} from '@/lib/etsy/etsy-seo-audit-cache'
+import { speichereEtsyRankErgebnisse } from '@/lib/etsy/etsy-seo-audit-cache'
 import type { EtsyRankKeywordResult, EtsyRankTrackingResult } from '@/lib/etsy/etsy-seo-audit-types'
 import { ladeEtsyShopListings } from '@/lib/etsy/etsy-listings-server'
-import { listingProduktGruppe } from '@/lib/etsy/etsy-top-keywords'
-import { ladeTopKeywordsProGruppe } from '@/lib/etsy/etsy-top-keywords-server'
 import {
   etsyCircuitOffen,
   markiereEtsyApifyFehler,
@@ -28,13 +22,33 @@ import {
 } from '@/lib/etsy/etsy-scraping'
 
 const SEITE = 48
+/** Unter dieser Trefferzahl keine belastbare Seiten-/Platz-Aussage. */
+export const ETSY_RANK_MIN_PROBE = 48
+/** Default-Actor: günstiger Etsy-Search-Scraper (~1 USD / 1000 Treffer). */
+export const ETSY_APIFY_DEFAULT_ACTOR = 'omkar-cloud/etsy-scraper'
+const APIFY_MAX_PER_SEARCH = 120
+
+export function apifyToken(): string | null {
+  return process.env.APIFY_API_TOKEN?.trim() || null
+}
+
+export function apifyActorId(): string {
+  return process.env.APIFY_ETSY_ACTOR_ID?.trim() || ETSY_APIFY_DEFAULT_ACTOR
+}
 
 export function apifyKonfiguriert(): boolean {
-  return Boolean(process.env.APIFY_API_TOKEN?.trim() && process.env.APIFY_ETSY_ACTOR_ID?.trim())
+  return Boolean(apifyToken())
+}
+
+type RankReihenfolge = {
+  keyword: string
+  listingIds: number[]
+  provider: 'apify' | 'etsy_search' | 'etsy_api_relevanz'
+  sampleSize: number
 }
 
 function positionAus(
-  reihenfolge: EtsySuchReihenfolge | null,
+  reihenfolge: RankReihenfolge | null,
   keyword: string,
   listingId: number,
 ): EtsyRankKeywordResult {
@@ -42,18 +56,32 @@ function positionAus(
     return { keyword, page: null, position: null, found: false, note: 'Suche nicht erreichbar' }
   }
   const n = reihenfolge.listingIds.length
-  const proxy = reihenfolge.provider === 'etsy_api_relevanz' ? ' (API-Relevanz)' : ''
-  const duenn = n < 24 ? ' · Probe dünn' : ''
+  const belastbar = n >= ETSY_RANK_MIN_PROBE
   const idx = reihenfolge.listingIds.indexOf(listingId)
+  const src =
+    reihenfolge.provider === 'apify'
+      ? 'Apify'
+      : reihenfolge.provider === 'etsy_search'
+        ? 'Etsy-Suche'
+        : 'API-Relevanz'
+
+  if (!belastbar) {
+    return {
+      keyword,
+      page: null,
+      position: null,
+      found: false,
+      note: `Messung unbrauchbar · nur ${n} Treffer (${src})`,
+    }
+  }
+
   if (idx < 0) {
     return {
       keyword,
       page: null,
       position: null,
       found: false,
-      note: n === 0
-        ? `Keine Treffer geliefert${proxy}.`
-        : `Nicht in den ersten ${n} Treffern${proxy}${duenn}.`,
+      note: `Nicht in den ersten ${n} Treffern (${src})`,
     }
   }
   return {
@@ -61,21 +89,54 @@ function positionAus(
     page: Math.floor(idx / SEITE) + 1,
     position: idx + 1,
     found: true,
-    note: `${proxy.trim()}${duenn}`.trim() || undefined,
+    note: src,
   }
 }
 
-async function trackeViaApify(opts: {
-  listingId: number
-  keywords: string[]
-}): Promise<EtsyRankKeywordResult[] | null> {
-  const token = process.env.APIFY_API_TOKEN?.trim()
-  const actorId = process.env.APIFY_ETSY_ACTOR_ID?.trim()
-  if (!token || !actorId) return null
+function listingIdAusItem(o: Record<string, unknown>): number | null {
+  const direct = Number(o.listingId ?? o.listing_id ?? o.id)
+  if (Number.isFinite(direct) && direct > 0) return direct
+  const link = typeof o.link === 'string' ? o.link : typeof o.url === 'string' ? o.url : ''
+  const m = /\/listing\/(\d+)/.exec(link)
+  if (m) {
+    const id = Number(m[1])
+    if (Number.isFinite(id) && id > 0) return id
+  }
+  return null
+}
 
-  // Actor-Input ist je nach Actor unterschiedlich — wir übergeben ein generisches Such-Schema.
+async function holeApifyDatasetItems(token: string, datasetId: string): Promise<unknown[]> {
+  const itemsRes = await fetch(
+    `https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?format=json&clean=1`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(60_000),
+    },
+  )
+  if (!itemsRes.ok) {
+    throw new Error(`Apify Dataset lesen fehlgeschlagen (${itemsRes.status})`)
+  }
+  const items = (await itemsRes.json()) as unknown
+  if (!Array.isArray(items)) throw new Error('Apify Dataset war kein Array')
+  return items
+}
+
+/**
+ * Ein Apify-Run für alle Keywords (searchQueries).
+ * Erwartetes Output: omkar-cloud/etsy-scraper → { query, id|link, … }
+ */
+export async function sucheFokusKeywordsViaApify(
+  keywords: string[],
+): Promise<Map<string, RankReihenfolge>> {
+  const token = apifyToken()
+  if (!token) throw new Error('APIFY_API_TOKEN fehlt in .env.local / Vercel.')
+
+  const actorId = apifyActorId()
+  const kws = keywords.map((k) => k.trim().toLowerCase()).filter(Boolean)
+  if (!kws.length) return new Map()
+
   const runRes = await fetch(
-    `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs?waitForFinish=120`,
+    `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs?waitForFinish=240`,
     {
       method: 'POST',
       headers: {
@@ -83,71 +144,87 @@ async function trackeViaApify(opts: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        queries: opts.keywords,
-        keywords: opts.keywords,
-        searchQueries: opts.keywords,
-        search: opts.keywords[0],
-        maxItems: 100,
-        listingId: opts.listingId,
+        searchQueries: kws,
+        queries: kws,
+        keywords: kws,
+        maxResultsPerSearch: APIFY_MAX_PER_SEARCH,
+        maxItems: APIFY_MAX_PER_SEARCH * kws.length,
+        scrapeListingDetails: false,
+        excludeSponsored: true,
+        locale: 'de',
+        currency: 'EUR',
+        startUrls: kws.map(
+          (q) => `https://www.etsy.com/de/search?q=${encodeURIComponent(q)}&ship_to=DE&explicit=1`,
+        ),
       }),
-      signal: AbortSignal.timeout(130_000),
+      signal: AbortSignal.timeout(250_000),
     },
   )
   if (!runRes.ok) {
     const t = await runRes.text()
-    throw new Error(`Apify Run fehlgeschlagen (${runRes.status}): ${t.slice(0, 200)}`)
+    throw new Error(`Apify Run fehlgeschlagen (${runRes.status}): ${t.slice(0, 240)}`)
   }
   const run = (await runRes.json()) as {
     data?: { defaultDatasetId?: string; status?: string }
   }
+  const status = String(run.data?.status || '')
   const datasetId = run.data?.defaultDatasetId
-  if (!datasetId) return null
-
-  const itemsRes = await fetch(
-    `https://api.apify.com/v2/datasets/${encodeURIComponent(datasetId)}/items?format=json&clean=1`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(30_000),
-    },
-  )
-  if (!itemsRes.ok) return null
-  const items = (await itemsRes.json()) as unknown
-  if (!Array.isArray(items)) return null
-
-  const results: EtsyRankKeywordResult[] = []
-  for (const keyword of opts.keywords) {
-    let foundAt = -1
-    let i = 0
-    for (const item of items) {
-      if (!item || typeof item !== 'object') continue
-      const o = item as Record<string, unknown>
-      const id =
-        Number(o.listingId ?? o.listing_id ?? o.id) ||
-        (typeof o.url === 'string' ? Number(/\/listing\/(\d+)/.exec(o.url)?.[1]) : NaN)
-      const kw = String(o.keyword || o.query || o.search || '').toLowerCase()
-      if (kw && kw !== keyword.toLowerCase()) continue
-      if (id === opts.listingId) {
-        foundAt = i
-        break
-      }
-      i++
-    }
-    results.push(
-      foundAt >= 0
-        ? {
-            keyword,
-            page: Math.floor(foundAt / SEITE) + 1,
-            position: foundAt + 1,
-            found: true,
-            note: 'Apify',
-          }
-        : { keyword, page: null, position: null, found: false, note: 'Apify: nicht gefunden' },
-    )
+  if (!datasetId) {
+    throw new Error(`Apify ohne Dataset (Status: ${status || 'unbekannt'})`)
   }
-  return results
+  if (status && status !== 'SUCCEEDED') {
+    throw new Error(`Apify Run Status: ${status}`)
+  }
+
+  const items = await holeApifyDatasetItems(token, datasetId)
+  const map = new Map<string, number[]>()
+  for (const kw of kws) map.set(kw, [])
+
+  for (const item of items) {
+    if (!item || typeof item !== 'object') continue
+    const o = item as Record<string, unknown>
+    const id = listingIdAusItem(o)
+    if (id == null) continue
+    const rawKw = String(o.query || o.keyword || o.search || o.searchQuery || '')
+      .toLowerCase()
+      .trim()
+    let target: string | null = rawKw && map.has(rawKw) ? rawKw : null
+    if (!target) {
+      const blob = `${o.input_url || o.url || o.link || ''}`.toLowerCase()
+      target =
+        kws.find(
+          (kw) => blob.includes(encodeURIComponent(kw)) || blob.includes(kw.replace(/\s+/g, '+')),
+        ) ?? null
+    }
+    if (!target && kws.length === 1) target = kws[0]!
+    if (!target) continue
+    const arr = map.get(target)!
+    if (!arr.includes(id) && arr.length < APIFY_MAX_PER_SEARCH) arr.push(id)
+  }
+
+  const out = new Map<string, RankReihenfolge>()
+  for (const kw of kws) {
+    const ids = map.get(kw) ?? []
+    out.set(kw, { keyword: kw, listingIds: ids, provider: 'apify', sampleSize: ids.length })
+  }
+  return out
 }
 
-function providerAus(reihen: Array<EtsySuchReihenfolge | null>): EtsyRankTrackingResult['provider'] {
+async function trackeViaApify(opts: {
+  listingId: number
+  keywords: string[]
+}): Promise<EtsyRankKeywordResult[] | null> {
+  const reihen = await sucheFokusKeywordsViaApify(opts.keywords)
+  return opts.keywords.map((keyword) => {
+    const k = keyword.trim().toLowerCase()
+    return positionAus(reihen.get(k) ?? null, k, opts.listingId)
+  })
+}
+
+function providerAus(
+  reihen: Array<RankReihenfolge | EtsySuchReihenfolge | null>,
+): EtsyRankTrackingResult['provider'] {
+  if (reihen.some((r) => r && 'provider' in r && r.provider === 'apify')) return 'apify'
   if (reihen.some((r) => r?.provider === 'etsy_search')) return 'etsy_search'
   if (reihen.some((r) => r?.provider === 'etsy_api_relevanz')) return 'etsy_api_relevanz'
   return 'unavailable'
@@ -189,7 +266,6 @@ export async function trackeEtsyListingRanks(opts: {
     console.info(`[etsy-rank] Apify Circuit offen (DB) — skip Apify`)
   }
 
-  // HTML nur wenn Circuit zu; sonst Open-API-Relevanz über sucheEtsyReihenfolge (interner Fallback)
   if (!results) {
     if (etsyHtmlCircuitOffen()) {
       console.info(
@@ -202,7 +278,20 @@ export async function trackeEtsyListingRanks(opts: {
       for (const keyword of keywords) {
         const r = await sucheEtsyReihenfolge(keyword)
         reihen.push(r)
-        results.push(positionAus(r, keyword, opts.listingId))
+        results.push(
+          positionAus(
+            r
+              ? {
+                  keyword,
+                  listingIds: r.listingIds,
+                  provider: r.provider,
+                  sampleSize: r.listingIds.length,
+                }
+              : null,
+            keyword,
+            opts.listingId,
+          ),
+        )
       }
       provider = providerAus(reihen)
     } catch (e) {
@@ -218,7 +307,8 @@ export async function trackeEtsyListingRanks(opts: {
     }
   }
 
-  if (opts.ownerUserId && provider !== 'unavailable') {
+  // Nur belastbare Apify-Ergebnisse cachen (kein API-Müll)
+  if (opts.ownerUserId && provider === 'apify') {
     try {
       await speichereEtsyRankErgebnisse({
         ownerUserId: opts.ownerUserId,
@@ -240,160 +330,109 @@ export type EtsyShopRankLauf = {
   listings: number
   provider: EtsyRankTrackingResult['provider']
   ergebnisse: EtsyRankTrackingResult[]
+  belastbar: boolean
+  sampleMin: number
+  sampleAvg: number
+  hinweis: string | null
 }
 
 /**
- * Shop-weites Tracking: jedes Keyword wird nur einmal gesucht und gegen
- * passende Listings ausgewertet.
- * Priorität: Top-5 je Produktgruppe (Schale/Vase) → Hauptbegriff → Fokus-Cache → Mehrwort-Tags.
+ * Shop-weites Tracking (Legacy/Cron-Nebenpfad).
  */
 export async function trackListingRanks(opts: {
   ownerUserId: string
   maxKeywords?: number
   maxListings?: number
 }): Promise<EtsyShopRankLauf> {
-  const maxKeywords = Math.max(1, Math.min(40, opts.maxKeywords ?? 25))
-  const { shopId, listings } = await ladeEtsyShopListings(opts.ownerUserId, {
-    state: 'active',
-    limit: Math.min(100, opts.maxListings ?? 100),
+  // Fokus-Matrix ist der kanonische Pfad — gleiche Keywords / Apify.
+  return trackeFokusRankMatrix({
+    ownerUserId: opts.ownerUserId,
+    maxListings: opts.maxListings,
   })
-  const [fokus, hauptbegriffe, topProGruppe] = await Promise.all([
-    ladeEtsyFokusKeywords(opts.ownerUserId),
-    ladeEtsyHauptbegriffe(opts.ownerUserId).catch(() => new Map<number, string>()),
-    ladeTopKeywordsProGruppe(opts.ownerUserId, 5).catch(() => null),
-  ])
-
-  const keywordZuListings = new Map<string, number[]>()
-  const addKw = (keyword: string, listingId: number) => {
-    const k = keyword.trim().toLowerCase()
-    if (!k) return
-    const arr = keywordZuListings.get(k) ?? []
-    if (!arr.includes(listingId)) arr.push(listingId)
-    keywordZuListings.set(k, arr)
-  }
-
-  for (const l of listings) {
-    const gruppe = listingProduktGruppe(l.title, l.tags ?? [])
-    const top =
-      topProGruppe?.[gruppe]?.map((t) => t.keyword) ??
-      topProGruppe?.allgemein?.map((t) => t.keyword) ??
-      []
-    for (const k of top.slice(0, 5)) addKw(k, l.listingId)
-
-    const hb = hauptbegriffe.get(l.listingId)
-    if (hb) addKw(hb, l.listingId)
-
-    const eigene = fokus.get(l.listingId)
-    const basis =
-      eigene && eigene.length > 0 ? eigene : (l.tags ?? []).filter((t) => t.trim().includes(' ')).slice(0, 3)
-    for (const k of basis.slice(0, 2)) addKw(k, l.listingId)
-  }
-
-  // Top-Gruppen-Keywords zuerst (viele Listings), dann Rest nach Abdeckung.
-  const topSet = new Set(
-    topProGruppe
-      ? [...topProGruppe.schale, ...topProGruppe.vase, ...topProGruppe.allgemein].map((t) => t.keyword)
-      : [],
-  )
-  const keywords = [...keywordZuListings.entries()]
-    .sort((a, b) => {
-      const ta = topSet.has(a[0]) ? 1 : 0
-      const tb = topSet.has(b[0]) ? 1 : 0
-      if (ta !== tb) return tb - ta
-      return b[1].length - a[1].length
-    })
-    .slice(0, maxKeywords)
-
-  const proListing = new Map<number, EtsyRankKeywordResult[]>()
-  const reihen: Array<EtsySuchReihenfolge | null> = []
-  const providerJeListing = new Map<number, EtsySuchReihenfolge['provider']>()
-  for (const [keyword, ids] of keywords) {
-    const r = await sucheEtsyReihenfolge(keyword)
-    reihen.push(r)
-    for (const id of ids) {
-      const arr = proListing.get(id) ?? []
-      arr.push(positionAus(r, keyword, id))
-      proListing.set(id, arr)
-      if (r) providerJeListing.set(id, r.provider)
-    }
-  }
-
-  const checkedAt = new Date().toISOString()
-  const ergebnisse: EtsyRankTrackingResult[] = []
-  for (const [listingId, results] of proListing) {
-    const provider = providerJeListing.get(listingId) ?? 'unavailable'
-    if (provider !== 'unavailable') {
-      try {
-        await speichereEtsyRankErgebnisse({ ownerUserId: opts.ownerUserId, listingId, results, provider })
-      } catch (e) {
-        console.warn('[etsy-rank] shop cache:', e instanceof Error ? e.message : e)
-      }
-    }
-    ergebnisse.push({ listingId, checkedAt, provider, results })
-  }
-
-  return {
-    shopId,
-    keywords: keywords.length,
-    listings: proListing.size,
-    provider: providerAus(reihen),
-    ergebnisse,
-  }
 }
 
 /**
- * Shop-Matrix: die 5 festen Schalen-Keywords je einmal suchen,
- * Positionen für alle aktiven Listings speichern.
+ * Shop-Matrix: 5 feste Keywords via Apify (Pflicht für brauchbare Ranks).
  */
 export async function trackeFokusRankMatrix(opts: {
   ownerUserId: string
   maxListings?: number
 }): Promise<EtsyShopRankLauf> {
   const { ETSY_RANK_FOKUS_KEYWORDS } = await import('@/lib/etsy/etsy-rank-fokus')
+  const keywords = [...ETSY_RANK_FOKUS_KEYWORDS]
+
+  if (!apifyKonfiguriert()) {
+    throw new Error(
+      'APIFY_API_TOKEN fehlt. Ohne Apify keine belastbaren Ranks (Free-Credits reichen alle 1–2 Wochen). Eintragen in .env.local und Vercel → Environment Variables.',
+    )
+  }
+
+  const apifyOffen = await etsyCircuitOffen('apify')
+  if (apifyOffen) {
+    throw new Error('Apify vorübergehend gesperrt (Circuit nach Fehlern). In ~20 Min. erneut versuchen.')
+  }
+
   const { shopId, listings } = await ladeEtsyShopListings(opts.ownerUserId, {
     state: 'active',
     limit: Math.min(100, opts.maxListings ?? 100),
   })
   const listingIds = listings.map((l) => l.listingId)
-  const proListing = new Map<number, EtsyRankKeywordResult[]>()
-  const reihen: Array<EtsySuchReihenfolge | null> = []
-  const providerJeListing = new Map<number, EtsySuchReihenfolge['provider']>()
 
-  for (const keyword of ETSY_RANK_FOKUS_KEYWORDS) {
-    const r = await sucheEtsyReihenfolge(keyword)
-    reihen.push(r)
-    for (const id of listingIds) {
-      const arr = proListing.get(id) ?? []
-      arr.push(positionAus(r, keyword, id))
-      proListing.set(id, arr)
-      if (r) providerJeListing.set(id, r.provider)
-    }
+  let reihenMap: Map<string, RankReihenfolge>
+  try {
+    reihenMap = await sucheFokusKeywordsViaApify(keywords)
+    await markiereEtsyApifyOk()
+  } catch (e) {
+    await markiereEtsyApifyFehler(e instanceof Error ? e.message : 'Apify Fehler')
+    throw e instanceof Error ? e : new Error('Apify Rank-Messung fehlgeschlagen')
+  }
+
+  const samples = keywords.map((k) => reihenMap.get(k)?.sampleSize ?? 0)
+  const sampleMin = samples.length ? Math.min(...samples) : 0
+  const sampleAvg = samples.length
+    ? Math.round(samples.reduce((a, b) => a + b, 0) / samples.length)
+    : 0
+  const belastbar = sampleMin >= ETSY_RANK_MIN_PROBE
+
+  if (!belastbar) {
+    throw new Error(
+      `Apify lieferte zu wenige Treffer (min. ${sampleMin}, brauchen ≥${ETSY_RANK_MIN_PROBE} je Keyword). Actor „${apifyActorId()}“ prüfen oder Free-Credits.`,
+    )
+  }
+
+  const proListing = new Map<number, EtsyRankKeywordResult[]>()
+  for (const id of listingIds) {
+    const results = keywords.map((keyword) =>
+      positionAus(reihenMap.get(keyword) ?? null, keyword, id),
+    )
+    proListing.set(id, results)
   }
 
   const checkedAt = new Date().toISOString()
   const ergebnisse: EtsyRankTrackingResult[] = []
   for (const [listingId, results] of proListing) {
-    const provider = providerJeListing.get(listingId) ?? 'unavailable'
-    if (provider !== 'unavailable') {
-      try {
-        await speichereEtsyRankErgebnisse({
-          ownerUserId: opts.ownerUserId,
-          listingId,
-          results,
-          provider,
-        })
-      } catch (e) {
-        console.warn('[etsy-rank] fokus matrix cache:', e instanceof Error ? e.message : e)
-      }
+    try {
+      await speichereEtsyRankErgebnisse({
+        ownerUserId: opts.ownerUserId,
+        listingId,
+        results,
+        provider: 'apify',
+      })
+    } catch (e) {
+      console.warn('[etsy-rank] fokus matrix cache:', e instanceof Error ? e.message : e)
     }
-    ergebnisse.push({ listingId, checkedAt, provider, results })
+    ergebnisse.push({ listingId, checkedAt, provider: 'apify', results })
   }
 
   return {
     shopId,
-    keywords: ETSY_RANK_FOKUS_KEYWORDS.length,
+    keywords: keywords.length,
     listings: proListing.size,
-    provider: providerAus(reihen),
+    provider: 'apify',
     ergebnisse,
+    belastbar: true,
+    sampleMin,
+    sampleAvg,
+    hinweis: null,
   }
 }

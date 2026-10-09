@@ -16,18 +16,25 @@ type RankZelle = {
   found: boolean
   note: string | null
   checkedAt: string | null
+  belastbar?: boolean
 }
 
 type MatrixListing = {
   listingId: number
   title: string
   priceEur: number | null
+  views: number | null
   url: string | null
   cachedScore: number | null
   ranks: RankZelle[]
   schwachAnzahl: number
   schwachstesKeyword: string | null
   geprueft: boolean
+}
+
+function formatAufrufe(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return '—'
+  return new Intl.NumberFormat('de-DE').format(Math.round(n))
 }
 
 type Props = {
@@ -44,8 +51,8 @@ function scoreBadgeClass(score: number | null | undefined) {
 }
 
 function zelleStil(r: RankZelle): string {
-  if (!r.checkedAt && r.note === 'noch nicht geprüft') {
-    return 'bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]'
+  if (!r.checkedAt || r.note === 'noch nicht geprüft' || r.belastbar === false) {
+    return 'bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] border-[var(--app-border)]'
   }
   if (!r.found || r.page == null) return 'bg-rose-500/20 text-rose-200 border-rose-500/30'
   if (r.page >= 3) return 'bg-rose-500/20 text-rose-200 border-rose-500/30'
@@ -54,15 +61,15 @@ function zelleStil(r: RankZelle): string {
 }
 
 function zelleText(r: RankZelle): string {
-  if (!r.checkedAt && r.note === 'noch nicht geprüft') return '—'
+  if (!r.checkedAt || r.note === 'noch nicht geprüft') return '—'
+  if (r.belastbar === false) return '—'
   if (!r.found || r.page == null) return 'fehlt'
   return `S.${r.page}`
 }
 
 function zelleSub(r: RankZelle): string {
+  if (r.belastbar === false) return 'n/a'
   if (r.found && r.position != null) return `#${r.position}`
-  if (r.note?.includes('Probe dünn')) return 'unsicher'
-  if (r.note?.includes('API')) return 'API'
   return ''
 }
 
@@ -73,6 +80,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
   const [rankBusy, setRankBusy] = useState(false)
   const [optBusyId, setOptBusyId] = useState<number | null>(null)
   const [providerHinweis, setProviderHinweis] = useState<string | null>(null)
+  const [apifyOk, setApifyOk] = useState<boolean | null>(null)
 
   const ladeMatrix = useCallback(async () => {
     if (!verbunden) return
@@ -83,6 +91,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
         error?: string
         listings?: MatrixListing[]
         keywords?: Array<{ keyword: string; label: string }>
+        apifyKonfiguriert?: boolean
       }
       if (!res.ok) {
         toast.error(j.error ?? 'Listings laden fehlgeschlagen.')
@@ -93,6 +102,12 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
         j.keywords ??
           ETSY_RANK_FOKUS_KEYWORDS.map((k) => ({ keyword: k, label: k })),
       )
+      setApifyOk(j.apifyKonfiguriert ?? null)
+      if (j.apifyKonfiguriert === false) {
+        setProviderHinweis(
+          'APIFY_API_TOKEN fehlt — ohne Apify keine echten Ranks. Token in .env.local und Vercel setzen (Free reicht alle 1–2 Wochen).',
+        )
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
@@ -119,23 +134,32 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
         error?: string
         listings?: MatrixListing[]
         keywords?: Array<{ keyword: string; label: string }>
-        lauf?: { provider?: string; listings?: number }
+        apifyKonfiguriert?: boolean
+        lauf?: {
+          provider?: string
+          listings?: number
+          belastbar?: boolean
+          sampleMin?: number
+          sampleAvg?: number
+        }
       }
       if (!res.ok) {
+        if (j.apifyKonfiguriert === false) setApifyOk(false)
+        setProviderHinweis(j.error ?? 'Rank-Messung fehlgeschlagen.')
         toast.error(j.error ?? 'Rank-Messung fehlgeschlagen.')
         return
       }
       setListings(j.listings ?? [])
       if (j.keywords) setKeywords(j.keywords)
-      const p = j.lauf?.provider
-      if (p === 'etsy_api_relevanz') {
-        setProviderHinweis('Messung über Etsy-API (Suchseite blockiert) — Näherung, kein Browser-Ranking 1:1.')
-      } else if (p === 'etsy_search') {
-        setProviderHinweis('Messung über Etsy-Suchseite.')
-      } else if (p === 'unavailable') {
-        setProviderHinweis('Suche gerade nicht erreichbar — später erneut versuchen.')
-      }
-      toast.success(`Ranks aktualisiert · ${j.lauf?.listings ?? 0} Listings`)
+      setApifyOk(true)
+      const avg = j.lauf?.sampleAvg
+      const min = j.lauf?.sampleMin
+      setProviderHinweis(
+        j.lauf?.provider === 'apify'
+          ? `Messung: Apify · ok (Ø ${avg ?? '—'} Treffer/Keyword, min. ${min ?? '—'}). Alle 1–2 Wochen reicht.`
+          : `Messung: ${j.lauf?.provider ?? 'unbekannt'}`,
+      )
+      toast.success(`Ranks aktualisiert · ${j.lauf?.listings ?? 0} Listings · Apify`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
@@ -203,8 +227,8 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 max-w-xl space-y-1">
             <p className="text-sm text-[var(--app-text-muted)]">
-              Fünf Kernbegriffe für Schalen — Farbe = Seite. Ein Button optimiert und speichert direkt auf Etsy,
-              ohne die anderen Begriffe zu opfern.
+              Fünf Kernbegriffe — echte Ranks nur über Apify (Free, alle 1–2 Wochen). Farbe = Seite. „Ranking
+              optimieren“ speichert direkt auf Etsy und schützt die anderen Begriffe.
             </p>
             <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--app-text-muted)]">
               <span className="inline-flex items-center gap-1">
@@ -214,9 +238,25 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
               <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-emerald-200">S.1 gut</span>
               <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-amber-200">S.2 ok</span>
               <span className="rounded-md bg-rose-500/15 px-1.5 py-0.5 text-rose-200">≥S.3 / fehlt</span>
+              <span className="rounded-md bg-[var(--app-surface-muted)] px-1.5 py-0.5">— = noch nicht gemessen</span>
             </div>
+            {apifyOk === false && (
+              <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100">
+                <strong>APIFY_API_TOKEN</strong> fehlt. In <code className="text-amber-50">.env.local</code> und
+                Vercel → Settings → Environment Variables eintragen. Actor:{' '}
+                <code className="text-amber-50">omkar-cloud/etsy-scraper</code> (einmal „Try for free“ auf Apify).
+              </p>
+            )}
             {providerHinweis && (
-              <p className="text-[11px] text-amber-200/90">{providerHinweis}</p>
+              <p
+                className={`text-[11px] ${
+                  apifyOk === false || providerHinweis.includes('fehl')
+                    ? 'text-amber-200/90'
+                    : 'text-emerald-200/90'
+                }`}
+              >
+                {providerHinweis}
+              </p>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -226,7 +266,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
               onClick={() => void ranksAktualisieren()}
               className="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
             >
-              {rankBusy ? 'Misst Ranks…' : 'Ranks aktualisieren'}
+              {rankBusy ? 'Misst via Apify…' : 'Ranks aktualisieren'}
             </button>
             <EtsyInfoHint info={ETSY_SEO_INFO.ranksAktualisieren} label="Erklärung: Ranks aktualisieren" />
           </div>
@@ -274,7 +314,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                     className="border-b border-[var(--app-border)]/70 align-middle"
                   >
                     <td className="sticky left-0 z-10 bg-[var(--app-surface)] py-2.5 pr-3">
-                      <div className="flex min-w-[11rem] max-w-[16rem] items-start gap-2">
+                      <div className="flex min-w-[12rem] max-w-[18rem] items-start gap-2">
                         <span
                           className={`mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${scoreBadgeClass(l.cachedScore)}`}
                         >
@@ -284,13 +324,21 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                           <p className="truncate text-sm font-medium text-[var(--app-text)]" title={l.title}>
                             {l.title}
                           </p>
-                          <p className="text-[11px] text-[var(--app-text-muted)]">
-                            {l.priceEur != null ? `${l.priceEur} €` : ''}
-                            {l.schwachAnzahl > 0
-                              ? ` · ${l.schwachAnzahl} schwach`
-                              : l.geprueft
-                                ? ' · stabil'
-                                : ' · noch nicht gemessen'}
+                          <p className="mt-0.5 text-[11px] tabular-nums text-[var(--app-text)]">
+                            <span className="font-semibold">{formatAufrufe(l.views)}</span>
+                            <span className="text-[var(--app-text-muted)]"> Aufrufe</span>
+                            {l.priceEur != null ? (
+                              <span className="text-[var(--app-text-muted)]"> · {l.priceEur} €</span>
+                            ) : null}
+                          </p>
+                          <p className="text-[10px] text-[var(--app-text-muted)]">
+                            {(l.views ?? 0) >= 80
+                              ? 'viele Aufrufe — Umschreiben oft unnötig'
+                              : l.schwachAnzahl > 0
+                                ? `${l.schwachAnzahl} Keywords schwach`
+                                : l.geprueft
+                                  ? 'Ranks stabil'
+                                  : 'noch nicht gemessen'}
                           </p>
                         </div>
                       </div>
@@ -313,7 +361,16 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                         type="button"
                         disabled={rankBusy || optBusyId != null}
                         onClick={() => void rankingOptimieren(l.listingId, l.schwachstesKeyword)}
-                        className="rounded-xl border border-teal-500/40 bg-teal-600/20 px-3 py-1.5 text-xs font-medium text-teal-100 hover:bg-teal-600/35 disabled:opacity-50"
+                        title={
+                          (l.views ?? 0) >= 80
+                            ? 'Viele Aufrufe: nur ändern, wenn du bewusst SEO nachschärfen willst'
+                            : undefined
+                        }
+                        className={`rounded-xl border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
+                          (l.views ?? 0) >= 80
+                            ? 'border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] hover:bg-[var(--app-surface)]'
+                            : 'border-teal-500/40 bg-teal-600/20 text-teal-100 hover:bg-teal-600/35'
+                        }`}
                       >
                         {optBusyId === l.listingId ? 'Optimiert & speichert…' : 'Ranking optimieren'}
                       </button>
@@ -326,9 +383,9 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
         )}
 
         <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">
-          „Ranking optimieren“ schreibt Titel, Tags und Intro neu und lädt sie sofort auf Etsy hoch. Die fünf
-          Kernbegriffe bleiben als Tags geschützt; das schwächste Keyword wird vorne im Titel gestärkt. Danach
-          erneut Ranks messen — sichtbare Verbesserungen brauchen oft Zeit.
+          Sortiert nach Aufrufen. Ranks nur nach erfolgreichem Apify-Lauf (Free-Credits, 1–2 Wochen reichen).
+          „Ranking optimieren“ pusht live auf Etsy und schützt die anderen Kernbegriffe — bei vielen Aufrufen oft
+          unnötig.
         </p>
       </PageSectionPanel>
     </PageSection>

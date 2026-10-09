@@ -10,12 +10,12 @@ export const ETSY_SEO_INFO = {
       '„Nicht gefunden“ heißt: nicht in der gemessenen Probe. Steht „Probe dünn“ oder „API-Relevanz“, ist die Messung unsicher — dann einmal auf Etsy.de selbst nachschauen, bevor du massenhaft umschreibst.',
   },
   ranksAktualisieren: {
-    was: 'Startet die Positionsmessung für genau diese fünf Suchbegriffe: gedrechselte Schale, Holzschale, Obstschale aus Holz, Holzschale Deko, gedrechselt.',
-    wie: 'Ein Klick reicht. Die App sucht jedes Keyword einmal und prüft, wo deine Listings in der Trefferliste stehen. Danach aktualisieren sich die farbigen Zellen.',
-    gut: 'Nach dem Lauf siehst du Seite und Platz pro Keyword. Der Lauf kann 30–90 Sekunden dauern.',
+    was: 'Misst echte Etsy-Suchpositionen der fünf Kernbegriffe über Apify (nicht die schwache Open-API).',
+    wie: 'APIFY_API_TOKEN in .env.local + Vercel setzen. Einmal Actor omkar-cloud/etsy-scraper auf Apify „Try for free“. Dann Button — Lauf dauert oft 1–3 Minuten und kostet Free-Credits.',
+    gut: 'Zellen zeigen S.1/#… oder „fehlt“ erst nach einer Probe mit ≥48 Treffern. Alle 1–2 Wochen reicht.',
     achtung:
-      'Etsy blockiert oft die echte Suchseite. Dann nutzen wir die Open-API als Näherung (Hinweis „API-Relevanz“). Das ist ein Proxy, kein 1:1-Browser-Ranking.',
-  },
+      'Ohne Token: Messung schlägt fehl (richtig so). Nicht täglich klicken — Free-Credits schonen. Alte API-„fehlt“-Zellen zählen nicht als Ergebnis.',
+  }
   rankZelle: {
     was: 'Eine Zelle = Position dieses Listings unter genau diesem Suchbegriff.',
     wie: 'Grün S.1, Gelb S.2, Rot Seite ≥3 oder nicht gefunden. Zahl darunter = ungefährer Platz in der Trefferliste (Platz 1 = ganz oben).',
@@ -25,10 +25,10 @@ export const ETSY_SEO_INFO = {
   },
   rankingOptimieren: {
     was: 'Ein Klick schreibt Titel, Tags und Intro neu, stärkt das schwächste der fünf Keywords und speichert die Änderung direkt auf Etsy.',
-    wie: 'Button neben dem Listing. Die KI muss alle fünf Fokus-Keywords als Tags behalten und das schwächste vorne im Titel setzen. Du brauchst keinen Diff-Schritt — der Push passiert automatisch.',
-    gut: 'Danach erneut „Ranks aktualisieren“. Ziel: das schwache Keyword verbessert sich, die anderen bleiben mindestens so gut wie zuvor (Schutzliste).',
+    wie: 'Button neben dem Listing. Die KI behält alle fünf Fokus-Keywords als Tags und setzt das schwächste vorne im Titel. Kein Diff-Schritt — Push passiert automatisch.',
+    gut: 'Sinnvoll vor allem bei Listings mit wenigen Aufrufen. Danach erneut Ranks messen.',
     achtung:
-      'Änderungen gehen live auf Etsy. Rankings brauchen oft Stunden bis Tage. Nicht mehrmals hintereinander denselben Button spammen — einmal optimieren, messen, warten.',
+      'Bei vielen Aufrufen oft unnötig — das Listing bekommt schon Traffic (Favoriten, Shop, andere Suche). Live-Push nicht spammen. Steht die Messung auf API/unsicher, zuerst auf Etsy.de selbst prüfen.',
   },
   keywordsFuenf: {
     was: 'Die fünf Begriffe, die für gedrechselte Schalen am relevantesten für deinen Shop sind — fest hinterlegt, nicht aus der Merkliste gemischt.',
@@ -38,10 +38,10 @@ export const ETSY_SEO_INFO = {
       'Vasen oder Dosen passen inhaltlich nicht immer zu „Schale“-Keywords. Für reine Vasen-Listings die Zellen mit Vorsicht lesen.',
   },
   score: {
-    was: 'SEO-/GEO-Score aus dem letzten Audit (0–100): Regelchecks + KI-Bewertung von Titel, Tags und Beschreibung.',
-    wie: 'Nur Orientierung. Hoher Score heißt nicht automatisch Seite 1 — und umgekehrt.',
-    gut: '80+ ist solide. Darunter lohnt ein Blick auf fehlende Maße, Tags oder Hauptbegriff.',
-    achtung: 'Score und Ranking sind zwei Dinge. Optimiere für Ranking über den Button „Ranking optimieren“, nicht nur über den Score.',
+    was: 'Links: SEO-Score (0–100). Darunter: Aufrufe laut Etsy (Lifetime) und Preis. Aufrufe zeigen, ob das Listing schon Traffic bekommt — unabhängig von der Rank-Probe.',
+    wie: 'Viele Aufrufe + „fehlt“ in der Matrix = oft Mess-Proxy, nicht tot. Wenige Aufrufe + schwach = eher Kandidat für „Ranking optimieren“.',
+    gut: '80+ Score und steigende Aufrufe = Listing läuft. Dann eher Fotos/Preis als Titel drehen.',
+    achtung: 'Score ≠ Ranking. Aufrufe können auch aus Shop-Besuchern oder Favoriten kommen, nicht nur aus den fünf Kernbegriffen.',
   },
   shopVerbinden: {
     was: 'Verbindet deinen Etsy-Shop per OAuth, damit die App Listings lesen und SEO-Updates speichern darf.',

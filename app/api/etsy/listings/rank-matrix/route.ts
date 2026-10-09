@@ -1,8 +1,13 @@
 /**
  * Shop-weite Rank-Matrix für die 5 festen Schalen-Keywords.
- * GET = Cache + Listings · POST = frisch messen + speichern.
+ * GET = Cache + Listings · POST = frisch messen via Apify (Pflicht).
  */
-import { trackeFokusRankMatrix } from '@/lib/etsy/etsy-rank-apify'
+import {
+  apifyKonfiguriert,
+  apifyActorId,
+  ETSY_RANK_MIN_PROBE,
+  trackeFokusRankMatrix,
+} from '@/lib/etsy/etsy-rank-apify'
 import {
   ETSY_RANK_FOKUS_KEYWORDS,
   ETSY_RANK_FOKUS_LABELS,
@@ -15,7 +20,7 @@ import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 180
+export const maxDuration = 300
 
 type RankZelle = {
   keyword: string
@@ -25,6 +30,17 @@ type RankZelle = {
   found: boolean
   note: string | null
   checkedAt: string | null
+  belastbar: boolean
+}
+
+function zelleBelastbar(note: string | null, found: boolean, page: number | null): boolean {
+  if (note?.includes('unbrauchbar') || note?.includes('API-Relevanz') || note?.includes('Probe dünn')) {
+    return false
+  }
+  if (found && page != null) return true
+  // „Nicht in den ersten N“ mit N >= MIN und Apify/Etsy-Suche = belastbar
+  if (note?.includes('Apify') || note?.includes('Etsy-Suche')) return true
+  return false
 }
 
 async function baueMatrix(ownerUserId: string) {
@@ -39,23 +55,30 @@ async function baueMatrix(ownerUserId: string) {
       const byKw = new Map(cache.map((c) => [normRankKeyword(c.keyword), c]))
       const ranks: RankZelle[] = ETSY_RANK_FOKUS_KEYWORDS.map((keyword) => {
         const c = byKw.get(keyword)
+        const note = c?.note ?? (c ? null : 'noch nicht geprüft')
+        const found = c?.found ?? false
+        const page = c?.page ?? null
         return {
           keyword,
           label: ETSY_RANK_FOKUS_LABELS[keyword],
-          page: c?.page ?? null,
+          page,
           position: c?.position ?? null,
-          found: c?.found ?? false,
-          note: c?.note ?? (c ? null : 'noch nicht geprüft'),
+          found,
+          note,
           checkedAt: c?.checkedAt ?? null,
+          belastbar: c ? zelleBelastbar(note, found, page) : false,
         }
       })
-      const geprueft = ranks.some((r) => r.checkedAt)
-      const schwach = ranks.filter((r) => geprueft && (!r.found || (r.page != null && r.page >= 3)))
+      const geprueft = ranks.some((r) => r.belastbar)
+      const schwach = ranks.filter(
+        (r) => r.belastbar && (!r.found || (r.page != null && r.page >= 3)),
+      )
       const seo = seoMap.get(l.listingId)
       return {
         listingId: l.listingId,
         title: l.title,
         priceEur: l.priceEur,
+        views: l.views ?? null,
         url: l.url,
         tags: l.tags,
         cachedScore: seo?.overallScore ?? null,
@@ -68,6 +91,9 @@ async function baueMatrix(ownerUserId: string) {
   )
 
   zeilen.sort((a, b) => {
+    const va = a.views ?? 0
+    const vb = b.views ?? 0
+    if (va !== vb) return vb - va
     if (a.schwachAnzahl !== b.schwachAnzahl) return b.schwachAnzahl - a.schwachAnzahl
     const sa = a.cachedScore ?? 999
     const sb = b.cachedScore ?? 999
@@ -81,6 +107,9 @@ async function baueMatrix(ownerUserId: string) {
       label: ETSY_RANK_FOKUS_LABELS[k],
     })),
     listings: zeilen,
+    apifyKonfiguriert: apifyKonfiguriert(),
+    apifyActorId: apifyActorId(),
+    minProbe: ETSY_RANK_MIN_PROBE,
   }
 }
 
@@ -119,10 +148,14 @@ export async function POST(req: Request) {
         keywords: lauf.keywords,
         listings: lauf.listings,
         provider: lauf.provider,
+        belastbar: lauf.belastbar,
+        sampleMin: lauf.sampleMin,
+        sampleAvg: lauf.sampleAvg,
+        hinweis: lauf.hinweis,
       },
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Rank-Matrix fehlgeschlagen'
-    return NextResponse.json({ error: msg }, { status: 502 })
+    return NextResponse.json({ error: msg, apifyKonfiguriert: apifyKonfiguriert() }, { status: 502 })
   }
 }
