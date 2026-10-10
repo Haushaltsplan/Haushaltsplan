@@ -737,25 +737,13 @@ export function rollupZuReportingSegmenten(segmente: SecSegmentRoh[]): SecSegmen
   return merged.length >= 2 ? anteileBerechnen(merged) : segmente
 }
 
-export function brauchtReportingRollup(jahre: SecSegmentJahrEintrag[]): boolean {
-  const knownParents = new Set(UMSATZ_ZU_REPORTING_SEGMENT.map(([, p]) => p))
-  let hits = 0
-  const parents = new Set<string>()
-  for (const j of jahre) {
-    const oiKeys = new Set(
-      j.segmente.filter((s) => s.operatingIncomeMio != null).map((s) => s.name.trim().toLowerCase()),
-    )
-    for (const s of j.segmente) {
-      const parent = reportingSegmentFuerUmsatzZeile(s.name, oiKeys)
-      if (parent !== s.name.trim() && knownParents.has(parent)) {
-        hits++
-        parents.add(parent)
-      }
-    }
-  }
-  // GOOGL: Search/YouTube/Network/… → nur Parent „Google Services“ (parents.size=1),
-  // trotzdem rollen — Jahresansicht bleibt Reporting-Segmente, Quartale bleiben granular.
-  return hits >= 2 && (parents.size >= 2 || hits >= 3)
+/**
+ * Disaggregation (Search/YouTube/…, MSFT-Produkte) bewusst NICHT auf Reporting-Segmente
+ * rollen — Jahresansicht soll dieselbe Granularität wie die Quartale behalten.
+ * `rollupZuReportingSegmenten` bleibt für gezielte Aufrufe verfügbar.
+ */
+export function brauchtReportingRollup(_jahre: SecSegmentJahrEintrag[]): boolean {
+  return false
 }
 
 export function berechneSegmentMargePct(umsatzMio: number | null, operatingIncomeMio: number | null): number | null {

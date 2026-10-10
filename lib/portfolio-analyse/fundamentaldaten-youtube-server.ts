@@ -73,6 +73,13 @@ const MEHRDEUTIGE_TICKER = new Set([
   'PEAK',
   'CORE',
   'EDGE',
+  'SE',
+  'NET',
+  'CI',
+  'EW',
+  'SQ',
+  'PG',
+  'KO',
 ])
 
 const TICKER_YOUTUBE_ALIASES: Record<string, string[]> = {
@@ -89,30 +96,31 @@ const TICKER_YOUTUBE_ALIASES: Record<string, string[]> = {
   V: ['Visa'],
   MCD: ["McDonald's", 'McDonalds', 'McDonald'],
   WM: ['Waste Management'],
-  HD: ['Home Depot'],
-  UNH: ['UnitedHealth', 'United Health'],
-  TMO: ['Thermo Fisher'],
+  HD: ['Home Depot', 'The Home Depot'],
+  UNH: ['UnitedHealth', 'United Health', 'UnitedHealthcare'],
+  TMO: ['Thermo Fisher', 'Thermo Fisher Scientific'],
   ASML: ['ASML'],
   RMS: ['Hermès', 'Hermes'],
   HRMS: ['Hermès', 'Hermes'],
   HESAY: ['Hermès', 'Hermes'],
   LIN: ['Linde'],
   NOW: ['ServiceNow'],
-  SPGI: ['S&P Global', 'S&P'],
+  /** Nie nur „S&P“ — trifft sonst jedes Index-/Marktvideo. */
+  SPGI: ['S&P Global', 'SP Global', 'Standard and Poors Global'],
   MSCI: ['MSCI'],
-  ODFL: ['Old Dominion'],
+  ODFL: ['Old Dominion', 'Old Dominion Freight'],
   UNP: ['Union Pacific'],
   ROL: ['Rollins'],
   CTAS: ['Cintas'],
-  ANET: ['Arista'],
+  ANET: ['Arista', 'Arista Networks'],
   DDOG: ['Datadog'],
   BCPC: ['Balchem'],
   ZTS: ['Zoetis'],
   RMD: ['ResMed', 'Resmed'],
-  VEEV: ['Veeva'],
-  KNSL: ['Kinsale'],
+  VEEV: ['Veeva', 'Veeva Systems'],
+  KNSL: ['Kinsale', 'Kinsale Capital'],
   GGG: ['Graco'],
-  ATD: ['Couche-Tard', 'Couche Tard'],
+  ATD: ['Couche-Tard', 'Couche Tard', 'Alimentation Couche-Tard'],
   WKL: ['Wolters Kluwer'],
   SIKA: ['Sika'],
   STMN: ['Straumann'],
@@ -122,10 +130,145 @@ const TICKER_YOUTUBE_ALIASES: Record<string, string[]> = {
   WTKWY: ['Wolters Kluwer'],
   LVMUY: ['LVMH', 'Louis Vuitton'],
   MC: ['LVMH', 'Louis Vuitton'],
-  BRK: ['Berkshire Hathaway'],
-  BRK_A: ['Berkshire Hathaway'],
-  BRK_B: ['Berkshire Hathaway'],
+  BRK: ['Berkshire Hathaway', 'Berkshire'],
+  BRK_A: ['Berkshire Hathaway', 'Berkshire'],
+  BRK_B: ['Berkshire Hathaway', 'Berkshire'],
+  APH: ['Amphenol'],
+  COST: ['Costco'],
+  JNJ: ['Johnson & Johnson', 'Johnson and Johnson', 'J&J'],
+  PG: ['Procter & Gamble', 'Procter and Gamble', 'P&G'],
+  KO: ['Coca-Cola', 'Coca Cola'],
+  PEP: ['Pepsi', 'PepsiCo'],
+  NKE: ['Nike'],
+  DIS: ['Disney', 'Walt Disney'],
+  CRM: ['Salesforce'],
+  ADBE: ['Adobe'],
+  ORCL: ['Oracle'],
+  INTC: ['Intel'],
+  AMD: ['AMD', 'Advanced Micro Devices'],
+  AVGO: ['Broadcom'],
+  QCOM: ['Qualcomm'],
+  TXN: ['Texas Instruments'],
+  ISRG: ['Intuitive Surgical', 'Intuitive'],
+  SYK: ['Stryker'],
+  ABT: ['Abbott'],
+  DHR: ['Danaher'],
+  ELV: ['Elevance', 'Elevance Health'],
+  CI: ['Cigna'],
+  SCHW: ['Charles Schwab', 'Schwab'],
+  BLK: ['BlackRock', 'Blackrock'],
+  ICE: ['Intercontinental Exchange'],
+  CME: ['CME Group', 'CME'],
+  MCO: ["Moody's", 'Moodys'],
+  FTNT: ['Fortinet'],
+  PANW: ['Palo Alto', 'Palo Alto Networks'],
+  CRWD: ['CrowdStrike', 'Crowdstrike'],
+  SNOW: ['Snowflake'],
+  NET: ['Cloudflare'],
+  MDB: ['MongoDB'],
+  TEAM: ['Atlassian'],
+  INTU: ['Intuit'],
+  ADP: ['ADP', 'Automatic Data Processing'],
+  PAYX: ['Paychex'],
+  SHW: ['Sherwin-Williams', 'Sherwin Williams'],
+  ITW: ['Illinois Tool Works'],
+  EMR: ['Emerson'],
+  ROP: ['Roper'],
+  AME: ['AMETEK', 'Ametek'],
+  IDXX: ['IDEXX'],
+  EW: ['Edwards Lifesciences', 'Edwards'],
+  DXCM: ['Dexcom'],
+  ALGN: ['Align', 'Align Technology'],
+  MTCH: ['Match Group'],
+  BKNG: ['Booking', 'Booking Holdings', 'Booking.com'],
+  ABNB: ['Airbnb'],
+  UBER: ['Uber'],
+  MELI: ['MercadoLibre', 'Mercado Libre'],
+  SE: ['Sea Limited', 'Shopee'],
+  SHOP: ['Shopify'],
+  SQ: ['Block', 'Square'],
+  PYPL: ['PayPal', 'Paypal'],
+  COIN: ['Coinbase'],
+  MSTR: ['MicroStrategy', 'Microstrategy'],
+  UPST: ['Upstart'],
+  MUM: ['Mensch und Maschine', 'MuM'],
+  OSP2: ['USU', 'USU Software'],
 }
+
+/** Aliase, die allein zu viele Falschtreffer erzeugen (nur mit Zusatzkontext / im Titel). */
+const SCHWACHE_ALIASE = new Set([
+  'meta',
+  'visa',
+  'oracle',
+  'target',
+  'block',
+  'square',
+  'match',
+  'sea',
+  'align',
+  'booking',
+  'schwab',
+  'edwards',
+  'intuitive',
+  'pepsi',
+  'nike',
+  'adobe',
+  'intel',
+  'uber',
+  'airbnb',
+  'shopify',
+  'paypal',
+  'coinbase',
+  'upstart',
+  'cigna',
+  'abbott',
+  'danaher',
+  'stryker',
+  'emerson',
+  'roper',
+  'halma',
+  'sika',
+  'linde',
+  'graco',
+  'veeva',
+  'zoetis',
+  'cintas',
+  'rollins',
+  'arista',
+  'datadog',
+  'balchem',
+  'kinsale',
+  'asml',
+  'msci',
+  'amd',
+  'adp',
+  'cme',
+  'ice',
+  'usu',
+  'mum',
+  'global',
+  'group',
+  'capital',
+  'holdings',
+  'systems',
+  'networks',
+  'health',
+  'energy',
+  'finance',
+  'technology',
+  'scientific',
+  'management',
+  's&p',
+  'sp',
+  'j&j',
+  'p&g',
+])
+
+const LISTEN_TITEL =
+  /\b(depot[\s-]?update|portfolio[\s-]?update|watchlist|meine\s+aktien|top\s*\d+|beste\s+aktien|aktien\s+die|stocks?\s+i\s+|weekly\s+recap|markt[\s-]?update|market\s+update|einkaufsliste|gekauft\s*[&+]|und\s+mehr)\b/i
+
+const FINANCE_KONTEXT =
+  /\b(aktie|aktien|stock|stocks|earnings|quartalszahlen|analyse|valuation|bewertung|kursziel|buy|sell|long|dividend|dividende|q[1-4]|10-?[kq]|sec|guv|umsatz|gewinn)\b/i
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -140,12 +283,41 @@ function normalisiere(s: string): string {
 }
 
 function tickerBasis(symbol: string): string {
-  return symbol.trim().toUpperCase().split('.')[0] ?? ''
+  return symbol.trim().toUpperCase().split(/[./_]/)[0] ?? ''
 }
 
 function istMehrdeutig(ticker: string): boolean {
   const t = tickerBasis(ticker)
   return t.length <= 2 || MEHRDEUTIGE_TICKER.has(t)
+}
+
+function aliasIstSchwach(alias: string): boolean {
+  const n = normalisiere(alias).trim()
+  if (!n) return true
+  if (SCHWACHE_ALIASE.has(n)) return true
+  if (n.length <= 4) return true
+  // Einwort-Marken unter 7 Zeichen sind oft Mehrdeutigkeiten in Beschreibungen.
+  if (!/[\s.&-]/.test(n) && n.length < 7) return true
+  return false
+}
+
+function bereinigeFirmenname(raw: string): string[] {
+  const base = raw
+    .replace(/\s*\([^)]*\)\s*/g, ' ')
+    .replace(/\s+'[AC]'\s*$/i, '')
+    .replace(/^the\s+/i, '')
+    .trim()
+  const ohneRechtsform = base
+    .replace(
+      /\s+(Inc\.?|Corp\.?|Corporation|Ltd\.?|Limited|AG|SE|PLC|N\.?V\.?|Holding|Holdings|Group|Systems|Networks|Scientific|Technologies|Technology|Company|Co\.?)\s*$/i,
+      '',
+    )
+    .trim()
+  const out = [base, ohneRechtsform]
+  // „Alphabet A/C“ / „UnitedHealth Group“ → Kurzform
+  const kurz = ohneRechtsform.replace(/\s+[AC]$/i, '').trim()
+  if (kurz && kurz !== ohneRechtsform) out.push(kurz)
+  return out.filter((s) => s.length >= 3)
 }
 
 function baueYoutubeReferenzen(
@@ -160,17 +332,12 @@ function baueYoutubeReferenzen(
     isinAusYahooSymbol(basis) ??
     (yahooBasis ? isinAusYahooSymbol(yahooBasis) : null)
   const kenName = isin ? isinKenntnis(isin)?.name?.trim() : null
-  const nameClean = firmenname
-    .replace(/\s*\([^)]*\)\s*/g, ' ')
-    .replace(/\s+(Inc\.?|Corp\.?|Corporation|Ltd\.?|AG|SE|PLC|NV|Holding).*$/i, '')
-    .replace(/\s+'[AC]'\s*$/i, '')
-    .trim()
 
   const aliases = [
     ...(TICKER_YOUTUBE_ALIASES[basis] ?? []),
     ...(yahooBasis && yahooBasis !== basis ? (TICKER_YOUTUBE_ALIASES[yahooBasis] ?? []) : []),
-    kenName,
-    nameClean,
+    ...(kenName ? bereinigeFirmenname(kenName) : []),
+    ...bereinigeFirmenname(firmenname),
     firmenname.trim(),
   ]
     .filter((s): s is string => Boolean(s && s.trim().length >= 3))
@@ -181,6 +348,8 @@ function baueYoutubeReferenzen(
   for (const a of aliases) {
     const k = normalisiere(a)
     if (!k || seen.has(k)) continue
+    // Extrem schwache Markt-Aliases nie übernehmen.
+    if (k === 's&p' || k === 'sp' || k === 'global' || k === 'group') continue
     seen.add(k)
     unique.push(a.trim())
   }
@@ -199,18 +368,53 @@ function titelHatTicker(text: string, ticker: string): boolean {
   return new RegExp(`\\b${escapeRegex(t)}\\b`, 'i').test(text)
 }
 
-function textHatAlias(text: string, aliases: string[]): boolean {
+/** Ticker nur in klar finanziellem Kontext ($MSFT, (MSFT), MSFT:). */
+function textHatTickerStrikt(text: string, ticker: string): boolean {
+  const t = tickerBasis(ticker)
+  if (!t || t.length < 2) return false
+  return new RegExp(
+    `(?:\\$|\\(|\\[)${escapeRegex(t)}(?:\\)|\\]|\\b)|\\b${escapeRegex(t)}\\s*[:\\-/]|\\b${escapeRegex(t)}\\b(?=\\s*(aktie|stock|earnings|analyse|q[1-4]))`,
+    'i',
+  ).test(text)
+}
+
+function textHatAlias(
+  text: string,
+  aliases: string[],
+  opts?: { nurStarke?: boolean; erlaubeSchwachMitKontext?: boolean },
+): boolean {
   const n = normalisiere(text)
   if (!n) return false
+  const hatFinance = FINANCE_KONTEXT.test(n)
   for (const alias of aliases) {
     const r = normalisiere(alias)
     if (r.length < 3) continue
-    if (r.length <= 5) {
-      if (new RegExp(`\\b${escapeRegex(r)}\\b`, 'i').test(n)) return true
-    } else if (n.includes(r)) {
-      return true
+    const schwach = aliasIstSchwach(alias)
+    if (opts?.nurStarke && schwach) {
+      // Einwort-Firmennamen nur mit klarem Aktien-Kontext in der Nähe.
+      if (!(opts.erlaubeSchwachMitKontext && hatFinance)) continue
     }
+    // Immer Wortgrenzen — kein includes (vermeidet barista⊃arista u.ä.).
+    if (!new RegExp(`\\b${escapeRegex(r)}\\b`, 'i').test(n)) continue
+    if (schwach && opts?.erlaubeSchwachMitKontext) {
+      // Alias und Finanzwort sollten nicht kilometerweit auseinander liegen.
+      const idx = n.search(new RegExp(`\\b${escapeRegex(r)}\\b`, 'i'))
+      if (idx < 0) continue
+      const fenster = n.slice(Math.max(0, idx - 80), idx + r.length + 80)
+      if (!FINANCE_KONTEXT.test(fenster)) continue
+    }
+    return true
   }
+  return false
+}
+
+function istListenOderSammelVideo(titel: string): boolean {
+  if (LISTEN_TITEL.test(titel)) return true
+  // Mehrere Ticker im Titel: „AAPL, MSFT, NVDA“ oder „Apple | Microsoft | Nvidia“
+  const tickerHits = titel.match(/\$?[A-Z]{1,5}\b/g) ?? []
+  if (tickerHits.length >= 3) return true
+  const pipeParts = titel.split(/\s*[|/•·]\s*/).filter((p) => p.trim().length >= 3)
+  if (pipeParts.length >= 3) return true
   return false
 }
 
@@ -220,12 +424,31 @@ function videoPasst(
   ticker: string,
   aliases: string[],
 ): { ok: boolean; titelTreffer: boolean } {
-  const titelTreffer = titelHatTicker(titel, ticker) || textHatAlias(titel, aliases)
+  const titelTicker = titelHatTicker(titel, ticker)
+  const titelAlias = textHatAlias(titel, aliases)
+  const titelTreffer = titelTicker || titelAlias
+
+  // Titel-Treffer: immer akzeptieren (Ticker dort ist absichtlich genannt).
   if (titelTreffer) return { ok: true, titelTreffer: true }
-  const descOk = istMehrdeutig(ticker)
-    ? textHatAlias(beschreibung, aliases)
-    : titelHatTicker(beschreibung, ticker) || textHatAlias(beschreibung, aliases)
-  return { ok: descOk, titelTreffer: false }
+
+  // Sammel-/Listen-Videos ohne unseren Titel-Treffer → verwerfen.
+  if (istListenOderSammelVideo(titel)) {
+    return { ok: false, titelTreffer: false }
+  }
+
+  // Beschreibung: starke Firmennamen immer; schwache Einwort-Namen nur mit Aktien-Kontext.
+  const descAlias = textHatAlias(beschreibung, aliases, {
+    nurStarke: true,
+    erlaubeSchwachMitKontext: true,
+  })
+  if (descAlias) return { ok: true, titelTreffer: false }
+
+  // Nackter Ticker in der Beschreibung nur im $-/(TICKER)-Kontext, nie bei Mehrdeutigen.
+  if (!istMehrdeutig(ticker) && textHatTickerStrikt(beschreibung, ticker)) {
+    return { ok: true, titelTreffer: false }
+  }
+
+  return { ok: false, titelTreffer: false }
 }
 
 function parseIso(raw: string | undefined): string | null {

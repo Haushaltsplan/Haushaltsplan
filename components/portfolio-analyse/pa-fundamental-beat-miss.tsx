@@ -30,11 +30,13 @@ export function PaFundamentalBeatMiss({
   symbolYahoo,
   isin,
   selectionKey,
+  ohneRahmen = false,
 }: {
   ticker: string | null
   symbolYahoo?: string | null
   isin?: string | null
   selectionKey?: string
+  ohneRahmen?: boolean
 }) {
   const [daten, setDaten] = useState<EarningsBeatMissPaket | null>(null)
   const [laden, setLaden] = useState(false)
@@ -64,15 +66,21 @@ export function PaFundamentalBeatMiss({
 
   if (!ticker?.trim()) return null
 
-  return (
-    <PaCard className="space-y-3 overflow-hidden p-4">
-      <div>
-        <h3 className="text-sm font-semibold text-white">Earnings Beat/Miss-Historie</h3>
-        <p className="text-xs text-[var(--app-text-muted)]">
-          Letzte 8 Quartale · EPS & Umsatz vs. Konsens
-          {daten?.quelle ? ` (${daten.quelle === 'marketbeat' ? 'MarketBeat' : daten.quelle === 'finnhub' ? 'Finnhub' : 'MarketBeat + Finnhub'})` : ''}
-        </p>
-      </div>
+  const quelleSuffix = daten?.quelle
+    ? ` (${daten.quelle === 'marketbeat' ? 'MarketBeat' : daten.quelle === 'finnhub' ? 'Finnhub' : 'MarketBeat + Finnhub'})`
+    : ''
+
+  const inner = (
+    <>
+      {ohneRahmen ? null : (
+        <div>
+          <h3 className="text-sm font-semibold text-white">Earnings Beat/Miss-Historie</h3>
+          <p className="text-xs text-[var(--app-text-muted)]">
+            Letzte 8 Quartale · EPS & Umsatz vs. Konsens
+            {quelleSuffix}
+          </p>
+        </div>
+      )}
 
       {laden && !daten ? <p className="text-sm text-[var(--app-text-muted)]">Lädt …</p> : null}
 
@@ -149,6 +157,12 @@ export function PaFundamentalBeatMiss({
       {!laden && daten && !daten.quartale.length ? (
         <p className="text-sm text-[var(--app-text-muted)]">Keine Beat/Miss-Historie verfügbar.</p>
       ) : null}
-    </PaCard>
+    </>
+  )
+
+  return ohneRahmen ? (
+    <div className="space-y-3 overflow-hidden">{inner}</div>
+  ) : (
+    <PaCard className="space-y-3 overflow-hidden p-4">{inner}</PaCard>
   )
 }
