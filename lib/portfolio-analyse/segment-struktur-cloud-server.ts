@@ -6,7 +6,8 @@ import type { SecSegmentHistoriePaket } from '@/lib/portfolio-analyse/fundamenta
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 const TABLE = 'segment_struktur_cache' as const
-export const SEGMENT_STRUKTUR_CLOUD_VERSION = 15
+/** Bei Extraktions-Fixes erhöhen (invalidiert Cloud-Einträge). */
+export const SEGMENT_STRUKTUR_CLOUD_VERSION = 16
 const MAX_CLOUD_AGE_MS = 45 * 24 * 60 * 60 * 1000
 
 function istCloudKonfiguriert(): boolean {

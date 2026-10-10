@@ -103,8 +103,8 @@ export async function ladeFundamentaldatenErweitert(
   const isin = opts.isin?.trim().toUpperCase() ?? ''
   const isEu = istEuIsin(isin)
 
-  const segmentPromise =
-    isin.length >= 10 && opts.segmentNurCloud
+  const segmentPromise = opts.segmentNurCloud
+    ? isin.length >= 10
       ? (async (): Promise<SecSegmentHistoriePaket | null> => {
           const cloud = await ladeSegmentStrukturAusCloud(isin)
           // Backlog/RPO nachladen wenn Cloud-Eintrag ohne Backlog (Nachkauf-Scan)
@@ -141,14 +141,15 @@ export async function ladeFundamentaldatenErweitert(
             return cloud
           }
         })()
-      : isin.length >= 10 || (!ticker.includes('.') && Boolean(symbol))
-        ? ladeGescrapteSegmentStruktur({
-            isin: isin || null,
-            name: opts.firmenname,
-            symbolYahoo: symbol,
-            ticker,
-          })
-        : Promise.resolve(null)
+      : Promise.resolve(null)
+    : isin.length >= 10 || (!ticker.includes('.') && Boolean(symbol))
+      ? ladeGescrapteSegmentStruktur({
+          isin: isin || null,
+          name: opts.firmenname,
+          symbolYahoo: symbol,
+          ticker,
+        })
+      : Promise.resolve(null)
 
   const [
     dividenden,

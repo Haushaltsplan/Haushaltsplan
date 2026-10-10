@@ -66,7 +66,7 @@ import {
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 /** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server- + Cloud-Cache). */
-export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 26
+export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 27
 const CACHE_VERSION = SEC_SEGMENT_HISTORIE_CACHE_VERSION
 /** Ziel: mindestens 12 Geschäftsjahre Segmentdaten. */
 const ZIEL_JAHRE = 12
@@ -396,9 +396,12 @@ async function bauePaketAusZustand(
       umsatzProJahr,
       sammleProduktQuellen(kategorien),
     )
+    // Nach Verwerfen von Fehldaten (z. B. Investment-Gains als „2023“) Lücken neu füllen.
+    produkt = interpoliereJahresluecken(produkt)
   }
   if (geo) {
     geo = bereinigeHistorieGegenJahresumsatz(geo, umsatzProJahr, sammleGeoQuellen(kategorien))
+    geo = interpoliereJahresluecken(geo)
   }
 
   if (produkt) produkt = ergaenzeSegmentHistorieMitMargen(produkt, oiJahrEintraege)

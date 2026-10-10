@@ -210,7 +210,10 @@ export type FundamentaldatenAnfrage = {
   symbolCandidates?: string[]
   tickerOverride?: string | null
   frequenz?: FundamentalFrequenz
-  /** Segment-Struktur nur aus Supabase-Cache (segment_struktur_cache), kein Live-MS-Scrape. */
+  /**
+   * Segment-Struktur nur aus Supabase-Cache (kein Live-SEC/MS-Scrape).
+   * Default im Server: true — Live-Update läuft über /marketscreener-segmente.
+   */
   segmentNurCloud?: boolean
   /**
    * `immer` (Default): Cloud-Cache sofort, Scrape nur wenn kein Paket liegt.

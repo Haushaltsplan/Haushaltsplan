@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react'
 
 import { PaFundamentalBeatMiss } from '@/components/portfolio-analyse/pa-fundamental-beat-miss'
 import { PaFundamentalInsider } from '@/components/portfolio-analyse/pa-fundamental-insider'
@@ -17,7 +17,12 @@ import {
   strukturKmText,
   usdKompakt,
 } from '@/lib/portfolio-analyse/fundamentaldaten-struktur-hilfen'
+import type { AlleAktualisierenFortschritt } from '@/lib/portfolio-analyse/fundamentaldaten-client'
+import {
+  aktualisiereAlleSegmentStrukturen,
+} from '@/lib/portfolio-analyse/segment-struktur-client'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import type { SecSegmentHistoriePaket } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 
 type StrukturKapitel = 'eigentuemer' | 'umsatzmix' | 'backlog' | 'beat' | 'insider'
 
@@ -45,6 +50,86 @@ export function PaFundamentalStruktur({
   const erweitert = paket?.erweitert
   const navId = useId()
   const [aktiv, setAktiv] = useState<StrukturKapitel>('eigentuemer')
+  const [alleLaeuft, setAlleLaeuft] = useState(false)
+  const [alleFortschritt, setAlleFortschritt] = useState<AlleAktualisierenFortschritt | null>(null)
+  const [alleFehler, setAlleFehler] = useState<string | null>(null)
+  const [liveSegmentPaket, setLiveSegmentPaket] = useState<SecSegmentHistoriePaket | null>(null)
+  const alleAbortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    setLiveSegmentPaket(null)
+  }, [selectionKey])
+
+  useEffect(() => {
+    return () => {
+      alleAbortRef.current?.abort()
+    }
+  }, [])
+
+  const brichAlleAb = useCallback(() => {
+    alleAbortRef.current?.abort()
+  }, [])
+
+  const aktualisiereAlleSegmente = useCallback(async () => {
+    if (alleLaeuft) return
+    const okStart = window.confirm(
+      'Umsatzmix/Segmente für Depot ∪ Watchlist neu scrapen und in der Cloud speichern?\n\n' +
+        'SEC/Marketscreener — Seite offen lassen (oft 20–60 Min).',
+    )
+    if (!okStart) return
+
+    const ac = new AbortController()
+    alleAbortRef.current = ac
+    setAlleLaeuft(true)
+    setAlleFehler(null)
+    setAlleFortschritt({
+      index: 0,
+      gesamt: 0,
+      name: 'Starte …',
+      ok: true,
+      fehlgeschlagen: 0,
+      erfolgreich: 0,
+      fehlende: [],
+    })
+    try {
+      const res = await aktualisiereAlleSegmentStrukturen({
+        signal: ac.signal,
+        onFortschritt: setAlleFortschritt,
+        onPaket: (ziel, segPaket) => {
+          const gleicheIsin =
+            isin &&
+            ziel.isin &&
+            isin.trim().toUpperCase() === ziel.isin.trim().toUpperCase()
+          const gleichesSymbol =
+            !gleicheIsin &&
+            symbolYahoo &&
+            ziel.symbolYahoo &&
+            symbolYahoo.trim().toUpperCase() === ziel.symbolYahoo.trim().toUpperCase()
+          if (gleicheIsin || gleichesSymbol) setLiveSegmentPaket(segPaket)
+        },
+      })
+      if (res.abgebrochen) {
+        setAlleFortschritt((prev) =>
+          prev ? { ...prev, abgebrochen: true, name: 'Abgebrochen' } : prev,
+        )
+      } else if (res.fehlgeschlagen > 0) {
+        const liste = res.fehlende.slice(0, 8).join(', ')
+        const mehr = res.fehlende.length > 8 ? ` (+${res.fehlende.length - 8})` : ''
+        setAlleFehler(
+          `${res.ok} gespeichert, ${res.fehlgeschlagen} fehlgeschlagen` +
+            (liste ? `: ${liste}${mehr}` : '') +
+            '. Später erneut versuchen.',
+        )
+      }
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) {
+        setAlleFehler(e instanceof Error ? e.message : 'Segment-Batch fehlgeschlagen')
+      }
+    } finally {
+      setAlleLaeuft(false)
+      alleAbortRef.current = null
+    }
+  }, [alleLaeuft, isin, symbolYahoo])
 
   useEffect(() => {
     const ids = KAPITEL.map((k) => `pa-struktur-${k.id}`)
@@ -93,15 +178,9 @@ export function PaFundamentalStruktur({
     erweitert.holders != null ||
     strukturKmText(paket, 'float') != null ||
     strukturKmText(paket, 'shares_out') != null
-  const hatSegment = Boolean(erweitert.secSegmentHistorie)
-
-  if (!hatEigentuemer && !hatSegment && !bm && !ins) {
-    return (
-      <PaCard className="p-6 text-sm text-[var(--app-text-muted)]">
-        Für diesen Titel konnten keine Strukturdaten geladen werden.
-      </PaCard>
-    )
-  }
+  const hatSegment = Boolean(erweitert.secSegmentHistorie || liveSegmentPaket)
+  const leer =
+    !hatEigentuemer && !hatSegment && !bm && !ins
 
   function springeZu(id: StrukturKapitel) {
     setAktiv(id)
@@ -110,6 +189,48 @@ export function PaFundamentalStruktur({
 
   return (
     <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] text-[var(--app-text-muted)]">
+          Umsatzmix wird in der Cloud gecacht — einmal scrapen, dann schneller Wechsel.
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {alleLaeuft ? (
+            <button
+              type="button"
+              onClick={brichAlleAb}
+              className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] font-medium text-red-200 transition hover:bg-red-500/20"
+            >
+              Abbrechen
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void aktualisiereAlleSegmente()}
+              className="rounded-md border border-teal-500/35 bg-teal-500/15 px-2 py-1 text-[11px] font-medium text-teal-100 transition hover:bg-teal-500/25"
+              title="Depot ∪ Watchlist: Segmente neu scrapen und in Supabase speichern"
+            >
+              Umsatzmix alle aktualisieren
+            </button>
+          )}
+        </div>
+      </div>
+
+      {alleFortschritt ? (
+        <p className="text-[11px] text-teal-200/85" aria-live="polite">
+          {alleLaeuft
+            ? `Segmente ${alleFortschritt.index}/${alleFortschritt.gesamt}: ${alleFortschritt.name}` +
+              (alleFortschritt.hinweis ? ` · ${alleFortschritt.hinweis}` : '') +
+              ` · ok ${alleFortschritt.erfolgreich}`
+            : alleFortschritt.abgebrochen
+              ? `Abgebrochen bei ${alleFortschritt.index}/${alleFortschritt.gesamt}`
+              : `Fertig: ${alleFortschritt.erfolgreich}/${alleFortschritt.gesamt} gespeichert`}
+          {alleFortschritt.fehlgeschlagen > 0 && !alleLaeuft
+            ? ` · ${alleFortschritt.fehlgeschlagen} fehlgeschlagen`
+            : ''}
+        </p>
+      ) : null}
+      {alleFehler ? <p className="text-[11px] text-amber-300/90">{alleFehler}</p> : null}
+
       <nav
         aria-label="Struktur-Kapitel"
         className="sticky top-0 z-20 -mx-1 rounded-2xl border border-[var(--app-border)]/60 bg-[var(--app-surface)]/85 p-1.5 shadow-[0_8px_32px_-12px_rgba(0,0,0,0.45)] backdrop-blur-xl"
@@ -145,6 +266,13 @@ export function PaFundamentalStruktur({
           })}
         </div>
       </nav>
+
+      {leer ? (
+        <PaCard className="p-6 text-sm text-[var(--app-text-muted)]">
+          Für diesen Titel noch keine Strukturdaten — „Umsatzmix alle aktualisieren“ füllt den Cache für
+          Depot und Watchlist.
+        </PaCard>
+      ) : null}
 
       <StrukturKapitelShell
         id="eigentuemer"
@@ -189,7 +317,7 @@ export function PaFundamentalStruktur({
         name={paket.firmenname}
         symbolYahoo={symbolYahoo ?? paket.symbolYahoo}
         ticker={ticker}
-        initial={erweitert.secSegmentHistorie}
+        initial={liveSegmentPaket ?? erweitert.secSegmentHistorie}
         umsatzZeile={paket.zeilen.find((z) => z.id === 'umsatz') ?? null}
         layout="struktur"
       />

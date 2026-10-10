@@ -675,7 +675,12 @@ function istIncomeStatementZeile(label: string): boolean {
   return (
     /cost of sales|cost of revenue|cost of products sold|research and development|selling and marketing|general and administrative|operating income|operating loss|operating earnings|gross profit|^net sales$|income before|earnings before income|corporate and support|other \(gains\)|contingent consideration|^impairment$/i.test(
       n,
-    ) || /reportable segment operating earnings/i.test(n)
+    ) ||
+    /reportable segment operating earnings/i.test(n) ||
+    /** Other-income / Investment-Zeilen (kein Produkt-/Geo-Segment). */
+    /gain\s*\(?\s*loss\)?\s*on\s+(debt|equity)\s+securities|income\s*\(?\s*loss\)?\s+and\s+impairment\s+from\s+equity\s+method|equity\s+method\s+investments|unrealized\s+gain|realized\s+gain\s*\(?\s*loss\)?\s*on|interest\s+and\s+other\s+income|other\s+income\s*\(?\s*expense\)?/i.test(
+      n,
+    )
   )
 }
 
@@ -1126,7 +1131,7 @@ export function istPlausiblerSegmentname(name: string): boolean {
   if (istPeriodenLabel(n)) return false
   if (istIncomeStatementZeile(n) || FINANCIAL_LINE_ITEM.test(n) || AUFWAND_ZEILE.test(n)) return false
   if (
-    /adjusted ebitda|segment expenses|other segment items|locomotive fuel|salaries|variable costs|fixed costs|gross margin|expenditures for|corporate and support|revenue from operations|operating \[|administrative \[|other subsidiary|intersegment revenues|consolidated revenues|selling, general|operating supplies|general supplies|operating taxes|insurance and claims|communications and utilities|purchased transportation|miscellaneous expenses|deferral of|recognition of|unearned revenue|beginning balance|ending balance|residential revenues|commercial revenues|termite and ancillary/i.test(
+    /adjusted ebitda|segment expenses|other segment items|locomotive fuel|salaries|variable costs|fixed costs|gross margin|expenditures for|corporate and support|revenue from operations|operating \[|administrative \[|other subsidiary|intersegment revenues|consolidated revenues|selling, general|operating supplies|general supplies|operating taxes|insurance and claims|communications and utilities|purchased transportation|miscellaneous expenses|deferral of|recognition of|unearned revenue|beginning balance|ending balance|residential revenues|commercial revenues|termite and ancillary|debt securities|equity securities|equity method|fair value|derivative|hedge gain|mark[- ]to[- ]market/i.test(
       n,
     )
   ) {

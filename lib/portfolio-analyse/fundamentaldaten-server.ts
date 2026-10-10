@@ -546,7 +546,9 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
       symbolYahoo,
       isin: isinNormEarly ?? anfrage.isin?.trim().toUpperCase() ?? null,
       firmenname: anfrage.name ?? ident.firmenname,
-      segmentNurCloud: anfrage.segmentNurCloud === true,
+      // UI-Wechsel: nie Live-SEC-Scrape im Hauptabruf (hängt sonst Minuten).
+      // Live-Aktualisierung läuft separat über /marketscreener-segmente.
+      segmentNurCloud: anfrage.segmentNurCloud ?? true,
     }).catch((e) => {
       console.warn('[fundamentaldaten] erweitert optional fehlgeschlagen:', e instanceof Error ? e.message : e)
       return null

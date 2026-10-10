@@ -143,25 +143,24 @@ export function PaFundamentalInhalt({
       setDaten(null)
     }
 
-    let cancelled = false
+    const ac = new AbortController()
     async function run() {
       setLaden(!cached?.ok)
       setFehler(null)
       try {
-        const res = await ladeFundamentaldatenClient(effektiveAnfrage!)
-        if (!cancelled) setDaten(res)
+        const res = await ladeFundamentaldatenClient(effektiveAnfrage!, { signal: ac.signal })
+        if (!ac.signal.aborted) setDaten(res)
       } catch (e) {
-        if (!cancelled) {
-          setDaten(cached ?? null)
-          setFehler(e instanceof Error ? e.message : 'Abruf fehlgeschlagen')
-        }
+        if (ac.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return
+        setDaten(cached ?? null)
+        setFehler(e instanceof Error ? e.message : 'Abruf fehlgeschlagen')
       } finally {
-        if (!cancelled) setLaden(false)
+        if (!ac.signal.aborted) setLaden(false)
       }
     }
     void run()
     return () => {
-      cancelled = true
+      ac.abort()
     }
   }, [effektiveAnfrage])
 

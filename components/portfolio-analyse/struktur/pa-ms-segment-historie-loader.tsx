@@ -61,18 +61,34 @@ export function PaMsSegmentHistorieLoader({
       return
     }
 
-    let cancelled = false
+    const hatCache =
+      Boolean(initial?.produkt?.jahre?.length) ||
+      Boolean(initial?.geo?.jahre?.length) ||
+      Boolean(initial?.backlog)
+
+    const ac = new AbortController()
     async function run() {
-      setLaden(true)
-      setFehler(null)
+      // Cloud/Initial sofort zeigen — kein Blockieren beim Firmenwechsel.
+      if (hatCache) {
+        setPaket(initial ?? null)
+        setLaden(false)
+        setFehler(null)
+      } else {
+        setLaden(true)
+        setFehler(null)
+      }
+
       const q = new URLSearchParams()
       if (isin) q.set('isin', isin)
       if (name) q.set('name', name)
       if (symbolYahoo) q.set('symbol', symbolYahoo)
       if (ticker) q.set('ticker', ticker)
+      // Mit Cache: nur Soft-Refresh aus Cloud/frisch; ohne Cache: Live erlaubt.
+      if (hatCache) q.set('preferCache', '1')
 
       try {
         const { data: sessionData } = await supabase.auth.getSession()
+        if (ac.signal.aborted) return
         const token = sessionData.session?.access_token
         const headers: Record<string, string> = {}
         if (token) headers.Authorization = `Bearer ${token}`
@@ -80,20 +96,24 @@ export function PaMsSegmentHistorieLoader({
         const res = await fetch(`/api/portfolio-analyse/marketscreener-segmente?${q.toString()}`, {
           cache: 'no-store',
           headers,
+          signal: ac.signal,
         })
         const j = (await res.json()) as {
           ok?: boolean
           paket?: SecSegmentHistoriePaket | null
           fehler?: string
+          ausCache?: boolean
         }
-        if (cancelled) return
+        if (ac.signal.aborted) return
         if (!res.ok) {
-          setPaket(initial ?? null)
-          setFehler(
-            res.status === 401
-              ? 'Anmeldung erforderlich — bitte neu laden.'
-              : j.fehler ?? `Segment-Abruf fehlgeschlagen (HTTP ${res.status}).`,
-          )
+          if (!hatCache) {
+            setPaket(null)
+            setFehler(
+              res.status === 401
+                ? 'Anmeldung erforderlich — bitte neu laden.'
+                : j.fehler ?? `Segment-Abruf fehlgeschlagen (HTTP ${res.status}).`,
+            )
+          }
           return
         }
         if (j.ok && j.paket) {
@@ -104,30 +124,24 @@ export function PaMsSegmentHistorieLoader({
               : j.paket
           setPaket(norm)
           setFehler(null)
-        } else if (initial) {
-          setPaket(initial)
-          setFehler(j.fehler ?? 'Live-Abruf fehlgeschlagen — zwischengespeicherte Daten.')
-        } else {
+        } else if (!hatCache) {
           setPaket(null)
           setFehler(j.fehler ?? 'Keine Segment- oder Backlog-Daten.')
         }
-      } catch {
-        if (!cancelled) {
-          setPaket(initial ?? null)
-          setFehler(
-            initial
-              ? 'Live-Abruf fehlgeschlagen — zwischengespeicherte Daten.'
-              : 'Segment-Abruf fehlgeschlagen.',
-          )
+      } catch (e) {
+        if (ac.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return
+        if (!hatCache) {
+          setPaket(null)
+          setFehler('Segment-Abruf fehlgeschlagen.')
         }
       } finally {
-        if (!cancelled) setLaden(false)
+        if (!ac.signal.aborted) setLaden(false)
       }
     }
 
     void run()
     return () => {
-      cancelled = true
+      ac.abort()
     }
   }, [ident, isin, name, symbolYahoo, ticker, initial, umsatzZeile])
 

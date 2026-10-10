@@ -583,14 +583,9 @@ function aktuelleSchemaNamen(hist: SecSegmentHistorie): string[] {
     .map((s) => s.name)
 }
 
-function jahreMitSchemaDaten(hist: SecSegmentHistorie, namen: string[]): number[] {
-  return hist.jahre
-    .filter((j) =>
-      namen.some((n) =>
-        j.segmente.some((s) => s.name === n && (s.umsatzMio != null || s.anteilPct != null)),
-      ),
-    )
-    .map((j) => j.jahr)
+/** Alle Historien-Jahre als Spalten — auch wenn aktuelles Schema dort noch „–“ hat. */
+function jahreMitSchemaDaten(hist: SecSegmentHistorie, _namen: string[]): number[] {
+  return hist.jahre.map((j) => j.jahr)
 }
 
 function PaSecSegmentTabelle({
