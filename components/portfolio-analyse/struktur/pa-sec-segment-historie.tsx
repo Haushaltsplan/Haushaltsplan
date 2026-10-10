@@ -627,7 +627,7 @@ function PaSecSegmentTabelle({
                 <th key={j} className="min-w-[7rem] px-2 pb-2 text-right font-medium">
                   <span className="block tabular-nums">{j}</span>
                   <span className="mt-0.5 block text-[10px] font-normal text-[var(--app-text-muted)]">
-                    Umsatz · YoY
+                    Umsatz · YoY · Marge
                   </span>
                 </th>
               ))}

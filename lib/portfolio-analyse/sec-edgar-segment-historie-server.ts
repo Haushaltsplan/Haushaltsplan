@@ -53,8 +53,11 @@ import {
   extrahiereSegmentHistorieAus10kHtml,
   filterJahreNachArt,
   filterSegmentHistorie,
+  historieAusOiMitUmsatz,
   mergeOiJahrSmart,
+  oiHistorieEherGeo,
   segmentIstGeo,
+  segmentMargeAbdeckung,
   extrahiereSegmenteFuerJahr,
   parseGeoSegmente,
   anteileBerechnen,
@@ -66,7 +69,7 @@ import {
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 /** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server- + Cloud-Cache). */
-export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 27
+export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 29
 const CACHE_VERSION = SEC_SEGMENT_HISTORIE_CACHE_VERSION
 /** Ziel: mindestens 12 Geschäftsjahre Segmentdaten. */
 const ZIEL_JAHRE = 12
@@ -406,6 +409,28 @@ async function bauePaketAusZustand(
 
   if (produkt) produkt = ergaenzeSegmentHistorieMitMargen(produkt, oiJahrEintraege)
   if (geo) geo = ergaenzeSegmentHistorieMitMargen(geo, oiJahrEintraege)
+
+  // Reporting-Schnitt aus OI-Tabelle (Umsatz+OI), wenn Umsatzmix keine Margen hat
+  // (AMZN NA/AWS, WMT, COST Geo, META FoA/RL, DHR, …)
+  const oiAlsGeo = oiHistorieEherGeo(oiJahrEintraege)
+  const reportingAusOi = historieAusOiMitUmsatz(oiJahrEintraege, oiAlsGeo ? 'geo' : 'produkt')
+  if (reportingAusOi) {
+    if (oiAlsGeo) {
+      if (segmentMargeAbdeckung(geo) < 0.5) {
+        geo = finalisiereSegmentHistorie(
+          filterSegmentHistorie(reportingAusOi, 'geo'),
+          sammleGeoQuellen(kategorien),
+        )
+        if (geo) geo = ergaenzeSegmentHistorieMitMargen(geo, oiJahrEintraege)
+      }
+    } else if (segmentMargeAbdeckung(produkt) < 0.5) {
+      produkt = finalisiereSegmentHistorie(
+        filterSegmentHistorie(reportingAusOi, 'produkt'),
+        sammleProduktQuellen(kategorien),
+      )
+      if (produkt) produkt = ergaenzeSegmentHistorieMitMargen(produkt, oiJahrEintraege)
+    }
+  }
 
   const zusatzBasis = extrahiereSecZusatzRisiko(text10k, html10k)
   const zusatz = baueZusatzAusZustand(zusatzBasis, zustand)

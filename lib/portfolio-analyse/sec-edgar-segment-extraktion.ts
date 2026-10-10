@@ -1,6 +1,7 @@
 /** Geo- & Produktsegmente aus iXBRL-10-K-Tabellen (us-gaap TextBlocks). */
 
 import type { SecSegmentHistorie } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+import { segmentNamenPassen } from '@/lib/portfolio-analyse/segment-margen-hilfen'
 
 export type SecSegmentRoh = {
   name: string
@@ -226,11 +227,21 @@ function bereinigeLabel(raw: string): string {
 }
 
 function parseBetragAusText(raw: string): number | null {
-  const s = bereinigeLabel(raw)
+  // Kein bereinigeLabel — das entfernt „(278)“ als Fußnote und zerstört Negativ-Beträge
+  const s = decodeHtmlEntities(raw)
+    .replace(/&#8212;/gi, '—')
     .replace(/\$/g, '')
     .replace(/%/g, '')
     .replace(/,/g, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim()
+  // SEC: „( 4,095 )“ / „(278)“ = negativ
+  const paren = s.match(/^\(\s*(-?\d+(?:\.\d+)?)\s*\)$/)
+  if (paren) {
+    const n = -Math.abs(Number(paren[1]))
+    return Number.isFinite(n) ? n : null
+  }
   if (!/^-?\d+(?:\.\d+)?$/.test(s)) return null
   const n = Number(s)
   return Number.isFinite(n) ? n : null
@@ -410,6 +421,8 @@ function istSegmentLabel(name: string, geoModus: boolean, ausXbrlGeo: boolean): 
   if (/^(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+\d{4}$/i.test(n)) return false
   if (/^fiscal\s+\d{4}$/i.test(n)) return false
   if (istPeriodenLabel(n)) return false
+  // YoY-Spalten/Zeilen (MA „2025 Increase/(Decrease)“) — keine Segmente
+  if (/\bincrease\b|\bdecrease\b|%\s*change|\bversus\b|\bvs\.?\b/i.test(n)) return false
   if (SKIP_LABELS.test(n)) return false
   if (JUNK_LABEL.test(n)) return false
   if (BALANCE_JUNK.test(n)) return false
@@ -531,56 +544,27 @@ export function parseOperatingSegmente(fragment: string): SecSegmentRoh[] {
 export function parseSpaltenOrientierteSegmente(fragment: string): SecSegmentRoh[] {
   if (!fragment) return []
   const zeilen = parseTabellenZeilen(fragment)
-  let spaltenNamen: string[] = []
+  let spalten: { name: string; idx: number }[] = []
   const segmente: SecSegmentRoh[] = []
 
   for (const z of zeilen) {
     const sichtbar = nichtLeereZellen(z.zellen).map(bereinigeLabel)
-    const potNamen = sichtbar.filter(
-      (c) =>
-        c &&
-        istSegmentLabel(c, false, false) &&
-        !istPeriodenLabel(c) &&
-        !FINANCIAL_LINE_ITEM.test(c) &&
-        !AUFWAND_ZEILE.test(c) &&
-        !istIncomeStatementZeile(c),
-    )
+    const pot = segmentSpaltenAusZeile(z.zellen)
 
-    if (potNamen.length >= 2 && z.betraege.length < potNamen.length) {
-      if (!sindAllesPeriodenLabels(potNamen) && potNamen.length >= spaltenNamen.length) {
-        spaltenNamen = potNamen
+    if (pot.length >= 2 && z.betraege.length < pot.length) {
+      if (!sindAllesPeriodenLabels(pot.map((p) => p.name)) && pot.length >= spalten.length) {
+        spalten = pot
       }
       continue
     }
 
     const label0 = sichtbar[0] ?? ''
     if (/unaffiliated|affiliated/i.test(label0)) continue
-    if (
-      spaltenNamen.length >= 2 &&
-      /^(total revenues?|revenues?|revenue from external customers|revenues from external customers|sales(\s*\([a-z]\))?|net sales)$/i.test(
-        label0,
-      )
-    ) {
-      const zahlenAusText = sichtbar
-        .slice(1)
-        .map((c) => Number(c.replace(/[^\d.]/g, '')))
-        .filter((n) => Number.isFinite(n) && n > 0)
-      const zahlen =
-        zahlenAusText.length >= spaltenNamen.length
-          ? zahlenAusText
-          : z.betraege.length >= spaltenNamen.length
-            ? z.betraege
-            : zahlenAusText
-
-      if (zahlen.length >= spaltenNamen.length) {
-        const namen = spaltenNamen.filter((n) => !/^\(?\s*millions of dollars\s*\)?$/i.test(n))
-        const werte = zahlen.slice(0, namen.length)
-        for (let i = 0; i < namen.length; i++) {
-          segmente.push({
-            name: namen[i]!,
-            umsatzMio: betragZuMio(werte[i]!),
-            anteilPct: null,
-          })
+    if (spalten.length >= 2 && istSegmentUmsatzZeile(label0)) {
+      const paare = betraegeZuSegmentSpalten(z, spalten)
+      if (paare.length >= 2) {
+        for (const { name, betrag } of paare) {
+          segmente.push({ name, umsatzMio: betragZuMio(betrag), anteilPct: null })
         }
         if (segmente.length >= 2) return bereinigeSpaltenSegmente(segmente)
       }
@@ -686,9 +670,93 @@ function istIncomeStatementZeile(label: string): boolean {
 
 function istOperatingIncomeZeile(label: string): boolean {
   const n = bereinigeLabel(label)
-  return /^(operating income|operating loss|operating \(loss\) income|segment operating income|income \(loss\) from operations|operating profit|segment profit|income from operations)$/i.test(
+  return /^(operating income|operating loss|operating income\s*\/?\s*\(?\s*loss\s*\)?|operating \(loss\) income|segment operating income(\s*\(loss\))?|segment operating profit|income \(loss\) from operations|loss from operations|earnings from operations|operating profit|segment profit|income from operations|adjusted operating (income|profit)|adjusted segment operating (income|profit))$/i.test(
     n,
   )
+}
+
+/** Ende der Umsatz-Sektion — danach Kosten/GuV, nicht als Segmentumsatz lesen. */
+function istUmsatzSektionEnde(label: string): boolean {
+  const n = bereinigeLabel(label)
+  return /^(segment\s+)?(cost of revenue|costs? of revenues?|segment cost|operating expenses|total segment cost|reconciling|depreciation|amortization|impairments?|other segment items)/i.test(
+    n,
+  )
+}
+
+/** Total-/Eliminations-Spalten — keine echten Segmente. */
+function istAggregatSpaltenName(name: string): boolean {
+  return /^(totals?|total company|total reportable segments?|consolidated|intersegment(\s+eliminations?)?|eliminations?|all other|corporate(\s+and\s+eliminations?)?|optum eliminations?)$/i.test(
+    bereinigeLabel(name),
+  )
+}
+
+function zelleIstLeerOderStrich(raw: string): boolean {
+  const s = normalisiereZelle(raw)
+    .replace(/&#8212;/gi, '—')
+    .replace(/&mdash;/gi, '—')
+    .replace(/[\$]/g, '')
+    .trim()
+  return !s || /^[—–\-−]+$/.test(s) || /^n\/?m$/i.test(s) || /^n\/?a$/i.test(s)
+}
+
+/**
+ * Wert-Slots einer Datenzeile (Label in [0]): `$` überspringen, `—` = null-Slot
+ * (verhindert Shift der Total-Spalte auf das Vorgänger-Segment).
+ */
+function wertSlotsAusDatenzeile(z: TabellenZeile): (number | null)[] {
+  const slots: (number | null)[] = []
+  for (let i = 1; i < z.zellen.length; i++) {
+    const raw = z.zellen[i] ?? ''
+    const norm = normalisiereZelle(raw)
+    if (!norm || norm === '$') continue
+    if (zelleIstLeerOderStrich(raw)) {
+      slots.push(null)
+      continue
+    }
+    if (/%/.test(norm)) continue
+    const n = parseBetragAusText(raw)
+    if (n != null) slots.push(n)
+  }
+  return slots
+}
+
+/**
+ * Segment-Header in Lesereihenfolge (inkl. Total — wird beim Zip gefiltert).
+ * Index nur für Stabilität; Werte kommen aus wertSlotsAusDatenzeile.
+ */
+function segmentSpaltenAusZeile(zellen: string[]): { name: string; idx: number }[] {
+  const out: { name: string; idx: number }[] = []
+  for (let i = 0; i < zellen.length; i++) {
+    const c = bereinigeLabel(normalisiereZelle(zellen[i] ?? ''))
+    if (!c || c === '$') continue
+    if (/^\(?\s*in (?:millions?|thousands?|billions?|dollars)\s*\)?$/i.test(c)) continue
+    if (/^\(?\s*millions of dollars\s*\)?$/i.test(c)) continue
+    if (!istSegmentLabel(c, false, false) && !istAggregatSpaltenName(c)) continue
+    if (istPeriodenLabel(c) || FINANCIAL_LINE_ITEM.test(c) || AUFWAND_ZEILE.test(c)) continue
+    if (istIncomeStatementZeile(c)) continue
+    out.push({ name: c, idx: i })
+  }
+  return out
+}
+
+/** Zip Header-Segmente × Wert-Slots; Total/Elim. und null-Slots entfallen. */
+function betraegeZuSegmentSpalten(
+  z: TabellenZeile,
+  spalten: { name: string; idx: number }[],
+): { name: string; betrag: number }[] {
+  const slots = wertSlotsAusDatenzeile(z)
+  const out: { name: string; betrag: number }[] = []
+  const n = Math.min(spalten.length, slots.length)
+  for (let i = 0; i < n; i++) {
+    const name = spalten[i]!.name
+    if (istAggregatSpaltenName(name)) continue
+    const betrag = slots[i]
+    if (betrag == null) continue
+    out.push({ name, betrag })
+  }
+  // UNH: „Optum“-Summe weglassen, wenn Optum Health/Insight/Rx einzeln da sind
+  const hatOptumUnter = out.some((s) => /^optum (health|insight|rx)/i.test(s.name))
+  return hatOptumUnter ? out.filter((s) => !/^optum$/i.test(bereinigeLabel(s.name))) : out
 }
 
 function istNetIncomeZeile(label: string): boolean {
@@ -698,7 +766,20 @@ function istNetIncomeZeile(label: string): boolean {
 
 function istSegmentUmsatzZeile(label: string): boolean {
   const n = bereinigeLabel(label)
-  return /^(revenues?|net sales|sales|total revenues?)$/i.test(n)
+  return /^(revenues?|net revenues?|net sales|sales(\s*\(gaap\))?|total revenues?|total net revenues?|revenue from external customers|revenues from external customers)$/i.test(
+    n,
+  )
+}
+
+/** „Year Ended December 31, 2025“ / „Fiscal 2025“ → Berichtjahr. */
+function jahrAusSektionsLabel(label: string): number | null {
+  const n = bereinigeLabel(label)
+  if (/^(20\d{2})$/.test(n)) return parseInt(n, 10)
+  if (!/year ended|fiscal(?:\s+year)?|months?\s+ended|december|january|july|june/i.test(n)) return null
+  const m = n.match(/\b(20\d{2})\b/)
+  if (!m) return null
+  const y = parseInt(m[1]!, 10)
+  return y >= 2010 && y <= 2035 ? y : null
 }
 
 function reportingSegmentFuerUmsatzZeile(name: string, oiKeys: Set<string>): string {
@@ -753,7 +834,74 @@ export function brauchtReportingRollup(_jahre: SecSegmentJahrEintrag[]): boolean
 
 export function berechneSegmentMargePct(umsatzMio: number | null, operatingIncomeMio: number | null): number | null {
   if (umsatzMio == null || operatingIncomeMio == null || umsatzMio === 0) return null
-  return Math.round((operatingIncomeMio / umsatzMio) * 1000) / 10
+  const pct = Math.round((operatingIncomeMio / umsatzMio) * 1000) / 10
+  if (pct > 100) return null
+  return pct
+}
+
+/** Anteil Segmente mit gesetzter Marge (jungstes Jahr). */
+export function segmentMargeAbdeckung(hist: SecSegmentHistorie | null | undefined): number {
+  const segs = hist?.jahre.at(-1)?.segmente ?? []
+  if (segs.length === 0) return 0
+  return segs.filter((s) => s.margePct != null).length / segs.length
+}
+
+/**
+ * Reporting-Historie aus OI-Tabellen, die zugleich Umsatz je Segment enthalten
+ * (AMZN NA/Intl/AWS, WMT, COST Geo, META FoA/RL, …).
+ */
+export function historieAusOiMitUmsatz(
+  oiJahre: SecSegmentJahrEintrag[],
+  art: 'produkt' | 'geo',
+): SecSegmentHistorie | null {
+  const jahre = oiJahre
+    .map((j) => {
+      const roh = j.segmente
+        .filter((s) => (s.umsatzMio ?? 0) > 0 && s.operatingIncomeMio != null)
+        .map((s) => ({
+          name: s.name,
+          umsatzMio: s.umsatzMio!,
+          anteilPct: null as number | null,
+          operatingIncomeMio: s.operatingIncomeMio,
+          margePct: berechneSegmentMargePct(s.umsatzMio!, s.operatingIncomeMio!),
+        }))
+        .filter((s) => s.margePct != null || (s.operatingIncomeMio ?? 0) !== 0)
+      return { jahr: j.jahr, segmente: anteileBerechnen(roh) }
+    })
+    .filter((j) => j.segmente.length >= 2)
+  if (jahre.length < 2) return null
+  const segmentNamen = [...new Set(jahre.flatMap((j) => j.segmente.map((s) => s.name)))].sort()
+  return {
+    art,
+    jahre,
+    segmentNamen,
+    anzahlJahre: jahre.length,
+    aeltestesJahr: jahre[0]!.jahr,
+    juengstesJahr: jahre[jahre.length - 1]!.jahr,
+  }
+}
+
+/** Heuristik: OI-Schnitt eher Geo (COST US/Canada) oder Produkt (AMZN AWS). */
+export function oiHistorieEherGeo(oiJahre: SecSegmentJahrEintrag[]): boolean {
+  const namen = oiJahre.flatMap((j) => j.segmente.map((s) => s.name))
+  if (namen.length === 0) return false
+  const joined = namen.join(' ')
+  // Reporting-/Produktsegmente mit Geo-Wörtern im Namen → trotzdem Produkt
+  if (
+    /aws|cloud|family of apps|reality labs|walmart|sam'?s\s*club|optum|ratings|indices|energy|mobility|intelligent cloud|google/i.test(
+      joined,
+    )
+  ) {
+    return false
+  }
+  const geoHits = namen.filter(
+    (n) =>
+      segmentGehoertZuGeo(n) ||
+      /united states|u\.s\.|canada|international|americas|europe|asia|china|japan|emea|apac|rest of/i.test(
+        n,
+      ),
+  ).length
+  return geoHits >= Math.ceil(namen.length * 0.6)
 }
 
 function betragAnJahrIndexSigned(
@@ -775,7 +923,20 @@ function betragAnJahrIndexSigned(
   return null
 }
 
-/** Operating-Income-Historie in bestehende Umsatz-Segment-Historie einmischen. */
+function kennzahlFuerSegmentname(
+  kennz: Map<string, { oi?: number; rev?: number; ni?: number }> | undefined,
+  name: string,
+): { oi?: number; rev?: number; ni?: number } | undefined {
+  if (!kennz) return undefined
+  const exact = kennz.get(name.toLowerCase())
+  if (exact) return exact
+  for (const [key, val] of kennz) {
+    if (segmentNamenPassen(key, name)) return val
+  }
+  return undefined
+}
+
+/** Operating-Income-Historie in bestehende Umsatz-Segment-Historie einmischen (alle Titel). */
 export function ergaenzeSegmentHistorieMitMargen(
   historie: SecSegmentHistorie,
   oiJahre: SecSegmentJahrEintrag[],
@@ -812,18 +973,47 @@ export function ergaenzeSegmentHistorieMitMargen(
         segmente: j.segmente.map((s) => {
           const parent = reportingSegmentFuerUmsatzZeile(s.name, oiKeys)
           const pk = parent.toLowerCase()
-          const k = kennz?.get(pk)
-          const oi = k?.oi ?? null
-          const ni = k?.ni ?? null
-          const revReporting = k?.rev ?? kindRev.get(pk) ?? null
-          const gewinn = ni ?? oi
-          const margePct = berechneSegmentMargePct(revReporting, gewinn)
-          return {
-            ...s,
-            operatingIncomeMio: oi,
-            netIncomeMio: ni,
-            margePct,
+          const kOwn = kennzahlFuerSegmentname(kennz, s.name)
+          const kParent = kennzahlFuerSegmentname(kennz, parent)
+          const istReportingZeile =
+            segmentNamenPassen(parent, s.name) || parent.toLowerCase() === s.name.toLowerCase()
+          const revReporting = kindRev.get(pk) ?? null
+
+          // 1) Eigenes OI am Segment (SPGI, GOOGL Reporting, …)
+          if (kOwn?.oi != null || kOwn?.ni != null) {
+            const gewinn = kOwn.oi ?? kOwn.ni ?? null
+            const rev = s.umsatzMio ?? kOwn.rev ?? null
+            return {
+              ...s,
+              operatingIncomeMio: kOwn.oi ?? null,
+              netIncomeMio: kOwn.ni ?? null,
+              margePct: berechneSegmentMargePct(rev, gewinn),
+            }
           }
+
+          // 2) Reporting-Segment-Zeile mit Parent-OI
+          if (istReportingZeile && (kParent?.oi != null || kParent?.ni != null)) {
+            const gewinn = kParent!.oi ?? kParent!.ni ?? null
+            const rev = revReporting ?? s.umsatzMio ?? null
+            return {
+              ...s,
+              operatingIncomeMio: kParent!.oi ?? null,
+              netIncomeMio: kParent!.ni ?? null,
+              margePct: berechneSegmentMargePct(rev, gewinn),
+            }
+          }
+
+          // 3) Disaggregation-Kind: Reporting-Marge (%) vom Parent (nicht Parent-OI / Kind-Umsatz)
+          if (kParent?.oi != null && revReporting != null) {
+            return {
+              ...s,
+              operatingIncomeMio: null,
+              netIncomeMio: null,
+              margePct: berechneSegmentMargePct(revReporting, kParent.oi),
+            }
+          }
+
+          return s
         }),
       }
     }),
@@ -847,7 +1037,20 @@ export function mergeOiJahrSmart(
   if (!alt || neuereQuelle || gleicheQuelle) {
     const merged = new Map<string, SecSegmentRoh>()
     for (const s of alt ?? []) merged.set(s.name.toLowerCase(), s)
-    for (const s of norm) merged.set(s.name.toLowerCase(), { ...s, umsatzMio: null, anteilPct: null })
+    for (const s of norm) {
+      const key = s.name.toLowerCase()
+      const prev = merged.get(key)
+      merged.set(key, {
+        ...s,
+        // Umsatz aus OI-Tabelle behalten (AMZN/WMT/COST) — sonst keine Marge am Reporting-Schnitt
+        umsatzMio: s.umsatzMio ?? prev?.umsatzMio ?? null,
+        anteilPct: null,
+        margePct: berechneSegmentMargePct(
+          s.umsatzMio ?? prev?.umsatzMio ?? null,
+          s.operatingIncomeMio ?? null,
+        ),
+      })
+    }
     map.set(jahr, [...merged.values()])
     if (meta && filing > 0) meta.set(jahr, Math.max(filing, prevFiling))
   }
@@ -897,19 +1100,24 @@ function parseMehrjahresOperatingIncomeRowOriented(fragment: string): SecSegment
       continue
     }
 
-    if (istSegmentUmsatzZeile(label0) && aktivesSegment) {
+    if (
+      (istSegmentUmsatzZeile(label0) || /^total revenues?$/i.test(label0)) &&
+      aktivesSegment
+    ) {
       jahrSpalten.forEach(({ jahr }, yearIdx) => {
         const mio = betragAnJahrIndexSigned(z, jahrSpalten, yearIdx)
-        if (mio == null) return
+        if (mio == null || mio <= 0) return
         touch(jahr, aktivesSegment!).rev = mio
       })
       continue
     }
 
     if (istOperatingIncomeZeile(label0) && aktivesSegment) {
+      const alsVerlust = /^loss\b|operating loss/i.test(label0)
       jahrSpalten.forEach(({ jahr }, yearIdx) => {
-        const mio = betragAnJahrIndexSigned(z, jahrSpalten, yearIdx)
+        let mio = betragAnJahrIndexSigned(z, jahrSpalten, yearIdx)
         if (mio == null) return
+        if (alsVerlust && mio > 0) mio = -mio
         touch(jahr, aktivesSegment!).oi = mio
       })
       aktivesSegment = null
@@ -965,6 +1173,7 @@ function parseMehrjahresOperatingIncomeSpaltenOrientiert(fragment: string): SecS
       (s) => s.operatingIncomeMio != null || s.umsatzMio != null,
     )
     if (norm.length < 1) return
+    // Nur explizites Jahres-Label (pendingJahr) — kein Fallback aufs erste Jahr im HTML
     const j = jahr != null && jahr >= 2010 && jahr <= 2030 ? jahr : pendingJahr
     if (j == null || j < 2010) return
     const merged = new Map<string, SecSegmentRoh>()
@@ -980,84 +1189,59 @@ function parseMehrjahresOperatingIncomeSpaltenOrientiert(fragment: string): SecS
       })
     }
     byJahr.set(j, [...merged.values()])
-    pendingJahr = null
   }
 
   const verarbeiteTeil = (teil: string) => {
     const zeilen = parseTabellenZeilen(teil)
-    let spaltenNamen: string[] = []
+    let spalten: { name: string; idx: number }[] = []
 
     for (const z of zeilen) {
       const sichtbar = nichtLeereZellen(z.zellen).map(bereinigeLabel)
       const label0 = sichtbar[0] ?? ''
 
-      const potNamen = sichtbar.filter(
-        (c) =>
-          c &&
-          istSegmentLabel(c, false, false) &&
-          !istPeriodenLabel(c) &&
-          !FINANCIAL_LINE_ITEM.test(c) &&
-          !AUFWAND_ZEILE.test(c) &&
-          !istIncomeStatementZeile(c),
-      )
-      if (potNamen.length >= 2 && z.betraege.length < potNamen.length) {
-        if (!sindAllesPeriodenLabels(potNamen) && potNamen.length >= spaltenNamen.length) {
-          spaltenNamen = potNamen
+      const pot = segmentSpaltenAusZeile(z.zellen)
+      if (pot.length >= 2 && z.betraege.length < pot.length) {
+        if (!sindAllesPeriodenLabels(pot.map((p) => p.name)) && pot.length >= spalten.length) {
+          spalten = pot
         }
         continue
       }
 
-      const jahrInZeile = label0.match(/^(20\d{2})$/)?.[1]
-      if (jahrInZeile && /^(20\d{2})$/.test(label0)) {
-        pendingJahr = parseInt(jahrInZeile, 10)
+      const sektionsJahr = jahrAusSektionsLabel(label0)
+      if (sektionsJahr != null) {
+        pendingJahr = sektionsJahr
         continue
       }
 
-      if (spaltenNamen.length >= 2 && istSegmentUmsatzZeile(label0)) {
-        const zahlen =
-          z.betraege.length >= spaltenNamen.length
-            ? z.betraege
-            : sichtbar
-                .slice(1)
-                .map((c) => parseBetragAusText(c))
-                .filter((n): n is number => n != null)
-        if (zahlen.length < spaltenNamen.length) continue
-        const namen = spaltenNamen.filter((n) => !/^\(?\s*millions of dollars\s*\)?$/i.test(n))
-        const roh = namen.map((name, idx) => ({
-          name,
-          umsatzMio: betragZuMio(zahlen[idx]!),
-          anteilPct: null,
-          operatingIncomeMio: null,
-        }))
-        const jahr =
-          pendingJahr ??
-          (jahrInZeile ? parseInt(jahrInZeile, 10) : null) ??
-          (parseInt(teil.match(/\b(20\d{2})\b/)?.[1] ?? '0', 10) || null)
-        speichere(jahr && jahr >= 2010 ? jahr : null, roh)
+      if (pendingJahr == null) continue
+
+      if (spalten.length >= 2 && istSegmentUmsatzZeile(label0)) {
+        const paare = betraegeZuSegmentSpalten(z, spalten)
+        if (paare.length < 2) continue
+        speichere(
+          pendingJahr,
+          paare.map(({ name, betrag }) => ({
+            name,
+            umsatzMio: betragZuMio(betrag),
+            anteilPct: null,
+            operatingIncomeMio: null,
+          })),
+        )
         continue
       }
 
-      if (spaltenNamen.length >= 2 && istOperatingIncomeZeile(label0)) {
-        const zahlen =
-          z.betraege.length >= spaltenNamen.length
-            ? z.betraege
-            : sichtbar
-                .slice(1)
-                .map((c) => parseBetragAusText(c))
-                .filter((n): n is number => n != null)
-        if (zahlen.length < spaltenNamen.length) continue
-        const namen = spaltenNamen.filter((n) => !/^\(?\s*millions of dollars\s*\)?$/i.test(n))
-        const roh = namen.map((name, idx) => ({
-          name,
-          umsatzMio: null,
-          anteilPct: null,
-          operatingIncomeMio: betragZuMio(zahlen[idx]!),
-        }))
-        const jahr =
-          pendingJahr ??
-          (jahrInZeile ? parseInt(jahrInZeile, 10) : null) ??
-          (parseInt(teil.match(/\b(20\d{2})\b/)?.[1] ?? '0', 10) || null)
-        speichere(jahr && jahr >= 2010 ? jahr : null, roh)
+      if (spalten.length >= 2 && istOperatingIncomeZeile(label0)) {
+        const paare = betraegeZuSegmentSpalten(z, spalten)
+        if (paare.length < 2) continue
+        speichere(
+          pendingJahr,
+          paare.map(({ name, betrag }) => ({
+            name,
+            umsatzMio: null,
+            anteilPct: null,
+            operatingIncomeMio: betragZuMio(betrag),
+          })),
+        )
       }
     }
   }
@@ -1076,11 +1260,166 @@ function parseMehrjahresOperatingIncomeSpaltenOrientiert(fragment: string): SecS
     .map(([jahr, segmente]) => ({ jahr, segmente }))
 }
 
+/**
+ * Zeilen = Segmente, Spalten = Jahre, Beträge = Segment Operating Profit / Income
+ * (SPGI-Profit-Tabelle; GOOGL/MSFT-Sektion „Operating income (loss):“).
+ */
+function parseSegmentOperatingProfitAlsZeilenTabelle(fragment: string): SecSegmentJahrEintrag[] {
+  if (!fragment || fragment.length < 200) return []
+  const kopf = fragment.slice(0, 4_000)
+  const hatProfitKopf =
+    /segment\s+operating\s+profit|operating\s+profit\s+by\s+segment|reconciliation.*operating\s+profit|total\s+segment\s+operating\s+profit/i.test(
+      kopf,
+    ) || /total\s+segment\s+operating\s+profit/i.test(fragment.slice(0, 12_000))
+  const hatIncomeSektion =
+    /operating\s+income\s*\(?\s*loss\s*\)?|segment\s+operating\s+income|earnings\s+from\s+operations/i.test(
+      fragment.slice(0, 30_000),
+    )
+  if (!hatProfitKopf && !hatIncomeSektion) return []
+
+  const zeilen = parseTabellenZeilen(fragment)
+  let headerIdx = -1
+  let jahrSpalten: { jahr: number; idx: number }[] = []
+  for (let i = 0; i < Math.min(zeilen.length, 40); i++) {
+    const spalten = jahresSpaltenAusZeile(zeilen[i]!.zellen)
+    if (spalten.length >= 2) {
+      headerIdx = i
+      jahrSpalten = spalten
+      break
+    }
+  }
+  if (headerIdx < 0 || jahrSpalten.length < 2) return []
+
+  // GOOGL u. a.: erst ab der OI-Sektionszeile lesen (nicht die Revenue-Zeilen darüber)
+  let startIdx = headerIdx + 1
+  let oiSektionGefunden = false
+  for (let i = headerIdx + 1; i < zeilen.length; i++) {
+    const label0 = bereinigeLabel(nichtLeereZellen(zeilen[i]!.zellen)[0] ?? '')
+    if (!label0) continue
+    if (istOperatingIncomeZeile(label0)) {
+      const slots = wertSlotsAusDatenzeile(zeilen[i]!)
+      // reine Sektionsüberschrift (keine Beträge) → darunter liegen die Segment-OI-Zeilen
+      if (slots.length === 0) {
+        startIdx = i + 1
+        oiSektionGefunden = true
+        break
+      }
+    }
+  }
+  if (!oiSektionGefunden && !hatProfitKopf) return []
+
+  const jahreInReihenfolge = jahrSpalten.map((j) => j.jahr)
+  const byJahr = new Map<number, SecSegmentRoh[]>()
+  for (const jahr of jahreInReihenfolge) byJahr.set(jahr, [])
+
+  for (let i = startIdx; i < zeilen.length; i++) {
+    const z = zeilen[i]!
+    const sichtbar = nichtLeereZellen(z.zellen)
+    const label0 = bereinigeLabel(sichtbar[0] ?? '')
+    if (!label0) continue
+    if (
+      /^total\b|^corporate\b|^alphabet-level|^equity in|^eliminat|^unallocated|^reconcil|^supplemental/i.test(
+        label0,
+      )
+    ) {
+      // Nach Total-OI/Ende der Sektion abbrechen (keine Kosten-Unterzeilen)
+      if (oiSektionGefunden && /^total\b|^supplemental/i.test(label0)) break
+      continue
+    }
+    if (istOperatingIncomeZeile(label0) || istSegmentUmsatzZeile(label0) || istNetIncomeZeile(label0)) {
+      continue
+    }
+    if (/^revenues?:?$/i.test(label0)) continue
+    if (!istSegmentLabel(label0, false, false) || istPeriodenLabel(label0)) continue
+    if (FINANCIAL_LINE_ITEM.test(label0) || AUFWAND_ZEILE.test(label0)) continue
+
+    const slots = wertSlotsAusDatenzeile(z)
+    if (slots.length === 0) continue
+    for (let yi = 0; yi < jahreInReihenfolge.length; yi++) {
+      const betrag = slots[yi]
+      if (betrag == null) continue
+      const jahr = jahreInReihenfolge[yi]!
+      byJahr.get(jahr)!.push({
+        name: label0,
+        umsatzMio: null,
+        anteilPct: null,
+        operatingIncomeMio: betragZuMio(betrag),
+      })
+    }
+  }
+
+  return [...byJahr.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([jahr, segmente]) => ({
+      jahr,
+      segmente: dedupliziereSegmente(segmente).filter((s) => s.operatingIncomeMio != null),
+    }))
+    .filter((j) => j.segmente.length >= 2)
+}
+
+/** OI-Jahre mergen — behält Zeilen mit Operating Income (Umsatz optional). */
+function mergeOiJahrEintraege(...listen: SecSegmentJahrEintrag[][]): SecSegmentJahrEintrag[] {
+  const map = new Map<number, Map<string, SecSegmentRoh>>()
+  for (const liste of listen) {
+    for (const j of liste) {
+      let m = map.get(j.jahr)
+      if (!m) {
+        m = new Map()
+        map.set(j.jahr, m)
+      }
+      for (const s of kanonisereSegmentNamen(filterPeriodenSegmente(j.segmente))) {
+        if (s.operatingIncomeMio == null && s.netIncomeMio == null) continue
+        const key = s.name.toLowerCase()
+        const prev = m.get(key)
+        const oi = s.operatingIncomeMio ?? prev?.operatingIncomeMio ?? null
+        const ni = s.netIncomeMio ?? prev?.netIncomeMio ?? null
+        const rev = s.umsatzMio ?? prev?.umsatzMio ?? null
+        m.set(key, {
+          name: s.name,
+          umsatzMio: rev,
+          anteilPct: null,
+          operatingIncomeMio: oi,
+          netIncomeMio: ni,
+          margePct: berechneSegmentMargePct(rev, oi ?? ni),
+        })
+      }
+    }
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([jahr, segMap]) => ({
+      jahr,
+      segmente: [...segMap.values()].filter((s) => s.operatingIncomeMio != null || s.netIncomeMio != null),
+    }))
+    .filter((j) => j.segmente.length >= 2)
+}
+
 export function parseMehrjahresOperatingIncome(fragment: string): SecSegmentJahrEintrag[] {
-  return mergeJahrEintraege(
+  return mergeOiJahrEintraege(
     parseMehrjahresOperatingIncomeRowOriented(fragment),
     parseMehrjahresOperatingIncomeSpaltenOrientiert(fragment),
+    parseSegmentOperatingProfitAlsZeilenTabelle(fragment),
   )
+}
+
+/** Fallback: Tabellen mit „Segment operating profit“ im Voll-HTML (wenn iXBRL-Tag fehlt). */
+function parseOperatingIncomeAusHtmlTabellen(html: string): SecSegmentJahrEintrag[] {
+  if (!html || html.length < 5_000) return []
+  const tables = html.match(/<table[\s\S]*?<\/table>/gi) ?? []
+  let best: SecSegmentJahrEintrag[] = []
+  let bestSeg = 0
+  for (const tab of tables) {
+    if (tab.length < 400) continue
+    const plain = tab.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 4_000).toLowerCase()
+    if (!/segment operating profit|operating income/.test(plain)) continue
+    const parsed = parseMehrjahresOperatingIncome(tab)
+    const segCount = parsed.reduce((n, j) => n + j.segmente.length, 0)
+    if (parsed.length > best.length || (parsed.length === best.length && segCount > bestSeg)) {
+      best = parsed
+      bestSeg = segCount
+    }
+  }
+  return best
 }
 
 /** Operating-Income je Segment & Jahr aus Segment-Reporting-TextBlock. */
@@ -1091,6 +1430,10 @@ export function extrahiereOperatingIncomeHistorieAus10kHtml(html: string): SecSe
   if (hist.length < 2 && fallbackBlock.length > 500) {
     const fb = parseMehrjahresOperatingIncome(fallbackBlock)
     if (fb.length > hist.length) hist = fb
+  }
+  if (hist.length < 2) {
+    const htmlHist = parseOperatingIncomeAusHtmlTabellen(html)
+    if (htmlHist.length > hist.length) hist = htmlHist
   }
   return hist
 }
@@ -1608,71 +1951,44 @@ function parseSpaltenOrientierteMehrjahresSegmente(
     const j = jahr != null && jahr >= 2010 && jahr <= 2030 ? jahr : pendingJahr
     if (j == null || j < 2010) return
     byJahr.set(j, anteileBerechnen(val))
-    pendingJahr = null
   }
 
   const verarbeiteTeil = (teil: string) => {
     const zeilen = parseTabellenZeilen(teil)
-    let spaltenNamen: string[] = []
+    let spalten: { name: string; idx: number }[] = []
 
     for (const z of zeilen) {
       const sichtbar = nichtLeereZellen(z.zellen).map(bereinigeLabel)
       const label0 = sichtbar[0] ?? ''
 
-      const potNamen = sichtbar.filter(
-        (c) =>
-          c &&
-          istSegmentLabel(c, false, false) &&
-          !istPeriodenLabel(c) &&
-          !FINANCIAL_LINE_ITEM.test(c) &&
-          !AUFWAND_ZEILE.test(c) &&
-          !istIncomeStatementZeile(c),
-      )
-      if (potNamen.length >= 2 && z.betraege.length < potNamen.length) {
-        if (!sindAllesPeriodenLabels(potNamen) && potNamen.length >= spaltenNamen.length) {
-          spaltenNamen = potNamen
+      const pot = segmentSpaltenAusZeile(z.zellen)
+      if (pot.length >= 2 && z.betraege.length < pot.length) {
+        if (!sindAllesPeriodenLabels(pot.map((p) => p.name)) && pot.length >= spalten.length) {
+          spalten = pot
         }
         continue
       }
 
-      const jahrInZeile = label0.match(/^(20\d{2})$/)?.[1] ?? sichtbar.join(' ').match(/\b(20\d{2})\b/)?.[1]
-      if (jahrInZeile && /^(20\d{2})$/.test(label0)) {
-        pendingJahr = parseInt(jahrInZeile, 10)
+      const sektionsJahr = jahrAusSektionsLabel(label0)
+      if (sektionsJahr != null) {
+        pendingJahr = sektionsJahr
         continue
       }
 
+      if (pendingJahr == null) continue
       if (/unaffiliated|affiliated/i.test(label0)) continue
 
-      if (
-        spaltenNamen.length >= 2 &&
-        /^(total revenues?|revenues?|revenue from external customers|revenues from external customers|sales(\s*\([a-z]\))?|net sales)$/i.test(
-          label0,
-        )
-      ) {
-        const zahlenAusText = sichtbar
-          .slice(1)
-          .map((c) => Number(c.replace(/[^\d.]/g, '')))
-          .filter((n) => Number.isFinite(n) && n > 0)
-        const zahlen =
-          zahlenAusText.length >= spaltenNamen.length
-            ? zahlenAusText
-            : z.betraege.length >= spaltenNamen.length
-              ? z.betraege
-              : zahlenAusText
-        if (zahlen.length < spaltenNamen.length) continue
-        const namen = spaltenNamen.filter((n) => !/^\(?\s*millions of dollars\s*\)?$/i.test(n))
+      if (spalten.length >= 2 && istSegmentUmsatzZeile(label0)) {
+        const paare = betraegeZuSegmentSpalten(z, spalten)
+        if (paare.length < 2) continue
         const roh = bereinigeSpaltenSegmente(
-          namen.map((name, i) => ({
+          paare.map(({ name, betrag }) => ({
             name,
-            umsatzMio: betragZuMio(zahlen[i]!),
+            umsatzMio: betragZuMio(betrag),
             anteilPct: null,
           })),
         )
-        const jahr =
-          pendingJahr ??
-          (jahrInZeile ? parseInt(jahrInZeile, 10) : null) ??
-          (parseInt(teil.match(/\b(20\d{2})\b/)?.[1] ?? '0', 10) || null)
-        speichere(jahr && jahr >= 2010 ? jahr : null, roh)
+        speichere(pendingJahr, roh)
       }
     }
   }
@@ -1862,8 +2178,26 @@ function parseMehrjahresSegmenteInternRowOnly(
       aktivesSegment = null
       continue
     }
-    if (/net revenue|revenue[s]? by|revenues? by/i.test(labelJoin) && !/cost of revenue/i.test(labelJoin)) {
+    // GOOGL: Sektion „Operating income (loss):“ (ohne Beträge) — danach keine Umsatz-Zeilen mehr.
+    // MSFT: „Operating income“ ist Unterzeile pro Segment → nicht abbrechen.
+    if (metrik === 'umsatz' && istOperatingIncomeZeile(label0)) {
+      const slots = wertSlotsAusDatenzeile(z)
+      if (slots.length === 0) break
+      aktivesSegment = null
+      continue
+    }
+    // INTU u. a.: nach Net revenue kommt „Segment cost…“ — nicht als Umsatz übernehmen
+    if (metrik === 'umsatz' && istUmsatzSektionEnde(label0)) {
+      break
+    }
+    if (
+      (/^revenues?:?$/i.test(label0) ||
+        /^net revenues?:?$/i.test(label0) ||
+        /net revenue|revenue[s]? by|revenues? by/i.test(labelJoin)) &&
+      !/cost of revenue/i.test(labelJoin)
+    ) {
       inRevenueSection = true
+      if (/^(net\s+)?revenues?:?$/i.test(label0)) continue
     }
     if (!inRevenueSection && geoModus && metrik === 'umsatz') continue
     if (metrik === 'assets' && !/asset|property|equipment|long[- ]lived/i.test(labelJoin) && !istGeoName(label0)) {
@@ -1908,6 +2242,7 @@ function parseMehrjahresSegmenteInternRowOnly(
       }
     }
 
+    // Nur positive Umsatz-Beträge (OI-Verluste nicht als Umsatz)
     jahrSpalten.forEach(({ jahr }, yearIdx) => {
       const mio = betragAnJahrIndex(z, jahrSpalten, yearIdx, metrik)
       if (mio == null || mio < 5) return

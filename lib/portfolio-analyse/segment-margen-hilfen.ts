@@ -26,7 +26,10 @@ export function segmentNamenPassen(a: string, b: string): boolean {
 
 export function berechneSegmentMargePct(umsatzMio: number | null, oiMio: number | null): number | null {
   if (umsatzMio == null || oiMio == null || umsatzMio === 0) return null
-  return Math.round((oiMio / umsatzMio) * 1000) / 10
+  const pct = Math.round((oiMio / umsatzMio) * 1000) / 10
+  // >100 % Operating-Marge = Zuordnungsfehler (Total-Spalte / falscher Nenner)
+  if (pct > 100) return null
+  return pct
 }
 
 /** Operating-Income-Historie (OI in operatingIncomeMio) in Umsatz-Historie einmischen. */

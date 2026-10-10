@@ -33,6 +33,8 @@ import {
   segmentPaketPlausibel,
 } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import { ladeSecSegmentHistorie } from '@/lib/portfolio-analyse/sec-edgar-segment-historie-server'
+import { segmentMargeAbdeckung } from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
+import { ergaenzeSegmentHistorieMitMargen } from '@/lib/portfolio-analyse/segment-margen-hilfen'
 import { ladeStockanalysisSegmentPaket } from '@/lib/portfolio-analyse/stockanalysis-segment-server'
 import { normalisiereSegmentPaketGegenUmsatz } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
 import { baueUmsatzProJahrAusYahoo } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-guv-server'
@@ -322,6 +324,76 @@ async function ergaenzeSecProduktFallback(
   }
 }
 
+/** Wenn SEC-Umsatzmix kaum Margen hat: OI von StockAnalysis dazumischen. */
+async function ergaenzeUsMargenAusStockanalysis(
+  paket: SecSegmentHistoriePaket,
+  opts: {
+    isin?: string | null
+    symbolYahoo?: string | null
+    ticker?: string | null
+    refresh?: boolean
+  },
+): Promise<SecSegmentHistoriePaket> {
+  const prodCov = segmentMargeAbdeckung(paket.produkt)
+  const geoCov = segmentMargeAbdeckung(paket.geo)
+  if (prodCov >= 0.5 || geoCov >= 0.5) return paket
+
+  let sa: Awaited<ReturnType<typeof ladeStockanalysisSegmentPaket>> = null
+  try {
+    sa = await ladeStockanalysisSegmentPaket({
+      isin: opts.isin,
+      symbolYahoo: opts.symbolYahoo,
+      ticker: opts.ticker,
+      refresh: opts.refresh,
+    })
+  } catch {
+    return paket
+  }
+  if (!sa?.produkt && !sa?.geo) return paket
+
+  let produkt = paket.produkt
+  let geo = paket.geo
+  let gemischt = false
+
+  if (sa.produkt && segmentMargeAbdeckung(sa.produkt) > prodCov) {
+    const saCov = segmentMargeAbdeckung(sa.produkt)
+    if (produkt) {
+      const mit = ergaenzeSegmentHistorieMitMargen(produkt, sa.produkt)
+      const mitCov = segmentMargeAbdeckung(mit)
+      // Feine SEC-Disaggregation ohne OI → lieber SA-Reporting mit echten Margen
+      if (saCov >= 0.5 && mitCov < 0.5) {
+        produkt = sa.produkt
+        gemischt = true
+      } else if (mitCov > prodCov) {
+        produkt = mit
+        gemischt = true
+      }
+    } else if (saCov >= 0.5) {
+      produkt = sa.produkt
+      gemischt = true
+    }
+  }
+  if (geo && sa.geo && segmentMargeAbdeckung(sa.geo) > geoCov) {
+    const mit = ergaenzeSegmentHistorieMitMargen(geo, sa.geo)
+    if (segmentMargeAbdeckung(mit) > geoCov) {
+      geo = mit
+      gemischt = true
+    }
+  } else if (!geo && sa.geo && segmentMargeAbdeckung(sa.geo) >= 0.5) {
+    geo = sa.geo
+    gemischt = true
+  }
+
+  if (!gemischt) return paket
+  return {
+    ...paket,
+    produkt,
+    geo,
+    quelle: 'mixed',
+    secErgaenzt: true,
+  }
+}
+
 async function ladeMssaPaket(opts: {
   isin?: string | null
   name: string
@@ -420,9 +492,15 @@ async function scrapeLiveSegmentStruktur(opts: {
       } catch {
         sec = null
       }
-      // US: ausschließlich SEC EDGAR — kein Marketscreener/StockAnalysis-Mix mehr
+      // US: Segmentumsatz aus SEC; Margen ggf. mit StockAnalysis-OI ergänzen
       if (sec) {
         paket = { ...sec, quelle: 'sec_edgar', geladenAm: new Date().toISOString() }
+        paket = await ergaenzeUsMargenAusStockanalysis(paket, {
+          isin: isin ?? opts.isin,
+          symbolYahoo: opts.symbolYahoo,
+          ticker: opts.ticker ?? secTicker,
+          refresh: opts.refresh,
+        })
       } else {
         paket = leeresPaket('sec_edgar')
       }
