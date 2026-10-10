@@ -567,6 +567,200 @@ function PaSecBacklogHistorie({
   )
 }
 
+function formatMio(mio: number): string {
+  if (Math.abs(mio) >= 1_000) {
+    return `${(mio / 1_000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`
+  }
+  return `${mio.toLocaleString('de-DE', { maximumFractionDigits: 0 })} Mio. $`
+}
+
+/** Segmente des aktuellen Reporting-Schemas (jüngstes Jahr); vermeidet leere Alt-Zeilen. */
+function aktuelleSchemaNamen(hist: SecSegmentHistorie): string[] {
+  const juengst = hist.jahre.at(-1)?.segmente ?? []
+  return juengst
+    .filter((s) => (s.anteilPct ?? 0) > 0 || (s.umsatzMio ?? 0) > 0)
+    .sort((a, b) => (b.anteilPct ?? 0) - (a.anteilPct ?? 0))
+    .map((s) => s.name)
+}
+
+function jahreMitSchemaDaten(hist: SecSegmentHistorie, namen: string[]): number[] {
+  return hist.jahre
+    .filter((j) =>
+      namen.some((n) =>
+        j.segmente.some((s) => s.name === n && (s.umsatzMio != null || s.anteilPct != null)),
+      ),
+    )
+    .map((j) => j.jahr)
+}
+
+function PaSecSegmentTabelle({
+  hist,
+  farben,
+  art,
+}: {
+  hist: SecSegmentHistorie
+  farben: string[]
+  art: 'produkt' | 'geo'
+}) {
+  const [zeigeAlt, setZeigeAlt] = useState(false)
+  const aktuell = useMemo(() => aktuelleSchemaNamen(hist), [hist])
+  const alle = useMemo(() => alleSegmentNamen(hist), [hist])
+  const altNamen = useMemo(() => alle.filter((n) => !aktuell.includes(n)), [alle, aktuell])
+  const namen = zeigeAlt ? alle : aktuell
+  const jahre = jahreMitSchemaDaten(hist, namen)
+  const tabellenFarben = segmentFarben(namen.length)
+
+  return (
+    <div className="space-y-2">
+      {altNamen.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => setZeigeAlt((v) => !v)}
+          className="text-[10px] text-[var(--app-text-muted)] underline-offset-2 hover:text-[var(--app-text)] hover:underline"
+        >
+          {zeigeAlt
+            ? 'Nur aktuelles Reporting-Schema'
+            : `Früheres Schema einblenden (${altNamen.length} Segmente)`}
+        </button>
+      ) : null}
+      <div className={appTableScrollClassName}>
+        <table className="app-data-table min-w-full text-left text-xs">
+          <thead className="text-[var(--app-text-muted)]">
+            <tr>
+              <th className="sticky left-0 z-10 bg-[var(--app-surface)] pb-2 pr-3 font-medium">Segment</th>
+              {jahre.map((j) => (
+                <th key={j} className="min-w-[7rem] px-2 pb-2 text-right font-medium">
+                  <span className="block tabular-nums">{j}</span>
+                  <span className="mt-0.5 block text-[10px] font-normal text-[var(--app-text-muted)]">
+                    Umsatz · YoY
+                  </span>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {namen.map((name, i) => (
+              <tr key={name} className="border-t border-[var(--app-border)]/40">
+                <td className="sticky left-0 z-10 bg-[var(--app-surface)] py-2 pr-3 align-top">
+                  <span className="mr-1.5 inline-flex align-middle">
+                    <PaSegmentBadge
+                      name={name}
+                      art={art}
+                      farbe={
+                        (zeigeAlt ? farben : tabellenFarben)[
+                          i % (zeigeAlt ? farben.length : tabellenFarben.length)
+                        ]
+                      }
+                      size={14}
+                    />
+                  </span>
+                  <span className="font-medium text-[var(--app-text)]">{name}</span>
+                </td>
+                {jahre.map((j, ji) => {
+                  const mio = umsatzFuerSegment(hist, j, name)
+                  const anteil = anteilFuerSegment(hist, j, name)
+                  const vorjahr = ji > 0 ? jahre[ji - 1]! : null
+                  const wachstum =
+                    vorjahr != null ? umsatzWachstumPct(mio, umsatzFuerSegment(hist, vorjahr, name)) : null
+                  const marge = margeFuerSegment(hist, j, name)
+                  return (
+                    <td key={j} className="px-2 py-2 align-top text-right tabular-nums">
+                      {mio != null ? (
+                        <span className="block font-semibold text-[var(--app-text)]">{formatMio(mio)}</span>
+                      ) : (
+                        <span className="block text-[var(--app-text-muted)]">–</span>
+                      )}
+                      {anteil != null ? (
+                        <span className="block text-[10px] text-[var(--app-text-muted)]">
+                          {anteil.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % Mix
+                        </span>
+                      ) : null}
+                      {wachstum != null ? (
+                        <span className={`mt-0.5 block text-[11px] font-semibold ${wachstumClass(wachstum)}`}>
+                          {wachstum > 0 ? '+' : ''}
+                          {wachstum.toLocaleString('de-DE')} % vs. VJ
+                        </span>
+                      ) : null}
+                      {marge != null ? (
+                        <span className={`mt-0.5 block text-[10px] font-medium ${margeClass(marge)}`}>
+                          {marge.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % Marge
+                        </span>
+                      ) : null}
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function PaQuartalMix({
+  quartale,
+  titel,
+  art,
+}: {
+  quartale: SecSegmentQuartalHistorie
+  titel: string
+  art: 'produkt' | 'geo'
+}) {
+  const perioden = [...quartale.perioden].slice(-8)
+  if (perioden.length === 0) return null
+  const neueste = perioden[perioden.length - 1]!
+  const farben = segmentFarben(neueste.segmente.length)
+
+  return (
+    <div className="space-y-3 rounded-xl border border-[var(--app-border)]/50 bg-[var(--app-surface-muted)]/20 p-3 sm:p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
+          Quartale · {titel} (10-Q + Q4 aus GJ)
+        </p>
+        <p className="text-[10px] text-[var(--app-text-muted)]">
+          {perioden[0]!.label}–{neueste.label}
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {[...perioden].reverse().map((p) => (
+          <div
+            key={p.label}
+            className="rounded-lg border border-[var(--app-border)]/40 bg-[var(--app-surface)]/40 px-3 py-2.5"
+          >
+            <p className="mb-2 text-[11px] font-semibold tabular-nums text-[var(--app-text)]">{p.label}</p>
+            <ul className="space-y-1.5">
+              {p.segmente
+                .slice()
+                .sort((a, b) => (b.anteilPct ?? 0) - (a.anteilPct ?? 0))
+                .map((s, i) => (
+                  <li key={s.name} className="flex items-center justify-between gap-2 text-[10px]">
+                    <span className="flex min-w-0 items-center gap-1.5 text-[var(--app-text-muted)]">
+                      <PaSegmentBadge
+                        name={s.name}
+                        art={art}
+                        farbe={farben[i % farben.length]}
+                        size={12}
+                      />
+                      <span className="truncate">{s.name}</span>
+                    </span>
+                    <span className="shrink-0 tabular-nums text-[var(--app-text)]">
+                      {s.anteilPct != null
+                        ? `${s.anteilPct.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
+                        : s.umsatzMio != null
+                          ? formatMio(s.umsatzMio)
+                          : '–'}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function PaSecSegmentEinzeljahr({
   hist,
   titel,

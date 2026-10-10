@@ -264,9 +264,6 @@ const SCHWACHE_ALIASE = new Set([
   'p&g',
 ])
 
-const LISTEN_TITEL =
-  /\b(depot[\s-]?update|portfolio[\s-]?update|watchlist|meine\s+aktien|top\s*\d+|beste\s+aktien|aktien\s+die|stocks?\s+i\s+|weekly\s+recap|markt[\s-]?update|market\s+update|einkaufsliste|gekauft\s*[&+]|und\s+mehr)\b/i
-
 const FINANCE_KONTEXT =
   /\b(aktie|aktien|stock|stocks|earnings|quartalszahlen|analyse|valuation|bewertung|kursziel|buy|sell|long|dividend|dividende|q[1-4]|10-?[kq]|sec|guv|umsatz|gewinn)\b/i
 
@@ -408,16 +405,6 @@ function textHatAlias(
   return false
 }
 
-function istListenOderSammelVideo(titel: string): boolean {
-  if (LISTEN_TITEL.test(titel)) return true
-  // Mehrere Ticker im Titel: „AAPL, MSFT, NVDA“ oder „Apple | Microsoft | Nvidia“
-  const tickerHits = titel.match(/\$?[A-Z]{1,5}\b/g) ?? []
-  if (tickerHits.length >= 3) return true
-  const pipeParts = titel.split(/\s*[|/•·]\s*/).filter((p) => p.trim().length >= 3)
-  if (pipeParts.length >= 3) return true
-  return false
-}
-
 function videoPasst(
   titel: string,
   beschreibung: string,
@@ -428,22 +415,18 @@ function videoPasst(
   const titelAlias = textHatAlias(titel, aliases)
   const titelTreffer = titelTicker || titelAlias
 
-  // Titel-Treffer: immer akzeptieren (Ticker dort ist absichtlich genannt).
+  // Titel-Treffer: immer akzeptieren.
   if (titelTreffer) return { ok: true, titelTreffer: true }
 
-  // Sammel-/Listen-Videos ohne unseren Titel-Treffer → verwerfen.
-  if (istListenOderSammelVideo(titel)) {
-    return { ok: false, titelTreffer: false }
-  }
-
-  // Beschreibung: starke Firmennamen immer; schwache Einwort-Namen nur mit Aktien-Kontext.
+  // Beschreibung: Firma/Ticker irgendwo erwähnt (auch Kapitel / Teil des Videos) → anzeigen.
+  // Starke Namen immer; schwache Einwort-Aliases nur mit Aktien-Kontext in der Nähe.
   const descAlias = textHatAlias(beschreibung, aliases, {
     nurStarke: true,
     erlaubeSchwachMitKontext: true,
   })
   if (descAlias) return { ok: true, titelTreffer: false }
 
-  // Nackter Ticker in der Beschreibung nur im $-/(TICKER)-Kontext, nie bei Mehrdeutigen.
+  // Ticker in der Beschreibung ($MSFT, (MSFT), MSFT Aktie) — nicht bei Mehrdeutigen.
   if (!istMehrdeutig(ticker) && textHatTickerStrikt(beschreibung, ticker)) {
     return { ok: true, titelTreffer: false }
   }
