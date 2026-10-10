@@ -446,8 +446,8 @@ async function scrapeLiveSegmentStruktur(opts: {
     }
   }
 
-  if (!paket && us) {
-    paket = leeresPaket('sec_edgar')
+  if (!paket) {
+    paket = leeresPaket(us ? 'sec_edgar' : 'marketscreener')
   }
 
   paket = await ergaenzeBacklog(paket, {

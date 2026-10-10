@@ -628,7 +628,7 @@ function segmenteMitAnteilen(segmente: SecSegmentRoh[]): SecSegmentEintrag[] {
 
 function quartalPeriodeAusJahrEintrag(
   jahrTreffer: SecSegmentJahrEintrag | null | undefined,
-  qInfo: { jahr: number; quartal: number },
+  qInfo: { jahr: number; quartal: 1 | 2 | 3 | 4 },
   filing: QuartalFiling,
 ): SecSegmentQuartalPeriode | null {
   if (!jahrTreffer || jahrTreffer.segmente.length < 2) return null

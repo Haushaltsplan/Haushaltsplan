@@ -118,7 +118,7 @@ function mockPaket(opts: {
       sellTriggers: [],
       ampel: 'gelb',
       ampelHinweis: '',
-    } as FundamentaldatenPaket['mantra'],
+    } as unknown as FundamentaldatenPaket['mantra'],
     mantraMeta: {
       beta: 1,
       marketCapUsd: 400_000_000_000,
