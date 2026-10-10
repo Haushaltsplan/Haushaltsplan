@@ -11,10 +11,10 @@ export const ETSY_SEO_INFO = {
   },
   ranksAktualisieren: {
     was: 'Misst echte Etsy-Suchpositionen der fünf Kernbegriffe über Apify (nicht die schwache Open-API).',
-    wie: 'APIFY_API_TOKEN in .env.local + Vercel setzen. Einmal Actor omkar-cloud/etsy-scraper auf Apify „Try for free“. Dann Button — Lauf dauert oft 1–3 Minuten und kostet Free-Credits.',
+    wie: 'APIFY_API_TOKEN in .env.local + Vercel setzen. Actor omkar-cloud/etsy-scraper einmal „Try for free“. Button starten — Lauf braucht oft 1–3 Minuten (Status READY/RUNNING ist normal, wir warten bis fertig).',
     gut: 'Zellen zeigen S.1/#… oder „fehlt“ erst nach einer Probe mit ≥48 Treffern. Alle 1–2 Wochen reicht.',
     achtung:
-      'Ohne Token: Messung schlägt fehl (richtig so). Nicht täglich klicken — Free-Credits schonen. Alte API-„fehlt“-Zellen zählen nicht als Ergebnis.',
+      'Ohne Token: Messung schlägt fehl (richtig so). Nicht täglich klicken — Free-Credits schonen. Button nicht abbrechen, solange „Misst via Apify…“ läuft.',
   },
   rankZelle: {
     was: 'Eine Zelle = Position dieses Listings unter genau diesem Suchbegriff.',

@@ -266,7 +266,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
               onClick={() => void ranksAktualisieren()}
               className="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
             >
-              {rankBusy ? 'Misst via Apify…' : 'Ranks aktualisieren'}
+              {rankBusy ? 'Misst via Apify (1–3 Min)…' : 'Ranks aktualisieren'}
             </button>
             <EtsyInfoHint info={ETSY_SEO_INFO.ranksAktualisieren} label="Erklärung: Ranks aktualisieren" />
           </div>

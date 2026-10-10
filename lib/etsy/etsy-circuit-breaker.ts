@@ -83,3 +83,25 @@ export async function markiereEtsyApifyFehler(meldung = ''): Promise<void> {
 export async function markiereEtsyApifyOk(): Promise<void> {
   await speichere('apify', 0, 0, 'ok')
 }
+
+/**
+ * Frühere READY-/Queue-Fehlalarme (waitForFinish zu früh) nicht als 20-Min-Sperre behalten.
+ */
+export async function loeseApifyWarteschlangenFalschalarm(): Promise<boolean> {
+  try {
+    const { data } = await createSupabaseAdmin()
+      .from('etsy_circuit_breaker')
+      .select('geblockt_bis, letzte_meldung')
+      .eq('schluessel', 'apify')
+      .maybeSingle()
+    if (!data?.geblockt_bis) return false
+    const bis = Date.parse(String(data.geblockt_bis))
+    if (!Number.isFinite(bis) || bis <= Date.now()) return false
+    const msg = String(data.letzte_meldung || '')
+    if (!/READY|RUNNING|Queue\/Lauf|waitForFinish|Run Status/i.test(msg)) return false
+    await markiereEtsyApifyOk()
+    return true
+  } catch {
+    return false
+  }
+}
