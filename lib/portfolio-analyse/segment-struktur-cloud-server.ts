@@ -3,6 +3,7 @@
 import 'server-only'
 
 import type { SecSegmentHistoriePaket } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+import { segmentPaketPlausibel } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 const TABLE = 'segment_struktur_cache' as const
@@ -18,6 +19,7 @@ function istCloudKonfiguriert(): boolean {
 
 export async function ladeSegmentStrukturAusCloud(
   isin: string,
+  opts?: { erwarteterTicker?: string | null },
 ): Promise<SecSegmentHistoriePaket | null> {
   if (!istCloudKonfiguriert()) return null
   const key = isin.trim().toUpperCase()
@@ -25,7 +27,7 @@ export async function ladeSegmentStrukturAusCloud(
   try {
     const { data, error } = await createSupabaseAdmin()
       .from(TABLE)
-      .select('cache_version, paket_json, aktualisiert_am')
+      .select('cache_version, paket_json, aktualisiert_am, ticker')
       .eq('isin', key)
       .maybeSingle()
     if (error || !data) {
@@ -36,6 +38,7 @@ export async function ladeSegmentStrukturAusCloud(
       cache_version: number
       paket_json: SecSegmentHistoriePaket
       aktualisiert_am: string
+      ticker?: string | null
     }
     // Früher: strikte Version → jeder Fix invalidierte SEC-Caches → UI fiel auf StockAnalysis zurück.
     if (row.cache_version < MIN_ACCEPT_CLOUD_VERSION) return null
@@ -43,6 +46,21 @@ export async function ladeSegmentStrukturAusCloud(
     if (!Number.isFinite(age) || age > MAX_CLOUD_AGE_MS) return null
     const paket = row.paket_json
     if (!paket?.produkt && !paket?.geo && !paket?.backlog) return null
+
+    // Querzuordnung: gespeicherter Ticker ≠ Anfrage (z. B. MA-Paket unter falscher ISIN)
+    const erwartet = opts?.erwarteterTicker?.trim().toUpperCase().split('.')[0]
+    const gespeichert = row.ticker?.trim().toUpperCase().split('.')[0]
+    if (
+      erwartet &&
+      gespeichert &&
+      erwartet !== gespeichert &&
+      erwartet.replace(/-/g, '') !== gespeichert.replace(/-/g, '')
+    ) {
+      console.warn(
+        `[segment-struktur-cloud] Ticker-Mismatch für ${key}: cache=${gespeichert} erwartet=${erwartet}`,
+      )
+      return null
+    }
     return paket
   } catch (e) {
     console.warn('[segment-struktur-cloud] laden fehlgeschlagen', key, e)
@@ -60,6 +78,18 @@ export async function speichereSegmentStrukturInCloud(opts: {
   const key = opts.isin.trim().toUpperCase()
   if (key.length < 10) return
   if (!opts.paket.produkt && !opts.paket.geo && !opts.paket.backlog) return
+  if (
+    !segmentPaketPlausibel(opts.paket, {
+      ticker: opts.ticker,
+      name: opts.firmenname,
+      isin: key,
+    })
+  ) {
+    console.warn(
+      `[segment-struktur-cloud] Speichern verweigert (Plausibilität) ${key} ${opts.ticker ?? ''}`,
+    )
+    return
+  }
   try {
     const { error } = await createSupabaseAdmin()
       .from(TABLE)

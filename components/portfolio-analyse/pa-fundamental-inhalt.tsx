@@ -82,12 +82,21 @@ function fundamentalPaketPasstZurAnfrage(
   if (!paket?.ok || !anfrage) return false
   const aSym = tickerKern(anfrage.tickerOverride || anfrage.symbolYahoo)
   const pSym = tickerKern(paket.symbolYahoo || paket.ticker)
-  if (aSym && pSym && aSym === pSym) return true
-  const aName = anfrage.name?.trim().toLowerCase()
-  const pName = paket.firmenname?.trim().toLowerCase()
-  if (aName && pName && (aName === pName || aName.includes(pName) || pName.includes(aName))) {
+  // Alphabet A/C: GOOGL ↔ GOOG
+  const alphabetFamilie = (t: string) => t === 'GOOGL' || t === 'GOOG'
+  if (
+    aSym &&
+    pSym &&
+    (aSym === pSym ||
+      aSym.replace(/-/g, '') === pSym.replace(/-/g, '') ||
+      (alphabetFamilie(aSym) && alphabetFamilie(pSym)))
+  ) {
     return true
   }
+  // Name nur exakt — nie weiches includes (sonst Bleed zwischen Titeln)
+  const aName = anfrage.name?.trim().toLowerCase()
+  const pName = paket.firmenname?.trim().toLowerCase()
+  if (aName && pName && aName === pName) return true
   return false
 }
 
@@ -129,10 +138,12 @@ export function PaFundamentalInhalt({
     [anfrage, tickerOverride, frequenz],
   )
 
-  // Auswahl gewechselt → sofort Cache der neuen Firma oder null (kein Bleed der alten Firma).
+  // Auswahl gewechselt → sofort Local-Cache der neuen Firma (kein Bleed, kein Warten).
   const [datenKey, setDatenKey] = useState(selectionKey ?? '')
+  const [datenGebundenAn, setDatenGebundenAn] = useState(selectionKey ?? '')
   if ((selectionKey ?? '') !== datenKey) {
-    setDatenKey(selectionKey ?? '')
+    const key = selectionKey ?? ''
+    setDatenKey(key)
     setTickerOverride('')
     setUnterTab('uebersicht')
     setFrequenz('jahr')
@@ -140,14 +151,22 @@ export function PaFundamentalInhalt({
       ? { ...anfrage, tickerOverride: anfrage.tickerOverride ?? null, frequenz: 'jahr' as const }
       : null
     const cached = frisch ? ladeFundamentaldatenAusLocalCache(frisch) : null
-    setDaten(cached?.ok ? cached : null)
+    // Nur übernehmen wenn Paket wirklich zur Anfrage passt (nie MA unter GOOGL).
+    const okCache = Boolean(cached?.ok && fundamentalPaketPasstZurAnfrage(cached, frisch))
+    setDaten(okCache ? cached : null)
+    setDatenGebundenAn(key)
     setFehler(null)
-    setLaden(!cached?.ok)
+    setLaden(!okCache)
   }
 
-  // UI nur mit passendem Paket — verhindert Mastercard/TMO-Bleed beim Switch.
+  // HARD: Auswahl-Key UND Firmen-Match — sonst Bleed (Mastercard unter Alphabet).
   const daten =
-    datenRoh && fundamentalPaketPasstZurAnfrage(datenRoh, effektiveAnfrage) ? datenRoh : null
+    datenRoh &&
+    datenRoh.ok &&
+    datenGebundenAn === (selectionKey ?? '') &&
+    fundamentalPaketPasstZurAnfrage(datenRoh, effektiveAnfrage)
+      ? datenRoh
+      : null
 
   useEffect(() => {
     setUnterTab('uebersicht')
@@ -183,6 +202,7 @@ export function PaFundamentalInhalt({
     }
 
     const anfrageSnapshot = effektiveAnfrage
+    const keySnapshot = selectionKey ?? ''
     const ac = new AbortController()
     async function run() {
       setLaden(!cached?.ok)
@@ -190,11 +210,18 @@ export function PaFundamentalInhalt({
       try {
         const res = await ladeFundamentaldatenClient(anfrageSnapshot, { signal: ac.signal })
         if (ac.signal.aborted) return
-        if (!fundamentalPaketPasstZurAnfrage(res, anfrageSnapshot)) return
+        if ((selectionKey ?? '') !== keySnapshot) return
         setDaten(res)
+        setDatenGebundenAn(keySnapshot)
       } catch (e) {
         if (ac.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return
-        setDaten(cached?.ok ? cached : null)
+        if ((selectionKey ?? '') !== keySnapshot) return
+        if (cached?.ok) {
+          setDaten(cached)
+          setDatenGebundenAn(keySnapshot)
+        } else {
+          setDaten(null)
+        }
         setFehler(e instanceof Error ? e.message : 'Abruf fehlgeschlagen')
       } finally {
         if (!ac.signal.aborted) setLaden(false)
@@ -204,7 +231,7 @@ export function PaFundamentalInhalt({
     return () => {
       ac.abort()
     }
-  }, [effektiveAnfrage])
+  }, [effektiveAnfrage, selectionKey])
 
   const toggleChartZeile = useCallback((id: string) => {
     setChartAktiv((prev) => {

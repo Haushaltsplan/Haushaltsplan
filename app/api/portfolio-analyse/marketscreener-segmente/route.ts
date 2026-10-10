@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 
 import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { segmentPaketPlausibel } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import { ladeSegmentStrukturAusCloud } from '@/lib/portfolio-analyse/segment-struktur-cloud-server'
 import { ladeGescrapteSegmentStruktur } from '@/lib/portfolio-analyse/segment-struktur-scraper-server'
 import { repariereSegmentPaket } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
@@ -32,16 +33,38 @@ export async function GET(req: Request) {
     }) ?? isinRaw
 
   try {
-    // Firmenwechsel: Cloud sofort (auch ältere Cache-Versionen), kein Live-Scrape.
-    if (preferCache && !refresh && isin && isin.length >= 10) {
-      const cloud = await ladeSegmentStrukturAusCloud(isin)
-      if (cloud) {
-        const paket = repariereSegmentPaket(cloud) ?? cloud
-        return NextResponse.json(
-          { ok: true, paket, ausCache: true },
-          { headers: { 'Cache-Control': 'no-store' } },
-        )
+    const erwarteterTicker = (ticker || symbol || '').trim().toUpperCase().split('.')[0] || null
+
+    // Firmenwechsel / Normalfall: NUR Cloud — nie Live-Scrape (der braucht Minuten).
+    if (preferCache && !refresh) {
+      if (isin && isin.length >= 10) {
+        const cloud = await ladeSegmentStrukturAusCloud(isin, {
+          erwarteterTicker,
+        })
+        if (
+          cloud &&
+          segmentPaketPlausibel(cloud, {
+            ticker: erwarteterTicker,
+            name,
+            isin,
+          })
+        ) {
+          const paket = repariereSegmentPaket(cloud) ?? cloud
+          return NextResponse.json(
+            { ok: true, paket, ausCache: true },
+            { headers: { 'Cache-Control': 'no-store' } },
+          )
+        }
       }
+      return NextResponse.json(
+        {
+          ok: false,
+          paket: null,
+          ausCache: true,
+          fehler: 'Kein Segment-Cache für diesen Titel. Einmal „Aktualisieren“ tippen.',
+        },
+        { headers: { 'Cache-Control': 'no-store' } },
+      )
     }
 
     const paket = await ladeGescrapteSegmentStruktur({
@@ -51,13 +74,21 @@ export async function GET(req: Request) {
       ticker,
       refresh,
     })
-    if (!paket) {
+    if (
+      !paket ||
+      !segmentPaketPlausibel(paket, {
+        ticker: erwarteterTicker,
+        name,
+        isin,
+      })
+    ) {
       return NextResponse.json(
         {
           ok: false,
           paket: null,
-          fehler:
-            'Keine Segment- oder Backlog-Daten gefunden. Marketscreener blockiert Server-IPs — bitte einmal lokal `npx tsx scripts/seed-segment-struktur-cloud.ts` ausführen.',
+          fehler: paket
+            ? 'Segmentdaten passen nicht zu diesem Titel (Cache-Bleed verworfen).'
+            : 'Keine Segment- oder Backlog-Daten gefunden. Marketscreener blockiert Server-IPs — bitte einmal lokal `npx tsx scripts/seed-segment-struktur-cloud.ts` ausführen.',
         },
         { headers: { 'Cache-Control': 'no-store' } },
       )

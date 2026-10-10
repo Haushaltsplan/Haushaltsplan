@@ -11,6 +11,7 @@ import {
   PaStrukturOwnershipDonut,
 } from '@/components/portfolio-analyse/struktur/pa-struktur-visuals'
 import { PaMsSegmentHistorieLoader } from '@/components/portfolio-analyse/struktur/pa-ms-segment-historie-loader'
+import { segmentPaketPlausibel } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import {
   baueBeatBalken,
   baueOwnershipSegmente,
@@ -332,7 +333,16 @@ export function PaFundamentalStruktur({
         name={paket.firmenname}
         symbolYahoo={symbolYahoo ?? paket.symbolYahoo}
         ticker={ticker}
-        initial={liveSegmentPaket ?? erweitert.secSegmentHistorie}
+        initial={(() => {
+          const kandidat = liveSegmentPaket ?? erweitert.secSegmentHistorie
+          return segmentPaketPlausibel(kandidat, {
+            ticker: ticker || symbolYahoo || paket.symbolYahoo,
+            name: paket.firmenname,
+            isin,
+          })
+            ? kandidat
+            : null
+        })()}
         umsatzZeile={paket.zeilen.find((z) => z.id === 'umsatz') ?? null}
         layout="struktur"
       />

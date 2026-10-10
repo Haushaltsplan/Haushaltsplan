@@ -8,7 +8,8 @@ import { ergaenzeFcfRenditeKeyMetrics, ergaenzeFcfRenditeZeilen } from '@/lib/po
 
 const LS_KEY = 'pa-fundamentaldaten-v64'
 const LS_MAX_AGE_MS = 24 * 60 * 60 * 1000
-const LS_MAX_TITEL = 8
+/** Depot ∪ Watchlist — mehr Titel lokal halten, sonst jeder Switch = Server-Roundtrip. */
+const LS_MAX_TITEL = 48
 
 function anfrageCacheKey(anfrage: FundamentaldatenAnfrage): string {
   return [

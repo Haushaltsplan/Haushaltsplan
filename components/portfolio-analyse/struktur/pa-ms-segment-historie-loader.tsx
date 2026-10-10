@@ -6,6 +6,7 @@ import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { PaSecSegmentHistorie } from '@/components/portfolio-analyse/struktur/pa-sec-segment-historie'
 import type { SecSegmentHistoriePaket } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import type { FundamentalMetrikZeile } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { segmentPaketPlausibel } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import {
   baueUmsatzProJahrAusFinanzzeile,
   normalisiereSegmentPaketGegenUmsatz,
@@ -29,11 +30,21 @@ function hatSegmentInhalt(p: SecSegmentHistoriePaket | null | undefined): boolea
   return Boolean(p?.produkt?.jahre?.length || p?.geo?.jahre?.length || p?.backlog)
 }
 
-/** StockAnalysis-only nicht als „fertigen Cache“ zeigen — sonst blitzt SA vor SEC. */
-function istSofortZeigbar(p: SecSegmentHistoriePaket | null | undefined): boolean {
-  if (!hatSegmentInhalt(p)) return false
-  if (p!.quelle === 'stockanalysis') return false
-  return true
+function paketFuerTitel(
+  p: SecSegmentHistoriePaket | null | undefined,
+  opts: { ticker?: string | null; symbolYahoo?: string | null; name?: string; isin?: string | null },
+): SecSegmentHistoriePaket | null {
+  if (!hatSegmentInhalt(p)) return null
+  if (
+    !segmentPaketPlausibel(p, {
+      ticker: opts.ticker || opts.symbolYahoo,
+      name: opts.name,
+      isin: opts.isin,
+    })
+  ) {
+    return null
+  }
+  return p ?? null
 }
 
 export function PaMsSegmentHistorieLoader({
@@ -55,50 +66,54 @@ export function PaMsSegmentHistorieLoader({
   layout?: 'default' | 'struktur'
 }) {
   const ident = segmentIdentKey({ isin, symbolYahoo, ticker })
+  const titelOpts = { isin, ticker, symbolYahoo, name }
   const [paket, setPaket] = useState<SecSegmentHistoriePaket | null>(() =>
-    istSofortZeigbar(initial) ? (initial ?? null) : null,
+    paketFuerTitel(initial, titelOpts),
   )
-  const [laden, setLaden] = useState(false)
+  const [laden, setLaden] = useState(() => !paketFuerTitel(initial, titelOpts))
   const [fehler, setFehler] = useState<string | null>(null)
   const aktivIdent = useRef(ident)
 
-  // Unternehmenswechsel: alten Mix sofort verwerfen, dann ggf. neues Initial setzen.
+  // Unternehmenswechsel: alten Mix sofort verwerfen — nur plausibles Initial für DIESE Firma.
   useEffect(() => {
     aktivIdent.current = ident
     setFehler(null)
-    setPaket(istSofortZeigbar(initial) ? (initial ?? null) : null)
-  }, [ident, initial])
+    const ok = paketFuerTitel(initial, { isin, ticker, symbolYahoo, name })
+    if (ok) {
+      setPaket(ok)
+      setLaden(false)
+    } else {
+      setPaket(null)
+      setLaden(true)
+    }
+  }, [ident, initial, isin, ticker, symbolYahoo, name])
 
   useEffect(() => {
     if (!ident) {
       setFehler('Keine ISIN oder kein Symbol für Segment-Abruf.')
       setPaket(null)
+      setLaden(false)
       return
     }
 
-    const hatCache = istSofortZeigbar(initial)
     const ac = new AbortController()
     const requestIdent = ident
     aktivIdent.current = requestIdent
+    const initialOk = paketFuerTitel(initial, { isin, ticker, symbolYahoo, name })
 
     async function run() {
-      if (hatCache) {
-        setPaket(initial ?? null)
-        setLaden(false)
-        setFehler(null)
-      } else {
-        // Kein SEC/Mixed-Initial → warten (nicht StockAnalysis vorblitzen)
-        setPaket(null)
-        setLaden(true)
-        setFehler(null)
-      }
-
       const q = new URLSearchParams()
       if (isin) q.set('isin', isin)
       if (name) q.set('name', name)
       if (symbolYahoo) q.set('symbol', symbolYahoo)
       if (ticker) q.set('ticker', ticker)
-      if (hatCache) q.set('preferCache', '1')
+      q.set('preferCache', '1')
+
+      if (!initialOk) {
+        setPaket(null)
+        setLaden(true)
+        setFehler(null)
+      }
 
       try {
         const { data: sessionData } = await supabase.auth.getSession()
@@ -119,34 +134,32 @@ export function PaMsSegmentHistorieLoader({
           ausCache?: boolean
         }
         if (ac.signal.aborted || aktivIdent.current !== requestIdent) return
-        if (!res.ok) {
-          if (!hatCache) {
-            setPaket(null)
-            setFehler(
-              res.status === 401
-                ? 'Anmeldung erforderlich — bitte neu laden.'
-                : j.fehler ?? `Segment-Abruf fehlgeschlagen (HTTP ${res.status}).`,
-            )
-          }
-          return
-        }
-        if (j.ok && j.paket) {
+
+        const raw = j.ok ? j.paket : null
+        const checked = paketFuerTitel(raw, { isin, ticker, symbolYahoo, name })
+        if (checked) {
           const umsatzMap = baueUmsatzProJahrAusFinanzzeile(umsatzZeile)
           const norm =
             umsatzMap.size > 0
-              ? (normalisiereSegmentPaketGegenUmsatz(j.paket, umsatzMap) ?? j.paket)
-              : j.paket
-          if (aktivIdent.current !== requestIdent) return
+              ? (normalisiereSegmentPaketGegenUmsatz(checked, umsatzMap) ?? checked)
+              : checked
           setPaket(norm)
           setFehler(null)
-        } else if (!hatCache) {
+          return
+        }
+
+        if (!initialOk) {
           setPaket(null)
-          setFehler(j.fehler ?? 'Keine Segment- oder Backlog-Daten.')
+          setFehler(
+            res.status === 401
+              ? 'Anmeldung erforderlich — bitte neu laden.'
+              : j.fehler ?? 'Kein passender Segment-Cache. Einmal „Aktualisieren“ tippen.',
+          )
         }
       } catch (e) {
         if (ac.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return
         if (aktivIdent.current !== requestIdent) return
-        if (!hatCache) {
+        if (!initialOk) {
           setPaket(null)
           setFehler('Segment-Abruf fehlgeschlagen.')
         }

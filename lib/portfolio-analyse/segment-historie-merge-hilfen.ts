@@ -63,6 +63,49 @@ export function besteSegmentHistorieQuellen(
 const HEALTHCARE_SEGMENT = /united healthcare|optum|pharmacy benefit|health insurance/i
 const RAIL_SEGMENT = /railroad|freight rail/i
 
+/** Fingerprints — verhindern Mastercard-Mix unter Alphabet usw. */
+const FP_PAYMENT =
+  /payment network|domestic assessments|cross-border volume|value-added services and solutions|transaction processing|rebates and incentives/i
+const FP_GOOGLE = /google search|youtube|other bets|google cloud|google network|google services/i
+const FP_APPLE = /\biphone\b|\bipad\b|\bmac\b|wearables/i
+const FP_MSFT = /intelligent cloud|productivity and business|more personal computing|server products/i
+const FP_META = /family of apps|reality labs|facebook|instagram/i
+const FP_AMZN = /online stores|third-party seller|aws|amazon web services|advertising services/i
+const FP_NVDA = /compute & networking|graphics|data center|gaming|tegra/i
+const FP_TMO = /\bconsumables\b|\binstruments\b|life sciences solutions|specialty diagnostics/i
+
+type FingerprintRegel = {
+  tickers: string[]
+  muss: RegExp
+  fremd: RegExp[]
+}
+
+const FINGERPRINTS: FingerprintRegel[] = [
+  { tickers: ['MA', 'V'], muss: FP_PAYMENT, fremd: [FP_GOOGLE, FP_APPLE, FP_MSFT, FP_META, FP_AMZN] },
+  { tickers: ['GOOGL', 'GOOG'], muss: FP_GOOGLE, fremd: [FP_PAYMENT, FP_APPLE, FP_MSFT, FP_META] },
+  { tickers: ['AAPL'], muss: FP_APPLE, fremd: [FP_PAYMENT, FP_GOOGLE, FP_MSFT] },
+  { tickers: ['MSFT'], muss: FP_MSFT, fremd: [FP_PAYMENT, FP_GOOGLE, FP_APPLE] },
+  { tickers: ['META', 'FB'], muss: FP_META, fremd: [FP_PAYMENT, FP_GOOGLE, FP_APPLE] },
+  { tickers: ['AMZN'], muss: FP_AMZN, fremd: [FP_PAYMENT, FP_GOOGLE, FP_APPLE] },
+  { tickers: ['NVDA'], muss: FP_NVDA, fremd: [FP_PAYMENT, FP_GOOGLE, FP_APPLE] },
+  { tickers: ['TMO'], muss: FP_TMO, fremd: [FP_PAYMENT, FP_GOOGLE, FP_APPLE] },
+]
+
+function tickerKern(s: string | null | undefined): string {
+  return (s ?? '').trim().toUpperCase().split('.')[0]?.replace(/-/g, '') ?? ''
+}
+
+function alleSegmentNamen(paket: SecSegmentHistoriePaket): string[] {
+  const out: string[] = []
+  for (const j of paket.produkt?.jahre ?? []) {
+    for (const s of j.segmente) out.push(s.name)
+  }
+  for (const j of paket.geo?.jahre ?? []) {
+    for (const s of j.segmente) out.push(s.name)
+  }
+  return out
+}
+
 /**
  * Geo von MS oft aufgebläht, wenn Produkt bereits aus SA kommt (Non-Dec-FY).
  */
@@ -80,14 +123,16 @@ export function bereinigeGeoNachProdukt(
   return geo
 }
 
-/** Cloud-/Cache-Paket auf offensichtliche Querzuordnung prüfen. */
+/** Cloud-/Cache-/UI-Paket auf Querzuordnung prüfen (z. B. MA-Segmente unter GOOGL). */
 export function segmentPaketPlausibel(
   paket: SecSegmentHistoriePaket | null | undefined,
-  opts?: { ticker?: string | null; name?: string | null },
+  opts?: { ticker?: string | null; name?: string | null; isin?: string | null },
 ): boolean {
-  if (!paket?.produkt && !paket?.geo) return false
+  if (!paket?.produkt && !paket?.geo && !paket?.backlog) return false
 
-  const ticker = opts?.ticker?.trim().toUpperCase().split('.')[0]
+  const ticker = tickerKern(opts?.ticker)
+  const namen = alleSegmentNamen(paket)
+  const text = namen.join(' | ')
   const prodSegs = paket.produkt?.jahre.at(-1)?.segmente.map((s) => s.name) ?? []
   const prodSum = summeUmsatzMio(paket.produkt)
   const geoSum = summeUmsatzMio(paket.geo)
@@ -102,6 +147,28 @@ export function segmentPaketPlausibel(
   }
 
   if (prodSum > 0 && geoSum > 0 && geoSum / prodSum > 1.35) return false
+
+  if (ticker && text) {
+    for (const regel of FINGERPRINTS) {
+      const istDieser = regel.tickers.some((t) => tickerKern(t) === ticker)
+      if (istDieser) {
+        // Fremde Signatur → klarer Bleed
+        if (regel.fremd.some((re) => re.test(text))) return false
+        continue
+      }
+      // Anderer Ticker, aber klare Signatur dieses Emittenten → Bleed
+      if (regel.muss.test(text) && regel.fremd.every((re) => !re.test(text))) {
+        // z. B. GOOGL-Anfrage mit nur Payment-Network-Segmenten
+        const hatEigenes = FINGERPRINTS.find((r) => r.tickers.some((t) => tickerKern(t) === ticker))
+        if (hatEigenes && !hatEigenes.muss.test(text) && regel.muss.test(text)) return false
+      }
+    }
+
+    // Speziell: Payment-Netzwerk nie unter Nicht-Karten-Titeln
+    if (FP_PAYMENT.test(text) && !['MA', 'V'].includes(ticker)) return false
+    // Google-Segmente nie unter Nicht-Alphabet
+    if (FP_GOOGLE.test(text) && !['GOOGL', 'GOOG'].includes(ticker)) return false
+  }
 
   return true
 }

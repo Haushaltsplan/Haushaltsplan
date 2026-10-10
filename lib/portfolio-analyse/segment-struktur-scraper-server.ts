@@ -559,24 +559,26 @@ export async function ladeGescrapteSegmentStruktur(opts: {
   if (!isin && !opts.name?.trim() && !opts.symbolYahoo && !opts.ticker) return null
 
   if (!opts.refresh && isin && isin.length >= 10) {
-    const cloud = await ladeSegmentStrukturAusCloud(isin)
+    const cloud = await ladeSegmentStrukturAusCloud(isin, {
+      erwarteterTicker: opts.ticker ?? opts.symbolYahoo,
+    })
     if (
       cloud &&
       segmentPaketPlausibel(cloud, {
         ticker: opts.ticker ?? opts.symbolYahoo,
         name: opts.name,
+        isin,
       })
     ) {
+      // Schnellpfad: kein Macrotrends/Yahoo-Netzwerk — nur lokale Reparatur.
       const fixed = repariereSegmentPaket(cloud) ?? cloud
-      const norm = (await ergaenzeUmsatzAbgleich(fixed, { ...opts, isin })) ?? fixed
-      // Repair-on-Read: Alt-Version still und leise auf aktuelle Cache-Version heben
       void speichereSegmentStrukturInCloud({
         isin,
         ticker: opts.ticker ?? opts.symbolYahoo,
         firmenname: opts.name,
-        paket: norm,
+        paket: fixed,
       })
-      return norm
+      return fixed
     }
     if (cloud) {
       console.warn(`[segment-struktur] Cloud verworfen (Plausibilität) für ${isin}`)

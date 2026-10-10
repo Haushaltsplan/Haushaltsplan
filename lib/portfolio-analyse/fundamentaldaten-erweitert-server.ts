@@ -12,6 +12,7 @@ import { ladeEuUrdNotes } from '@/lib/portfolio-analyse/eu-urd-notes-server'
 import { ladeEarningsBeatMissHistorie } from '@/lib/portfolio-analyse/earnings-beat-miss-historie-server'
 import { ladeEuFundamentalKennzahlen } from '@/lib/portfolio-analyse/marketscreener-fundamental-kennzahlen-server'
 import { ladeFinvizKennzahlen } from '@/lib/portfolio-analyse/finviz-kennzahlen-server'
+import { segmentPaketPlausibel } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import { ladeGescrapteSegmentStruktur } from '@/lib/portfolio-analyse/segment-struktur-scraper-server'
 import { ladeSegmentStrukturAusCloud } from '@/lib/portfolio-analyse/segment-struktur-cloud-server'
 import { ladeSecStrukturExtraktion } from '@/lib/portfolio-analyse/sec-edgar-struktur-server'
@@ -106,7 +107,23 @@ export async function ladeFundamentaldatenErweitert(
   const segmentPromise = opts.segmentNurCloud
     ? isin.length >= 10
       ? (async (): Promise<SecSegmentHistoriePaket | null> => {
-          const cloud = await ladeSegmentStrukturAusCloud(isin)
+          const cloudRaw = await ladeSegmentStrukturAusCloud(isin, {
+            erwarteterTicker: ticker || symbol,
+          })
+          const cloud =
+            cloudRaw &&
+            segmentPaketPlausibel(cloudRaw, {
+              ticker: ticker || symbol,
+              name: opts.firmenname,
+              isin,
+            })
+              ? cloudRaw
+              : null
+          if (cloudRaw && !cloud) {
+            console.warn(
+              `[fundamental-erweitert] Segment-Cloud verworfen (Plausibilität) ${isin} ${ticker}`,
+            )
+          }
           // Backlog/RPO nachladen wenn Cloud-Eintrag ohne Backlog (Nachkauf-Scan)
           if (cloud?.backlog) return cloud
           const bare = (symbol.includes('.') ? symbol.split('.')[0]! : symbol || ticker).toUpperCase()

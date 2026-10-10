@@ -46,6 +46,7 @@ import { ladeFundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundament
 import { ladeEuFundamentalAusCloud } from '@/lib/portfolio-analyse/eu-fundamental-cloud-server'
 import { ladeMarketscreenerWatchlistPaket } from '@/lib/portfolio-analyse/marketscreener-fundamentaldaten-server'
 import { lookupIsinMetadaten } from '@/lib/portfolio-analyse/isin-lookup-server'
+import { segmentPaketPlausibel } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import {
   baueUmsatzProJahrAusFinanzzeile,
   normalisiereSegmentPaketGegenUmsatz,
@@ -800,13 +801,27 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
 
   let erweitertFinal = erweitert
   if (erweitert?.secSegmentHistorie) {
-    const umsatzMap = baueUmsatzProJahrAusFinanzzeile(merged.zeilen.find((z) => z.id === 'umsatz'))
-    if (umsatzMap.size > 0) {
-      const norm =
-        normalisiereSegmentPaketGegenUmsatz(erweitert.secSegmentHistorie, umsatzMap) ??
-        erweitert.secSegmentHistorie
-      if (norm !== erweitert.secSegmentHistorie) {
-        erweitertFinal = { ...erweitert, secSegmentHistorie: norm }
+    const tickerFuerSeg = (anfrage.tickerOverride || anfrage.symbolYahoo || '').trim()
+    if (
+      !segmentPaketPlausibel(erweitert.secSegmentHistorie, {
+        ticker: tickerFuerSeg,
+        name: anfrage.name,
+        isin: isinNorm ?? anfrage.isin,
+      })
+    ) {
+      console.warn(
+        `[fundamentaldaten] secSegmentHistorie verworfen (Bleed) ${isinNorm ?? ''} ${tickerFuerSeg}`,
+      )
+      erweitertFinal = { ...erweitert, secSegmentHistorie: null }
+    } else {
+      const umsatzMap = baueUmsatzProJahrAusFinanzzeile(merged.zeilen.find((z) => z.id === 'umsatz'))
+      if (umsatzMap.size > 0) {
+        const norm =
+          normalisiereSegmentPaketGegenUmsatz(erweitert.secSegmentHistorie, umsatzMap) ??
+          erweitert.secSegmentHistorie
+        if (norm !== erweitert.secSegmentHistorie) {
+          erweitertFinal = { ...erweitert, secSegmentHistorie: norm }
+        }
       }
     }
   }
