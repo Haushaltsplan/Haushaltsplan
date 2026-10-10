@@ -1,4 +1,4 @@
-/** Orchestrierung: Marketscreener + StockAnalysis + SEC-Produkt-Fallback + Backlog. */
+/** Orchestrierung: US → SEC first; EU → Marketscreener + StockAnalysis; Backlog. */
 
 import 'server-only'
 
@@ -8,7 +8,12 @@ import type {
   SecSegmentHistoriePaket,
   SecZusatzRisikoFelder,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
-import { isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { brauchtEuGuVFallback } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
+import {
+  analyseTickerFuerPosition,
+  isinKenntnis,
+  loesePortfolioIsin,
+} from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   baueUmsatzProJahrAusMacrotrends,
   loeseMacrotrendsIdent,
@@ -22,7 +27,11 @@ import { ladeMarketscreenerSegmentHistorie } from '@/lib/portfolio-analyse/marke
 import { ladeStockanalysisBacklogHistorie } from '@/lib/portfolio-analyse/stockanalysis-backlog-server'
 import { ladeSecBacklogHistorie } from '@/lib/portfolio-analyse/sec-edgar-backlog-server'
 import { cikFuerTicker } from '@/lib/portfolio-analyse/sec-edgar-common-server'
-import { besteSegmentHistorieQuellen, bereinigeGeoNachProdukt, segmentPaketPlausibel } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
+import {
+  besteSegmentHistorieQuellen,
+  bereinigeGeoNachProdukt,
+  segmentPaketPlausibel,
+} from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import { ladeSecSegmentHistorie } from '@/lib/portfolio-analyse/sec-edgar-segment-historie-server'
 import { ladeStockanalysisSegmentPaket } from '@/lib/portfolio-analyse/stockanalysis-segment-server'
 import { normalisiereSegmentPaketGegenUmsatz } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
@@ -43,6 +52,34 @@ function usTicker(opts: {
   for (const sym of [opts.ticker, opts.symbolYahoo]) {
     const t = sym?.trim().toUpperCase()
     if (t && !t.includes('.')) return t.split('.')[0]!
+  }
+  return null
+}
+
+/** Bare-US-Ticker für SEC (inkl. macrotrendsTicker / Analyse-Ticker). */
+function secTickerFuerPosition(opts: {
+  isin?: string | null
+  name: string
+  symbolYahoo?: string | null
+  ticker?: string | null
+}): string | null {
+  const isin = loesePortfolioIsin({
+    isin: opts.isin,
+    symbolYahoo: opts.symbolYahoo,
+    ticker: opts.ticker,
+    firmenname: opts.name,
+  })
+  const k = isin ? isinKenntnis(isin) : null
+  const kandidaten = [
+    k?.macrotrendsTicker?.trim().toUpperCase(),
+    analyseTickerFuerPosition(isin, opts.symbolYahoo ?? opts.ticker),
+    usTicker(opts),
+    opts.ticker?.trim().toUpperCase().split('.')[0],
+    opts.symbolYahoo?.trim().toUpperCase().split('.')[0],
+  ]
+  for (const t of kandidaten) {
+    const bare = t?.trim().toUpperCase()
+    if (bare && !bare.includes('.') && /^[A-Z0-9]{1,6}$/.test(bare)) return bare
   }
   return null
 }
@@ -70,6 +107,28 @@ function macrotrendsTickerFuerUmsatz(opts: {
   )
 }
 
+/**
+ * US-Pfad wie GuV: kein EU-Fallback und resolvierbarer Bare-Ticker.
+ * Ohne ISIN, aber Bare-US-Ticker → ebenfalls SEC-first (CIK-Check später).
+ */
+function istUsSegmentPfad(opts: {
+  isin?: string | null
+  name: string
+  symbolYahoo?: string | null
+  ticker?: string | null
+}): { us: boolean; ticker: string | null } {
+  const isin = loesePortfolioIsin({
+    isin: opts.isin,
+    symbolYahoo: opts.symbolYahoo,
+    ticker: opts.ticker,
+    firmenname: opts.name,
+  })
+  const ticker = secTickerFuerPosition({ ...opts, isin })
+  if (!ticker) return { us: false, ticker: null }
+  if (isin && brauchtEuGuVFallback(isin)) return { us: false, ticker }
+  return { us: true, ticker }
+}
+
 function leeresPaket(quelle: SecSegmentHistoriePaket['quelle'] = 'marketscreener'): SecSegmentHistoriePaket {
   return {
     produkt: null,
@@ -83,6 +142,40 @@ function leeresPaket(quelle: SecSegmentHistoriePaket['quelle'] = 'marketscreener
     geladenAm: new Date().toISOString(),
     quelle,
   }
+}
+
+function anzahlProduktSegmente(historie: SecSegmentHistorie | null | undefined): number {
+  return historie?.jahre.at(-1)?.segmente.length ?? 0
+}
+
+function anzahlGeoSegmente(historie: SecSegmentHistorie | null | undefined): number {
+  return historie?.jahre.at(-1)?.segmente.length ?? 0
+}
+
+/** SEC-Achse brauchbar: ≥2 Segmente im jüngsten Jahr oder ≥2 Jahre Historie. */
+function secAchseBrauchbar(historie: SecSegmentHistorie | null | undefined): boolean {
+  if (!historie?.jahre.length) return false
+  if ((historie.jahre.at(-1)?.segmente.length ?? 0) >= 2) return true
+  return historie.anzahlJahre >= 2 && historie.jahre.some((j) => j.segmente.length >= 2)
+}
+
+function secPaketBrauchbar(sec: SecSegmentHistoriePaket | null): boolean {
+  if (!sec) return false
+  if (!sec.produkt && !sec.geo) return false
+  return (
+    secAchseBrauchbar(sec.produkt) ||
+    secAchseBrauchbar(sec.geo) ||
+    segmentPaketPlausibel(sec)
+  )
+}
+
+function auslandAnteilAusGeo(geo: SecSegmentHistorie | null): number | null {
+  if (!geo?.jahre.length) return null
+  const seg = geo.jahre[geo.jahre.length - 1]!.segmente
+  const intl = seg.find((s) =>
+    /non.?us|other countr|international|rest of|europe|asia|emea|abroad|foreign|apac/i.test(s.name),
+  )
+  return intl?.anteilPct ?? null
 }
 
 function mergePakete(
@@ -107,16 +200,7 @@ function mergePakete(
   else if (!msHatProd && !msHatGeo && (saHatProd || saHatGeo)) quelle = 'stockanalysis'
 
   const berichtJahr = Math.max(produkt?.juengstesJahr ?? 0, geo?.juengstesJahr ?? 0)
-  const auslandAnteil =
-    geo?.jahre.length && geo.jahre[geo.jahre.length - 1]
-      ? (() => {
-          const seg = geo.jahre[geo.jahre.length - 1]!.segmente
-          const intl = seg.find((s) =>
-            /non.?us|other countr|international|rest of|europe|asia|emea|abroad|foreign|apac/i.test(s.name),
-          )
-          return intl?.anteilPct ?? null
-        })()
-      : null
+  const auslandAnteil = auslandAnteilAusGeo(geo)
 
   return {
     produkt: produkt ?? null,
@@ -131,6 +215,73 @@ function mergePakete(
     anzahl10k: Math.max(produkt?.anzahlJahre ?? 0, geo?.anzahlJahre ?? 0, ms?.anzahl10k ?? 0),
     geladenAm: new Date().toISOString(),
     quelle,
+  }
+}
+
+/**
+ * SEC-Paket; MS/SA nur wenn eine Achse bei SEC komplett fehlt.
+ * Produkt und Geo (Ländermix) kommen bevorzugt beide aus SEC EDGAR.
+ */
+function mergeSecMitMssa(
+  sec: SecSegmentHistoriePaket,
+  mssa: SecSegmentHistoriePaket | null,
+): SecSegmentHistoriePaket {
+  const prodSecOk = secAchseBrauchbar(sec.produkt)
+  const geoSecOk = secAchseBrauchbar(sec.geo)
+
+  const produkt = prodSecOk ? sec.produkt : (mssa?.produkt ?? sec.produkt)
+  const geo = geoSecOk ? sec.geo : (mssa?.geo ?? sec.geo)
+
+  const prodAusMssa = !prodSecOk && !!mssa?.produkt && anzahlProduktSegmente(mssa.produkt) >= 1
+  const geoAusMssa = !geoSecOk && !!mssa?.geo && anzahlGeoSegmente(mssa.geo) >= 1
+  const hatSecAchse = prodSecOk || geoSecOk
+
+  // mixed = SEC + MS/SA-Ergänzung (UI: „SEC EDGAR + …“); sonst SEC oder reines MS/SA
+  let quelle: SecSegmentHistoriePaket['quelle'] = 'sec_edgar'
+  const secErgaenzt = hatSecAchse && (prodAusMssa || geoAusMssa)
+  if (secErgaenzt) quelle = 'mixed'
+  else if (!hatSecAchse && mssa) quelle = mssa.quelle
+
+  const auslandAnteil =
+    auslandAnteilAusGeo(geo) ??
+    sec.zusatz.auslandsumsatzAnteilPct ??
+    mssa?.zusatz.auslandsumsatzAnteilPct ??
+    null
+
+  const berichtJahr = Math.max(
+    produkt?.juengstesJahr ?? 0,
+    geo?.juengstesJahr ?? 0,
+    sec.berichtJahr ?? 0,
+    mssa?.berichtJahr ?? 0,
+  )
+
+  return {
+    produkt: produkt ?? null,
+    geo: geo ?? null,
+    kategorien: sec.kategorien.length > 0 ? sec.kategorien : (mssa?.kategorien ?? []),
+    zusatz: {
+      ...LEER_ZUSATZ,
+      ...mssa?.zusatz,
+      ...sec.zusatz,
+      auslandsumsatzAnteilPct: auslandAnteil,
+      mitarbeiterAnzahl: sec.zusatz.mitarbeiterAnzahl ?? mssa?.zusatz.mitarbeiterAnzahl ?? null,
+      hauptkunden:
+        sec.zusatz.hauptkunden.length > 0
+          ? sec.zusatz.hauptkunden
+          : (mssa?.zusatz.hauptkunden ?? []),
+    },
+    backlog: sec.backlog ?? mssa?.backlog ?? null,
+    kennzahlen: sec.kennzahlen ?? mssa?.kennzahlen ?? null,
+    berichtJahr: berichtJahr > 0 ? berichtJahr : null,
+    anzahl10k: Math.max(
+      produkt?.anzahlJahre ?? 0,
+      geo?.anzahlJahre ?? 0,
+      sec.anzahl10k,
+      mssa?.anzahl10k ?? 0,
+    ),
+    geladenAm: new Date().toISOString(),
+    quelle,
+    ...(secErgaenzt ? { secErgaenzt: true } : {}),
   }
 }
 
@@ -156,7 +307,7 @@ async function ergaenzeBacklog(
   },
 ): Promise<SecSegmentHistoriePaket> {
   if (paket.backlog && !opts.refresh) return paket
-  const ticker = usTicker(opts)
+  const ticker = usTicker(opts) ?? secTickerFuerPosition({ ...opts, name: '' })
   const [mb, sa] = await Promise.all([
     ticker ? ladeMarketbeatBacklogHistorie(ticker, opts.refresh) : Promise.resolve(null),
     ladeStockanalysisBacklogHistorie({ ...opts, refresh: opts.refresh }),
@@ -181,14 +332,11 @@ async function ergaenzeBacklog(
   return { ...paket, backlog }
 }
 
-function anzahlProduktSegmente(historie: SecSegmentHistorie | null | undefined): number {
-  return historie?.jahre.at(-1)?.segmente.length ?? 0
-}
-
 function brauchtSecProduktFallback(paket: SecSegmentHistoriePaket | null): boolean {
   return anzahlProduktSegmente(paket?.produkt ?? null) < 2
 }
 
+/** EU-Notfall: SEC nur wenn MS/SA &lt; 2 Produktsegmente. */
 async function ergaenzeSecProduktFallback(
   paket: SecSegmentHistoriePaket,
   ticker: string,
@@ -206,8 +354,14 @@ async function ergaenzeSecProduktFallback(
   const geo = paket.geo ?? sec.geo ?? null
   const quelleVorher = paket.quelle
   let quelle: SecSegmentHistoriePaket['quelle'] = 'sec_edgar'
-  if (geo && quelleVorher !== 'stockanalysis') quelle = 'mixed'
-  else if (quelleVorher === 'mixed') quelle = 'mixed'
+  let secErgaenzt = false
+  if (geo && (quelleVorher === 'marketscreener' || quelleVorher === 'stockanalysis' || quelleVorher === 'mixed')) {
+    quelle = 'mixed'
+    secErgaenzt = true
+  } else if (quelleVorher === 'mixed') {
+    quelle = 'mixed'
+    secErgaenzt = true
+  }
 
   const berichtJahr = Math.max(
     sec.produkt.juengstesJahr ?? 0,
@@ -231,7 +385,33 @@ async function ergaenzeSecProduktFallback(
     berichtJahr: berichtJahr > 0 ? berichtJahr : paket.berichtJahr,
     anzahl10k: Math.max(sec.produkt.anzahlJahre, geo?.anzahlJahre ?? 0, paket.anzahl10k, sec.anzahl10k),
     quelle,
+    ...(secErgaenzt ? { secErgaenzt: true } : {}),
   }
+}
+
+async function ladeMssaPaket(opts: {
+  isin?: string | null
+  name: string
+  symbolYahoo?: string | null
+  ticker?: string | null
+  refresh?: boolean
+}): Promise<SecSegmentHistoriePaket | null> {
+  const [ms, sa] = await Promise.all([
+    ladeMarketscreenerSegmentHistorie({
+      isin: opts.isin,
+      name: opts.name,
+      symbolYahoo: opts.symbolYahoo,
+      ticker: opts.ticker,
+      refresh: opts.refresh,
+    }),
+    ladeStockanalysisSegmentPaket({
+      isin: opts.isin,
+      symbolYahoo: opts.symbolYahoo,
+      ticker: opts.ticker,
+      refresh: opts.refresh,
+    }),
+  ])
+  return mergePakete(ms, sa)
 }
 
 async function ergaenzeUmsatzAbgleich(
@@ -288,28 +468,65 @@ async function scrapeLiveSegmentStruktur(opts: {
     firmenname: opts.name,
   })
 
-  const [ms, sa] = await Promise.all([
-    ladeMarketscreenerSegmentHistorie({
+  const { us, ticker: secTicker } = istUsSegmentPfad({ ...opts, isin })
+
+  let paket: SecSegmentHistoriePaket | null = null
+
+  if (us && secTicker) {
+    let cikOk = false
+    try {
+      cikOk = Boolean(await cikFuerTicker(secTicker))
+    } catch {
+      cikOk = false
+    }
+
+    if (cikOk) {
+      let sec: SecSegmentHistoriePaket | null = null
+      try {
+        sec = await ladeSecSegmentHistorie(secTicker)
+      } catch {
+        sec = null
+      }
+
+      if (secPaketBrauchbar(sec) && sec) {
+        const prodOk = secAchseBrauchbar(sec.produkt)
+        const geoOk = secAchseBrauchbar(sec.geo)
+        if (prodOk && geoOk) {
+          // Produkt + Ländermix beide aus SEC
+          paket = { ...sec, quelle: 'sec_edgar', geladenAm: new Date().toISOString() }
+        } else {
+          // Nur wirklich fehlende Achse aus MS/SA — vorhandene SEC-Achse behalten
+          const mssa = await ladeMssaPaket({
+            isin: isin ?? opts.isin,
+            name: opts.name,
+            symbolYahoo: opts.symbolYahoo,
+            ticker: opts.ticker,
+            refresh: opts.refresh,
+          })
+          paket = mergeSecMitMssa(sec, mssa)
+        }
+      }
+    }
+  }
+
+  // EU oder SEC leer/ohne CIK → MS + SA
+  if (!paket) {
+    paket = await ladeMssaPaket({
       isin: isin ?? opts.isin,
       name: opts.name,
       symbolYahoo: opts.symbolYahoo,
       ticker: opts.ticker,
       refresh: opts.refresh,
-    }),
-    ladeStockanalysisSegmentPaket({
-      isin: isin ?? opts.isin,
-      symbolYahoo: opts.symbolYahoo,
-      ticker: opts.ticker,
-      refresh: opts.refresh,
-    }),
-  ])
+    })
+    if (!paket) paket = leeresPaket()
 
-  let paket = mergePakete(ms, sa)
-  if (!paket) paket = leeresPaket()
-
-  const ticker = usTicker(opts)
-  if (ticker) {
-    paket = await ergaenzeSecProduktFallback(paket, ticker)
+    // EU-Notfall: SEC-Produkt nur wenn MS/SA dünn und Bare-Ticker vorhanden
+    if (!us) {
+      const fallbackTicker = secTicker ?? usTicker(opts)
+      if (fallbackTicker) {
+        paket = await ergaenzeSecProduktFallback(paket, fallbackTicker)
+      }
+    }
   }
 
   paket = await ergaenzeBacklog(paket, { ...opts, isin, refresh: opts.refresh })

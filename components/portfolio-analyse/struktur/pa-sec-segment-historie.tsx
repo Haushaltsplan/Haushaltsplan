@@ -56,55 +56,184 @@ function margeClass(pct: number): string {
   return 'text-[var(--app-text-muted)]'
 }
 
-function barBreite(anzahl: number): number {
-  if (anzahl > 12) return 20
-  if (anzahl > 8) return 26
-  if (anzahl > 6) return 32
-  return 40
+const CHART_MAX_SEGMENTE = 6
+const ANDERE_NAME = 'Andere'
+const ANDERE_FARBE = '#64748b'
+
+/** Top-N Segmente nach jüngstem Mix; Rest als „Andere“ (nur Anzeige). */
+function chartSegmentNamen(hist: SecSegmentHistorie, max = CHART_MAX_SEGMENTE): string[] {
+  const juengst = hist.jahre.at(-1)?.segmente ?? []
+  const ranked = [...juengst]
+    .filter((s) => (s.anteilPct ?? 0) > 0)
+    .sort((a, b) => (b.anteilPct ?? 0) - (a.anteilPct ?? 0))
+  const top = ranked.slice(0, max).map((s) => s.name)
+  const hatAndere = ranked.length > top.length
+  return hatAndere ? [...top, ANDERE_NAME] : top
 }
 
-function PaSecSegmentStackedChart({ hist, farben }: { hist: SecSegmentHistorie; farben: string[] }) {
-  const namen = useMemo(() => alleSegmentNamen(hist), [hist])
-  const jahre = hist.jahre.map((j) => j.jahr)
-  const barW = barBreite(jahre.length)
-  const gap = jahre.length > 10 ? 6 : 12
-  const chartH = 220
-  const padL = 4
-  const padB = 28
-  const width = Math.max(360, padL + jahre.length * (barW + gap) + 12)
+function chartSegmenteFuerJahr(
+  hist: SecSegmentHistorie,
+  jahr: number,
+  chartNamen: string[],
+): { name: string; anteilPct: number; umsatzMio: number | null }[] {
+  const raw = hist.jahre.find((j) => j.jahr === jahr)?.segmente ?? []
+  const topSet = new Set(chartNamen.filter((n) => n !== ANDERE_NAME))
+  const out: { name: string; anteilPct: number; umsatzMio: number | null }[] = []
+  let anderePct = 0
+  let andereMio = 0
+  let andereHatMio = false
+
+  for (const s of raw) {
+    const pct = s.anteilPct ?? 0
+    if (pct <= 0) continue
+    if (topSet.has(s.name)) {
+      out.push({ name: s.name, anteilPct: pct, umsatzMio: s.umsatzMio ?? null })
+    } else if (chartNamen.includes(ANDERE_NAME)) {
+      anderePct += pct
+      if (s.umsatzMio != null) {
+        andereMio += s.umsatzMio
+        andereHatMio = true
+      }
+    }
+  }
+  if (chartNamen.includes(ANDERE_NAME) && anderePct > 0.05) {
+    out.push({
+      name: ANDERE_NAME,
+      anteilPct: Math.round(anderePct * 10) / 10,
+      umsatzMio: andereHatMio ? andereMio : null,
+    })
+  }
+  return out.sort((a, b) => chartNamen.indexOf(a.name) - chartNamen.indexOf(b.name))
+}
+
+function farbeFuerChartSegment(name: string, chartNamen: string[], farben: string[]): string {
+  if (name === ANDERE_NAME) return ANDERE_FARBE
+  const i = chartNamen.indexOf(name)
+  return farben[Math.max(0, i) % farben.length]!
+}
+
+function PaSecSegmentStackedChart({
+  hist,
+  farben,
+  chartNamen,
+}: {
+  hist: SecSegmentHistorie
+  farben: string[]
+  chartNamen: string[]
+}) {
+  const jahre = hist.jahre.map((j) => j.jahr).slice(-10)
+  const n = jahre.length
+  const barW = n > 6 ? 18 : n > 4 ? 22 : 26
+  const gap = n > 6 ? 5 : 8
+  const chartH = 112
+  const padL = 2
+  const padB = 22
+  const width = padL + n * (barW + gap) - gap + 4
 
   return (
-    <div className="overflow-x-auto">
-      <svg width={width} height={chartH + padB} viewBox={`0 0 ${width} ${chartH + padB}`} className="block min-w-full">
+    <div className="flex justify-center sm:justify-start">
+      <svg
+        width={width}
+        height={chartH + padB}
+        viewBox={`0 0 ${width} ${chartH + padB}`}
+        className="block max-w-full"
+        role="img"
+        aria-label="Umsatzmix nach Jahr"
+      >
         {jahre.map((jahr, ji) => {
           const x = padL + ji * (barW + gap)
-          const segmente = [...(hist.jahre.find((j) => j.jahr === jahr)?.segmente ?? [])]
-            .filter((s) => (s.anteilPct ?? 0) > 0)
-            .sort((a, b) => namen.indexOf(a.name) - namen.indexOf(b.name))
+          const segmente = chartSegmenteFuerJahr(hist, jahr, chartNamen)
           let yAcc = chartH
           return (
             <g key={jahr}>
               {segmente.map((s) => {
-                const pct = s.anteilPct ?? 0
-                const h = (pct / 100) * chartH
+                const h = Math.max(0.5, (s.anteilPct / 100) * chartH)
                 yAcc -= h
-                const farbe = farben[namen.indexOf(s.name) % farben.length]!
+                const farbe = farbeFuerChartSegment(s.name, chartNamen, farben)
                 return (
-                  <rect key={s.name} x={x} y={yAcc} width={barW} height={h} fill={farbe} opacity={0.9} rx={1}>
+                  <rect
+                    key={s.name}
+                    x={x}
+                    y={yAcc}
+                    width={barW}
+                    height={h}
+                    fill={farbe}
+                    opacity={0.92}
+                    rx={2}
+                  >
                     <title>
-                      {jahr}: {s.name} — {pct.toFixed(1)} % ({s.umsatzMio?.toLocaleString('de-DE')} Mio.)
+                      {jahr}: {s.name} — {s.anteilPct.toFixed(1)} %
+                      {s.umsatzMio != null ? ` (${s.umsatzMio.toLocaleString('de-DE')} Mio.)` : ''}
                     </title>
                   </rect>
                 )
               })}
-              <text x={x + barW / 2} y={chartH + 16} textAnchor="middle" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
-                {jahr}
+              <text
+                x={x + barW / 2}
+                y={chartH + 14}
+                textAnchor="middle"
+                className="fill-[var(--app-text-muted)]"
+                style={{ fontSize: 9 }}
+              >
+                {String(jahr).slice(2)}
               </text>
             </g>
           )
         })}
-        <line x1={padL} y1={chartH} x2={width - 8} y2={chartH} stroke="var(--app-border-strong)" strokeOpacity={0.5} />
+        <line
+          x1={padL}
+          y1={chartH}
+          x2={width - 2}
+          y2={chartH}
+          stroke="var(--app-border-strong)"
+          strokeOpacity={0.4}
+        />
       </svg>
+    </div>
+  )
+}
+
+function PaAktuellerMixListe({
+  hist,
+  farben,
+  chartNamen,
+}: {
+  hist: SecSegmentHistorie
+  farben: string[]
+  chartNamen: string[]
+}) {
+  const jahr = hist.juengstesJahr
+  const segmente = chartSegmenteFuerJahr(hist, jahr, chartNamen).sort(
+    (a, b) => b.anteilPct - a.anteilPct,
+  )
+  if (segmente.length === 0) return null
+
+  return (
+    <div className="space-y-2.5">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
+        Mix {jahr}
+      </p>
+      <ul className="space-y-2">
+        {segmente.map((s) => {
+          const farbe = farbeFuerChartSegment(s.name, chartNamen, farben)
+          return (
+            <li key={s.name}>
+              <div className="mb-0.5 flex items-baseline justify-between gap-2 text-[11px]">
+                <span className="min-w-0 truncate text-[var(--app-text)]">{s.name}</span>
+                <span className="shrink-0 tabular-nums font-semibold text-[var(--app-text)]">
+                  {s.anteilPct.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, s.anteilPct)}%`, backgroundColor: farbe }}
+                />
+              </div>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }
@@ -667,74 +796,79 @@ function PaSecSegmentEinzeljahr({
   titel: string
 }) {
   const jahr = hist.juengstesJahr
-  const segmente = hist.jahre.find((j) => j.jahr === jahr)?.segmente ?? []
-  const farben = segmentFarben(segmente.length)
-  const donut = segmente.map((s, i) => ({
-    name: s.name,
-    anteilPct: s.anteilPct,
-    farbe: farben[i]!,
-  }))
+  const alle = [...(hist.jahre.find((j) => j.jahr === jahr)?.segmente ?? [])]
+    .filter((s) => (s.anteilPct ?? 0) > 0)
+    .sort((a, b) => (b.anteilPct ?? 0) - (a.anteilPct ?? 0))
+  const farben = segmentFarben(Math.min(alle.length, CHART_MAX_SEGMENTE))
+  const top = alle.slice(0, CHART_MAX_SEGMENTE)
+  const rest = alle.slice(CHART_MAX_SEGMENTE)
+  const anderePct = rest.reduce((a, s) => a + (s.anteilPct ?? 0), 0)
+  const anzeige = [
+    ...top.map((s, i) => ({ name: s.name, anteilPct: s.anteilPct, farbe: farben[i]! })),
+    ...(anderePct > 0.05
+      ? [{ name: ANDERE_NAME, anteilPct: Math.round(anderePct * 10) / 10, farbe: ANDERE_FARBE }]
+      : []),
+  ]
 
   return (
-    <div className="space-y-4">
-      <p className="text-xs text-[var(--app-text-muted)]">
-        Geschäftsjahr {jahr} · Marketscreener
-      </p>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <PaStrukturSegmentDonut segmente={donut} titel={titel} />
-        <div className={appTableScrollClassName}>
-          <table className="app-data-table min-w-full text-left text-xs">
-            <thead className="text-[var(--app-text-muted)]">
-              <tr>
-                <th className="pb-2 pr-3 font-medium">Segment</th>
-                <th className="pb-2 pr-3 text-right font-medium">Umsatz (Mio.)</th>
-                <th className="pb-2 text-right font-medium">Anteil</th>
-              </tr>
-            </thead>
-            <tbody>
-              {segmente.map((s, i) => (
-                <tr key={s.name} className="border-t border-[var(--app-border)]/40">
-                  <td className="py-2 pr-3">
-                    <span
-                      className="mr-2 inline-block h-2 w-2 rounded-sm"
-                      style={{ backgroundColor: farben[i] }}
-                    />
-                    <span className="text-[var(--app-text)]">{s.name}</span>
-                  </td>
-                  <td className="py-2 pr-3 text-right tabular-nums text-[var(--app-text-muted)]">
-                    {s.umsatzMio != null ? s.umsatzMio.toLocaleString('de-DE') : '–'}
-                  </td>
-                  <td className="py-2 text-right tabular-nums font-medium text-[var(--app-text)]">
-                    {s.anteilPct != null ? `${s.anteilPct.toFixed(1)} %` : '–'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+    <div className="rounded-xl border border-[var(--app-border)]/50 bg-[var(--app-surface-muted)]/20 p-3 sm:p-4">
+      <PaStrukturSegmentDonut segmente={anzeige} titel={titel} />
+      <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">Geschäftsjahr {jahr}</p>
     </div>
   )
 }
 
-function PaUmsatzmixBlock({ hist, quelleLabel }: { hist: SecSegmentHistorie; quelleLabel: string }) {
-  const farben = segmentFarben(alleSegmentNamen(hist).length)
+function PaUmsatzmixBlock({ hist }: { hist: SecSegmentHistorie }) {
+  const chartNamen = useMemo(() => chartSegmentNamen(hist), [hist])
+  const farben = useMemo(
+    () => segmentFarben(chartNamen.filter((n) => n !== ANDERE_NAME).length),
+    [chartNamen],
+  )
+  const tabellenFarben = useMemo(
+    () => segmentFarben(alleSegmentNamen(hist).length),
+    [hist],
+  )
+  const [detailsOffen, setDetailsOffen] = useState(false)
 
   return (
-    <div className="space-y-4">
-      <p className="text-xs text-[var(--app-text-muted)]">
-        {hist.anzahlJahre} Jahre ({hist.aeltestesJahr}–{hist.juengstesJahr}) · {quelleLabel}
-      </p>
-      <PaSecSegmentStackedChart hist={hist} farben={farben} />
-      <div className="flex flex-wrap gap-x-3 gap-y-1">
-        {alleSegmentNamen(hist).map((name, i) => (
-          <span key={name} className="flex items-center gap-1 text-[10px] text-[var(--app-text-muted)]">
-            <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: farben[i % farben.length] }} />
-            {name}
-          </span>
-        ))}
+    <div className="space-y-3">
+      <div className="grid gap-4 rounded-xl border border-[var(--app-border)]/50 bg-[var(--app-surface-muted)]/20 p-3 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] sm:gap-5 sm:p-4">
+        <div className="min-w-0 space-y-2">
+          <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
+            Verlauf {hist.aeltestesJahr}–{hist.juengstesJahr}
+          </p>
+          <PaSecSegmentStackedChart hist={hist} farben={farben} chartNamen={chartNamen} />
+          <div className="flex flex-wrap gap-x-2.5 gap-y-1 pt-0.5">
+            {chartNamen.map((name) => (
+              <span
+                key={name}
+                className="flex max-w-[9rem] items-center gap-1 text-[10px] text-[var(--app-text-muted)]"
+              >
+                <span
+                  className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: farbeFuerChartSegment(name, chartNamen, farben) }}
+                />
+                <span className="truncate">{name}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+        <PaAktuellerMixListe hist={hist} farben={farben} chartNamen={chartNamen} />
       </div>
-      <PaSecSegmentTabelle hist={hist} farben={farben} />
+
+      <button
+        type="button"
+        onClick={() => setDetailsOffen((v) => !v)}
+        className="flex w-full items-center justify-between rounded-lg border border-[var(--app-border)]/40 bg-[var(--app-surface-muted)]/30 px-3 py-2 text-left text-[11px] text-[var(--app-text-muted)] transition-colors hover:text-[var(--app-text)]"
+      >
+        <span>Jahresdetails (Umsatz, YoY, Marge)</span>
+        <span className="tabular-nums text-[var(--app-text-muted)]">{detailsOffen ? '▾' : '▸'}</span>
+      </button>
+      {detailsOffen ? (
+        <div className="rounded-xl border border-[var(--app-border)]/40 p-2 sm:p-3">
+          <PaSecSegmentTabelle hist={hist} farben={tabellenFarben} />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -786,11 +920,17 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
     ? 'Geschäftsstruktur — Segment & Region'
     : 'Backlog / RPO'
   const quelleName =
-    paket.quelle === 'stockanalysis'
-      ? 'StockAnalysis'
-      : paket.quelle === 'mixed'
-        ? 'Marketscreener + StockAnalysis'
-        : 'Marketscreener'
+    paket.quelle === 'sec_edgar'
+      ? 'SEC EDGAR'
+      : paket.quelle === 'eu_urd'
+        ? 'EU-Berichte'
+        : paket.quelle === 'stockanalysis'
+          ? 'StockAnalysis'
+          : paket.quelle === 'mixed'
+            ? paket.secErgaenzt
+              ? 'SEC EDGAR + Marketscreener/StockAnalysis'
+              : 'Marketscreener + StockAnalysis'
+            : 'Marketscreener'
 
   const headerUntertitel = hatUmsatzmix
     ? maxJahre >= 2 && jahresSpanne
@@ -798,49 +938,51 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
       : `Umsatzmix nach Produktgruppe und Region · ${quelleName}`
     : paket.backlog?.quelleTag ?? 'Auftragsbestand'
 
-  const quelleLabel = quelleName
-
   return (
-    <PaCard variant="elevated" className="space-y-5 p-5 sm:p-6">
+    <PaCard variant="elevated" className="space-y-4 p-4 sm:p-5">
       <PaStrukturSectionHeader titel={headerTitel} untertitel={headerUntertitel} />
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {hatUmsatzmix ? (
           <>
-        {hatProduktTabs && hatGeoTabs ? (
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => setUmsatzmixTab('geo')}
-              className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors ${
-                umsatzmixTab === 'geo'
-                  ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/40'
-                  : 'bg-[var(--app-surface-muted)]/50 text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
-              }`}
-            >
-              Geografie ({geo!.anzahlJahre}J)
-            </button>
-            <button
-              type="button"
-              onClick={() => setUmsatzmixTab('produkt')}
-              className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors ${
-                umsatzmixTab === 'produkt'
-                  ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/40'
-                  : 'bg-[var(--app-surface-muted)]/50 text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
-              }`}
-            >
-              Produkt ({produkt!.anzahlJahre}J)
-            </button>
-          </div>
-        ) : null}
+            {hatProduktTabs && hatGeoTabs ? (
+              <div
+                className="inline-flex rounded-lg border border-[var(--app-border)]/50 bg-[var(--app-surface-muted)]/40 p-0.5"
+                role="tablist"
+                aria-label="Umsatzmix"
+              >
+                {(
+                  [
+                    ['geo', 'Geografie', geo!.anzahlJahre],
+                    ['produkt', 'Produkt', produkt!.anzahlJahre],
+                  ] as const
+                ).map(([id, label, jahre]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    role="tab"
+                    aria-selected={umsatzmixTab === id}
+                    onClick={() => setUmsatzmixTab(id)}
+                    className={`rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                      umsatzmixTab === id
+                        ? 'bg-teal-500/25 text-teal-200 shadow-sm ring-1 ring-teal-500/30'
+                        : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                    }`}
+                  >
+                    {label}
+                    <span className="ml-1 tabular-nums opacity-70">{jahre}J</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
-        {aktiverMix ? (
-          aktiverMix.hist.anzahlJahre >= 2 ? (
-            <PaUmsatzmixBlock hist={aktiverMix.hist} quelleLabel={quelleLabel} />
-          ) : (
-            <PaSecSegmentEinzeljahr hist={aktiverMix.hist} titel={aktiverMix.titel} />
-          )
-        ) : null}
+            {aktiverMix ? (
+              aktiverMix.hist.anzahlJahre >= 2 ? (
+                <PaUmsatzmixBlock hist={aktiverMix.hist} />
+              ) : (
+                <PaSecSegmentEinzeljahr hist={aktiverMix.hist} titel={aktiverMix.titel} />
+              )
+            ) : null}
           </>
         ) : null}
       </div>

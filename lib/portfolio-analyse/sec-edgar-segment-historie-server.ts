@@ -1,4 +1,4 @@
-/** SEC 10-K — Geo-/Produktsegment-Historie + Zusatz-Risikofelder (10+ Jahre). */
+/** SEC 10-K / 20-F — Geo-/Produktsegment-Historie + Zusatz-Risikofelder (10+ Jahre). */
 
 import 'server-only'
 
@@ -62,15 +62,25 @@ import {
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 /** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server- + Cloud-Cache). */
-export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 16
+export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 17
 const CACHE_VERSION = SEC_SEGMENT_HISTORIE_CACHE_VERSION
 /** Ziel: mindestens 12 Geschäftsjahre Segmentdaten. */
 const ZIEL_JAHRE = 12
-/** Max. 10-K-Filings laden (je ~3 Jahre pro Filing → 12+ Jahre). */
+/** Max. Jahres-Filings laden (10-K/20-F; je ~3 Jahre pro Filing → 12+ Jahre). */
 const MAX_10K_FILINGS = 14
 const PAUSE_MS = 350
 
 const cache = new Map<string, { at: number; v: number; data: SecSegmentHistoriePaket | null }>()
+
+type JahresFiling = {
+  accession: string
+  primaryDocument: string
+  reportDate: string | null
+  filingDate: string | null
+  formular: '10-K' | '20-F'
+}
+
+const JAHRES_FORMULARE = new Set(['10-K', '20-F'])
 
 type Arbeitszustand = {
   kategorieMaps: Map<string, Map<number, SecSegmentRoh[]>>
@@ -195,7 +205,7 @@ function verarbeite10kInZustand(
   zustand: Arbeitszustand,
   html: string,
   text: string,
-  filing: Filing10k,
+  filing: JahresFiling,
 ): void {
   const jahr = jahrAusFiling(filing)
   if (jahr != null && text.length > 1_000) {
@@ -445,19 +455,13 @@ function pause(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-type Filing10k = {
-  accession: string
-  primaryDocument: string
-  reportDate: string | null
-  filingDate: string | null
-}
-
-function filingsAusRecent(recent: SecSubmissionsRecent, max: number): Filing10k[] {
-  const out: Filing10k[] = []
+function filingsAusRecent(recent: SecSubmissionsRecent, max: number): JahresFiling[] {
+  const out: JahresFiling[] = []
   const seen = new Set<string>()
   if (!recent.form?.length) return out
   for (let i = 0; i < recent.form.length && out.length < max; i++) {
-    if (recent.form[i] !== '10-K') continue
+    const form = recent.form[i]
+    if (!form || !JAHRES_FORMULARE.has(form)) continue
     const accession = recent.accessionNumber?.[i]
     const doc = recent.primaryDocument?.[i]
     if (!accession || !doc || seen.has(accession)) continue
@@ -467,12 +471,13 @@ function filingsAusRecent(recent: SecSubmissionsRecent, max: number): Filing10k[
       primaryDocument: doc,
       reportDate: recent.reportDate?.[i] ?? null,
       filingDate: recent.filingDate?.[i] ?? null,
+      formular: form === '20-F' ? '20-F' : '10-K',
     })
   }
   return out
 }
 
-async function liste10kFilings(cik: number, max: number): Promise<Filing10k[]> {
+async function liste10kFilings(cik: number, max: number): Promise<JahresFiling[]> {
   const subRes = await secFetch(`https://data.sec.gov/submissions/CIK${padCik(cik)}.json`)
   if (!subRes.ok) return []
   const sub = (await leseAlsJson<{
@@ -513,16 +518,21 @@ async function liste10kFilings(cik: number, max: number): Promise<Filing10k[]> {
 
 async function lade10kHtml(
   cik: number,
-  filing: Filing10k,
+  filing: JahresFiling,
 ): Promise<{ html: string; text: string } | null> {
-  const bericht = await ladeLesbarenBerichtText(cik, filing.accession, '10-K', filing.primaryDocument)
+  const bericht = await ladeLesbarenBerichtText(
+    cik,
+    filing.accession,
+    filing.formular,
+    filing.primaryDocument,
+  )
   if (!bericht?.url) return bericht ? { html: '', text: bericht.text } : null
   const hres = await secFetch(bericht.url)
   const html = hres.ok ? await hres.text() : ''
   return { html, text: bericht.text }
 }
 
-function jahrAusFiling(f: Filing10k): number | null {
+function jahrAusFiling(f: JahresFiling): number | null {
   const iso = f.reportDate ?? f.filingDate
   if (!iso) return null
   const y = parseInt(iso.slice(0, 4), 10)

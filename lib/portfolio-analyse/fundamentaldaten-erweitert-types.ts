@@ -169,6 +169,8 @@ export type SecSegmentHistoriePaket = {
   anzahl10k: number
   geladenAm: string
   quelle: 'sec_edgar' | 'marketscreener' | 'stockanalysis' | 'mixed' | 'eu_urd'
+  /** true wenn quelle=mixed und SEC EDGAR eine Achse liefert (MS/SA nur Ergänzung). */
+  secErgaenzt?: boolean
 }
 
 export type EuFundamentalKennzahl = {
