@@ -88,6 +88,21 @@ export type SecSegmentHistorie = {
   juengstesJahr: number
 }
 
+/** Quartals-Periode aus 10-Q (Three Months Ended). */
+export type SecSegmentQuartalPeriode = {
+  jahr: number
+  quartal: 1 | 2 | 3 | 4
+  label: string
+  reportDate: string | null
+  segmente: SecSegmentEintrag[]
+}
+
+export type SecSegmentQuartalHistorie = {
+  art: 'produkt' | 'geo'
+  perioden: SecSegmentQuartalPeriode[]
+  anzahlPerioden: number
+}
+
 export type SecSegmentHistorieKategorie = {
   id: string
   titel: string
@@ -159,6 +174,10 @@ export type SecKennzahlenHistorie = {
 export type SecSegmentHistoriePaket = {
   produkt: SecSegmentHistorie | null
   geo: SecSegmentHistorie | null
+  /** Letzte Quartale (10-Q, Three Months) — Produktmix. */
+  produktQuartale?: SecSegmentQuartalHistorie | null
+  /** Letzte Quartale (10-Q, Three Months) — Ländermix. */
+  geoQuartale?: SecSegmentQuartalHistorie | null
   /** Alle erkannten XBRL-Tabellen (Disaggregation, Geo-Assets, …). */
   kategorien: SecSegmentHistorieKategorie[]
   zusatz: SecZusatzRisikoFelder

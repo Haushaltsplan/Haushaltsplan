@@ -49,7 +49,7 @@ function extrahiereJahresreiheMio(facts: CompanyFactsJson, tags: string[]): Map<
       if (!einheiten) continue
       for (const liste of Object.values(einheiten)) {
         for (const e of liste ?? []) {
-          if (e.form && e.form !== '10-K') continue
+          if (e.form && e.form !== '10-K' && e.form !== '20-F') continue
           if (e.fp && e.fp !== 'FY') continue
           const jahr = jahrAusEintrag(e)
           const val = e.val

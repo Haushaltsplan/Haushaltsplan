@@ -196,6 +196,7 @@ export function PaFundamentalStruktur({
 
       <Sektion titel="Geschäftsstruktur" klasse="mt-8">
         <PaMsSegmentHistorieLoader
+          key={isin?.trim() || ticker?.trim() || symbolYahoo?.trim() || paket.symbolYahoo || 'seg'}
           isin={isin}
           name={paket.firmenname}
           symbolYahoo={symbolYahoo ?? paket.symbolYahoo}

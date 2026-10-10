@@ -258,6 +258,8 @@ function mergeSecMitMssa(
   return {
     produkt: produkt ?? null,
     geo: geo ?? null,
+    produktQuartale: sec.produktQuartale ?? mssa?.produktQuartale ?? null,
+    geoQuartale: sec.geoQuartale ?? mssa?.geoQuartale ?? null,
     kategorien: sec.kategorien.length > 0 ? sec.kategorien : (mssa?.kategorien ?? []),
     zusatz: {
       ...LEER_ZUSATZ,
@@ -297,35 +299,56 @@ function waehleBacklog(
   return sa ?? mb
 }
 
+async function ladeSecBacklogFuerTicker(ticker: string): Promise<SecBacklogHistorie | null> {
+  try {
+    const cik = await cikFuerTicker(ticker)
+    if (!cik) return null
+    const sec = await ladeSecBacklogHistorie(cik)
+    // Auch 1 Jahr reicht für backlogLabel (Nachkauf braucht Label + ggf. Wachstum)
+    return sec && sec.eintraege.length >= 1 ? sec : null
+  } catch {
+    return null
+  }
+}
+
 async function ergaenzeBacklog(
   paket: SecSegmentHistoriePaket,
   opts: {
     ticker?: string | null
     symbolYahoo?: string | null
     isin?: string | null
+    name?: string | null
     refresh?: boolean
   },
 ): Promise<SecSegmentHistoriePaket> {
   if (paket.backlog && !opts.refresh) return paket
-  const ticker = usTicker(opts) ?? secTickerFuerPosition({ ...opts, name: '' })
-  const [mb, sa] = await Promise.all([
-    ticker ? ladeMarketbeatBacklogHistorie(ticker, opts.refresh) : Promise.resolve(null),
-    ladeStockanalysisBacklogHistorie({ ...opts, refresh: opts.refresh }),
-  ])
-  let backlog = waehleBacklog(sa, mb)
 
-  // SEC XBRL RPO / Deferred Revenue — US-Filer, wenn SA/MB leer
+  const { us, ticker: secTicker } = istUsSegmentPfad({
+    isin: opts.isin,
+    name: opts.name ?? '',
+    symbolYahoo: opts.symbolYahoo,
+    ticker: opts.ticker,
+  })
+  const ticker = secTicker ?? usTicker(opts)
+
+  let backlog: SecBacklogHistorie | null = null
+
+  // US: SEC XBRL RPO / Backlog / Deferred Revenue zuerst
+  if (us && ticker) {
+    backlog = await ladeSecBacklogFuerTicker(ticker)
+  }
+
+  if (!backlog) {
+    const [mb, sa] = await Promise.all([
+      ticker ? ladeMarketbeatBacklogHistorie(ticker, opts.refresh) : Promise.resolve(null),
+      ladeStockanalysisBacklogHistorie({ ...opts, refresh: opts.refresh }),
+    ])
+    backlog = waehleBacklog(sa, mb)
+  }
+
+  // EU / ohne SEC-Treffer: SEC als Fallback
   if (!backlog && ticker) {
-    try {
-      const cik = await cikFuerTicker(ticker)
-      if (cik) {
-        const sec = await ladeSecBacklogHistorie(cik)
-        // Auch 1 Jahr reicht für backlogLabel (Nachkauf braucht Label + ggf. Wachstum)
-        if (sec && sec.eintraege.length >= 1) backlog = sec
-      }
-    } catch {
-      /* SEC optional */
-    }
+    backlog = await ladeSecBacklogFuerTicker(ticker)
   }
 
   if (!backlog) return paket
@@ -529,7 +552,12 @@ async function scrapeLiveSegmentStruktur(opts: {
     }
   }
 
-  paket = await ergaenzeBacklog(paket, { ...opts, isin, refresh: opts.refresh })
+  paket = await ergaenzeBacklog(paket, {
+    ...opts,
+    isin,
+    name: opts.name,
+    refresh: opts.refresh,
+  })
 
   paket = await ergaenzeUmsatzAbgleich(paket, { ...opts, isin })
 

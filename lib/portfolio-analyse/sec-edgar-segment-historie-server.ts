@@ -3,9 +3,12 @@
 import 'server-only'
 
 import type {
+  SecSegmentEintrag,
   SecSegmentHistorie,
   SecSegmentHistorieKategorie,
   SecSegmentHistoriePaket,
+  SecSegmentQuartalHistorie,
+  SecSegmentQuartalPeriode,
   SecZusatzRisikoFelder,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import {
@@ -54,6 +57,7 @@ import {
   segmentIstGeo,
   extrahiereSegmenteFuerJahr,
   parseGeoSegmente,
+  anteileBerechnen,
   teileUmsatzDetailInProduktUndGeo,
   validiereSegmente,
   type SecSegmentJahrEintrag,
@@ -62,12 +66,14 @@ import {
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 /** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server- + Cloud-Cache). */
-export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 17
+export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 19
 const CACHE_VERSION = SEC_SEGMENT_HISTORIE_CACHE_VERSION
 /** Ziel: mindestens 12 Geschäftsjahre Segmentdaten. */
 const ZIEL_JAHRE = 12
 /** Max. Jahres-Filings laden (10-K/20-F; je ~3 Jahre pro Filing → 12+ Jahre). */
 const MAX_10K_FILINGS = 14
+/** Letzte 10-Q für Quartals-Mix (ca. 2 Jahre). */
+const MAX_10Q_FILINGS = 8
 const PAUSE_MS = 350
 
 const cache = new Map<string, { at: number; v: number; data: SecSegmentHistoriePaket | null }>()
@@ -78,6 +84,13 @@ type JahresFiling = {
   reportDate: string | null
   filingDate: string | null
   formular: '10-K' | '20-F'
+}
+
+type QuartalFiling = {
+  accession: string
+  primaryDocument: string
+  reportDate: string | null
+  filingDate: string | null
 }
 
 const JAHRES_FORMULARE = new Set(['10-K', '20-F'])
@@ -532,11 +545,171 @@ async function lade10kHtml(
   return { html, text: bericht.text }
 }
 
-function jahrAusFiling(f: JahresFiling): number | null {
+async function lade10qHtml(
+  cik: number,
+  filing: QuartalFiling,
+): Promise<{ html: string; text: string } | null> {
+  const bericht = await ladeLesbarenBerichtText(
+    cik,
+    filing.accession,
+    '10-Q',
+    filing.primaryDocument,
+  )
+  if (!bericht?.url) return bericht ? { html: '', text: bericht.text } : null
+  const hres = await secFetch(bericht.url)
+  const html = hres.ok ? await hres.text() : ''
+  return { html, text: bericht.text }
+}
+
+function jahrAusFiling(f: { reportDate: string | null; filingDate: string | null }): number | null {
   const iso = f.reportDate ?? f.filingDate
   if (!iso) return null
   const y = parseInt(iso.slice(0, 4), 10)
   return Number.isFinite(y) ? y : null
+}
+
+function quartalAusReportDate(iso: string | null): { jahr: number; quartal: 1 | 2 | 3 | 4 } | null {
+  if (!iso || iso.length < 7) return null
+  const jahr = parseInt(iso.slice(0, 4), 10)
+  const monat = parseInt(iso.slice(5, 7), 10)
+  if (!Number.isFinite(jahr) || !Number.isFinite(monat) || monat < 1 || monat > 12) return null
+  const quartal = Math.ceil(monat / 3) as 1 | 2 | 3 | 4
+  return { jahr, quartal }
+}
+
+function filings10qAusRecent(recent: SecSubmissionsRecent, max: number): QuartalFiling[] {
+  const out: QuartalFiling[] = []
+  const seen = new Set<string>()
+  if (!recent.form?.length) return out
+  for (let i = 0; i < recent.form.length && out.length < max; i++) {
+    if (recent.form[i] !== '10-Q') continue
+    const accession = recent.accessionNumber?.[i]
+    const doc = recent.primaryDocument?.[i]
+    if (!accession || !doc || seen.has(accession)) continue
+    seen.add(accession)
+    out.push({
+      accession,
+      primaryDocument: doc,
+      reportDate: recent.reportDate?.[i] ?? null,
+      filingDate: recent.filingDate?.[i] ?? null,
+    })
+  }
+  return out
+}
+
+async function liste10qFilings(cik: number, max: number): Promise<QuartalFiling[]> {
+  const subRes = await secFetch(`https://data.sec.gov/submissions/CIK${padCik(cik)}.json`)
+  if (!subRes.ok) return []
+  const sub = (await leseAlsJson<{
+    filings?: { recent?: SecSubmissionsRecent; files?: { name: string }[] }
+  }>(subRes)) ?? {}
+  return filings10qAusRecent(sub?.filings?.recent ?? {}, max)
+}
+
+function baueQuartalHistorie(
+  art: 'produkt' | 'geo',
+  perioden: SecSegmentQuartalPeriode[],
+): SecSegmentQuartalHistorie | null {
+  if (perioden.length === 0) return null
+  const sorted = [...perioden].sort((a, b) =>
+    a.jahr !== b.jahr ? a.jahr - b.jahr : a.quartal - b.quartal,
+  )
+  return { art, perioden: sorted, anzahlPerioden: sorted.length }
+}
+
+function segmenteMitAnteilen(segmente: SecSegmentRoh[]): SecSegmentEintrag[] {
+  return anteileBerechnen(segmente).map((s) => ({
+    name: s.name,
+    umsatzMio: s.umsatzMio ?? null,
+    anteilPct: s.anteilPct ?? null,
+    margePct: s.margePct ?? null,
+  }))
+}
+
+/** Aktuelles Quartal aus 10-Q-Disaggregation (Three Months Ended). */
+function extrahiereQuartalAus10qHtml(
+  html: string,
+  filing: QuartalFiling,
+): { produkt: SecSegmentQuartalPeriode | null; geo: SecSegmentQuartalPeriode | null } {
+  const qInfo = quartalAusReportDate(filing.reportDate)
+  if (!qInfo || html.length < 5_000) return { produkt: null, geo: null }
+
+  const details = extrahiereAlleDetailBloeckeAus10kHtml(html)
+  const umsatz = details.find((d) => d.def.id === 'umsatz_detail')
+  if (!umsatz?.jahre.length) return { produkt: null, geo: null }
+
+  const split = teileUmsatzDetailInProduktUndGeo(umsatz.jahre)
+  const jahrTreffer =
+    split.produkt.find((j) => j.jahr === qInfo.jahr) ??
+    split.produkt.sort((a, b) => b.jahr - a.jahr)[0] ??
+    null
+  const geoTreffer =
+    split.geo.find((j) => j.jahr === qInfo.jahr) ??
+    split.geo.sort((a, b) => b.jahr - a.jahr)[0] ??
+    null
+
+  const label = `${qInfo.jahr} Q${qInfo.quartal}`
+  const produkt: SecSegmentQuartalPeriode | null =
+    jahrTreffer && jahrTreffer.segmente.length >= 2
+      ? {
+          jahr: qInfo.jahr,
+          quartal: qInfo.quartal,
+          label,
+          reportDate: filing.reportDate,
+          segmente: segmenteMitAnteilen(jahrTreffer.segmente),
+        }
+      : null
+  const geo: SecSegmentQuartalPeriode | null =
+    geoTreffer && geoTreffer.segmente.length >= 2
+      ? {
+          jahr: qInfo.jahr,
+          quartal: qInfo.quartal,
+          label,
+          reportDate: filing.reportDate,
+          segmente: segmenteMitAnteilen(geoTreffer.segmente),
+        }
+      : null
+
+  return { produkt, geo }
+}
+
+async function ladeQuartalSegmente(
+  cik: number,
+  filings: QuartalFiling[],
+): Promise<{
+  produktQuartale: SecSegmentQuartalHistorie | null
+  geoQuartale: SecSegmentQuartalHistorie | null
+}> {
+  const prod: SecSegmentQuartalPeriode[] = []
+  const geo: SecSegmentQuartalPeriode[] = []
+  const seen = new Set<string>()
+
+  for (let i = 0; i < filings.length; i++) {
+    const f = filings[i]!
+    if (i > 0) await pause(PAUSE_MS)
+    const hit = await lade10qHtml(cik, f)
+    if (!hit || hit.html.length < 5_000) continue
+    const { produkt, geo: g } = extrahiereQuartalAus10qHtml(hit.html, f)
+    if (produkt) {
+      const key = `${produkt.jahr}-Q${produkt.quartal}`
+      if (!seen.has(`p-${key}`)) {
+        seen.add(`p-${key}`)
+        prod.push(produkt)
+      }
+    }
+    if (g) {
+      const key = `${g.jahr}-Q${g.quartal}`
+      if (!seen.has(`g-${key}`)) {
+        seen.add(`g-${key}`)
+        geo.push(g)
+      }
+    }
+  }
+
+  return {
+    produktQuartale: baueQuartalHistorie('produkt', prod),
+    geoQuartale: baueQuartalHistorie('geo', geo),
+  }
 }
 
 function mergeMehrjahresInMap(
@@ -1042,8 +1215,9 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
   }
 
   try {
-    const [filings, kennzahlen, cloud] = await Promise.all([
+    const [filings, qFilings, kennzahlen, cloud] = await Promise.all([
       liste10kFilings(cik, MAX_10K_FILINGS),
+      liste10qFilings(cik, MAX_10Q_FILINGS),
       ladeSecCompanyFacts(cik),
       ladeSecSegmentHistorieAusCloud(sym),
     ])
@@ -1063,10 +1237,27 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
       cloud.cik === cik &&
       cloud.paket != null
 
+    const ergaenzeQuartale = async (
+      paket: SecSegmentHistoriePaket | null,
+    ): Promise<SecSegmentHistoriePaket | null> => {
+      if (!paket) return null
+      if (paket.produktQuartale && paket.geoQuartale) return paket
+      if (qFilings.length === 0) return paket
+      const q = await ladeQuartalSegmente(cik, qFilings)
+      return {
+        ...paket,
+        produktQuartale: q.produktQuartale ?? paket.produktQuartale ?? null,
+        geoQuartale: q.geoQuartale ?? paket.geoQuartale ?? null,
+      }
+    }
+
     if (cloudAktuell) {
       const neueFilings = filings.filter((f) => !cloud.roh.verarbeiteteAccessions.includes(f.accession))
       if (neueFilings.length === 0) {
-        const paket = { ...cloud.paket, geladenAm: new Date().toISOString() }
+        let paket = { ...cloud.paket, geladenAm: new Date().toISOString() }
+        if (!paket.produktQuartale || !paket.geoQuartale) {
+          paket = (await ergaenzeQuartale(paket)) ?? paket
+        }
         setMemoryCache(sym, paket)
         return paket
       }
@@ -1101,7 +1292,7 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
         }
       }
 
-      const paket = await bauePaketAusZustand(
+      let paket = await bauePaketAusZustand(
         sym,
         cik,
         zustand,
@@ -1111,6 +1302,7 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
         geladene10k,
         kennzahlen,
       )
+      paket = await ergaenzeQuartale(paket)
       if (paket) {
         await speichereInCloud(sym, cik, zustand, paket, neuesteAccession, neuestesBerichtJahr)
       }
@@ -1139,7 +1331,7 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
       verarbeite10kInZustand(zustand, html, text, f)
     }
 
-    const paket = await bauePaketAusZustand(
+    let paket = await bauePaketAusZustand(
       sym,
       cik,
       zustand,
@@ -1149,6 +1341,7 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
       geladene10k,
       kennzahlen,
     )
+    paket = await ergaenzeQuartale(paket)
 
     if (paket) {
       await speichereInCloud(sym, cik, zustand, paket, neuesteAccession, neuestesBerichtJahr)

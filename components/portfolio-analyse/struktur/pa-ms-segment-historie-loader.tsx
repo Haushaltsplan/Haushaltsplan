@@ -12,6 +12,19 @@ import {
 } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
 import { supabase } from '@/lib/supabase'
 
+function segmentIdentKey(opts: {
+  isin?: string | null
+  symbolYahoo?: string | null
+  ticker?: string | null
+}): string {
+  return (
+    opts.isin?.trim().toUpperCase() ||
+    opts.ticker?.trim().toUpperCase() ||
+    opts.symbolYahoo?.trim().toUpperCase() ||
+    ''
+  )
+}
+
 export function PaMsSegmentHistorieLoader({
   isin,
   name,
@@ -27,13 +40,21 @@ export function PaMsSegmentHistorieLoader({
   initial?: SecSegmentHistoriePaket | null
   umsatzZeile?: FundamentalMetrikZeile | null
 }) {
+  const ident = segmentIdentKey({ isin, symbolYahoo, ticker })
   const [paket, setPaket] = useState<SecSegmentHistoriePaket | null>(initial ?? null)
   const [laden, setLaden] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
 
+  // Bei Unternehmenswechsel sofort alten Mix verwerfen (kein Mastercard-Bleed).
   useEffect(() => {
-    if (!isin && !symbolYahoo && !ticker) {
+    setPaket(initial ?? null)
+    setFehler(null)
+  }, [ident, initial])
+
+  useEffect(() => {
+    if (!ident) {
       setFehler('Keine ISIN oder kein Symbol für Segment-Abruf.')
+      setPaket(null)
       return
     }
 
@@ -64,7 +85,7 @@ export function PaMsSegmentHistorieLoader({
         }
         if (cancelled) return
         if (!res.ok) {
-          if (!initial) setPaket(null)
+          setPaket(initial ?? null)
           setFehler(
             res.status === 401
               ? 'Anmeldung erforderlich — bitte neu laden.'
@@ -89,9 +110,12 @@ export function PaMsSegmentHistorieLoader({
         }
       } catch {
         if (!cancelled) {
-          if (!initial) setPaket(null)
-          else setPaket(initial)
-          setFehler(initial ? 'Live-Abruf fehlgeschlagen — zwischengespeicherte Daten.' : 'Segment-Abruf fehlgeschlagen.')
+          setPaket(initial ?? null)
+          setFehler(
+            initial
+              ? 'Live-Abruf fehlgeschlagen — zwischengespeicherte Daten.'
+              : 'Segment-Abruf fehlgeschlagen.',
+          )
         }
       } finally {
         if (!cancelled) setLaden(false)
@@ -102,7 +126,7 @@ export function PaMsSegmentHistorieLoader({
     return () => {
       cancelled = true
     }
-  }, [isin, name, symbolYahoo, ticker, initial, umsatzZeile])
+  }, [ident, isin, name, symbolYahoo, ticker, initial, umsatzZeile])
 
   if (paket) {
     return (
@@ -111,7 +135,7 @@ export function PaMsSegmentHistorieLoader({
           <p className="text-xs text-[var(--app-text-muted)]">Geschäftsstruktur wird aktualisiert …</p>
         ) : null}
         {fehler ? <p className="text-xs text-amber-400/90">{fehler}</p> : null}
-        <PaSecSegmentHistorie paket={paket} />
+        <PaSecSegmentHistorie key={ident} paket={paket} />
       </div>
     )
   }

@@ -271,7 +271,8 @@ function betragAnJahrIndex(
   const minWert = metrik === 'assets' ? 50 : 500
   const gross = grossWerteAusZeile(z, minWert)
 
-  if (gross.length === jahrSpalten.length && yearIdx < gross.length) {
+  // 10-Q: oft 4 Beträge (3M+6M) bei 2 deduplizierten Jahres-Spalten → erste N = Three Months
+  if (gross.length >= jahrSpalten.length && yearIdx < jahrSpalten.length) {
     return betragZuMio(gross[yearIdx]!)
   }
 
@@ -767,7 +768,7 @@ function betragAnJahrIndexSigned(
 ): number | null {
   const minWert = 30
   const gross = grossWerteAusZeile(z, minWert)
-  if (gross.length === jahrSpalten.length && yearIdx < gross.length) {
+  if (gross.length >= jahrSpalten.length && yearIdx < jahrSpalten.length) {
     return betragZuMio(gross[yearIdx]!)
   }
   const spalte = jahrSpalten[yearIdx]
@@ -1501,11 +1502,20 @@ function parseJahrAusZelle(z: string): number | null {
   return null
 }
 
+/**
+ * Jahres-Spalten aus Header-Zeile.
+ * Bei 10-Q oft „Three Months … 2026 2025 | Six Months … 2026 2025“ —
+ * erste Nennung je Jahr behalten (= Three Months, nicht YTD Six/Nine).
+ */
 function jahresSpaltenAusZeile(zellen: string[]): { jahr: number; idx: number }[] {
   const out: { jahr: number; idx: number }[] = []
+  const gesehen = new Set<number>()
   for (let i = 0; i < zellen.length; i++) {
     const jahr = parseJahrAusZelle(zellen[i] ?? '')
-    if (jahr != null && jahr >= 2010 && jahr <= 2030) out.push({ jahr, idx: i })
+    if (jahr == null || jahr < 2010 || jahr > 2035) continue
+    if (gesehen.has(jahr)) continue
+    gesehen.add(jahr)
+    out.push({ jahr, idx: i })
   }
   return out
 }

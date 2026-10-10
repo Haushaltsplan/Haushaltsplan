@@ -127,19 +127,32 @@ function istXbrlArtefakt(name: string): boolean {
 }
 
 function istExhibit(meta: string): boolean {
-  return /exhibit|ex-\d|graphic|\.jpg|\.png|\.pdf|cover page/i.test(meta)
+  // exb191, ex-10.1, EX-21, exhibit — nicht das Hauptformular
+  return (
+    /exhibit|graphic|\.jpg|\.png|\.pdf|cover page/i.test(meta) ||
+    /(^|[^a-z0-9])ex[-_]?[a-z]?\d/i.test(meta) ||
+    /^exb\d/i.test(meta.trim())
+  )
 }
 
+/** Directory-index.json: size ist Bytes; HTML-Index: oft „1234K“ / „1.2M“. */
 function parseSizeKb(size?: string): number {
   if (!size) return 0
-  const m = size.replace(/,/g, '').match(/([\d.]+)\s*(k|m)?/i)
+  const raw = size.replace(/,/g, '').trim()
+  const m = raw.match(/^([\d.]+)\s*(k|kb|m|mb)?$/i)
   if (!m) return 0
   const n = parseFloat(m[1]!)
-  if (Number.isNaN(n)) return 0
-  // Directory-index.json liefert Bytes ohne Einheit — Werte > 100_000 sind Bytes.
-  if (!m[2] && n >= 100_000) return n / 1024
-  const unit = (m[2] ?? 'k').toLowerCase()
-  return unit === 'm' ? n * 1024 : n
+  if (Number.isNaN(n) || n < 0) return 0
+  const unit = (m[2] ?? '').toLowerCase()
+  if (unit === 'm' || unit === 'mb') return n * 1024
+  if (unit === 'k' || unit === 'kb') return n
+  // Ohne Einheit = Bytes (SEC index.json)
+  return n / 1024
+}
+
+function istHauptformularDateiname(name: string): boolean {
+  // ma-20251231.htm, msft-20240630.htm — typisches SEC Primary
+  return /^[a-z0-9]+-\d{8}\.htm(l)?$/i.test(name.trim())
 }
 
 /** Wählt das lesbare Haupt-HTML (10-Q/10-K/20-F), nicht XBRL-Instance/XML. */
@@ -163,7 +176,7 @@ export function waehleLesbaresBerichtDokument(
 
   const score = (i: EdgarIndexItem): number => {
     const name = (i.name ?? '').toLowerCase()
-    const meta = `${i.type ?? ''} ${i.description ?? ''}`.toLowerCase()
+    const meta = `${i.type ?? ''} ${i.description ?? ''} ${name}`.toLowerCase()
     let s = parseSizeKb(i.size)
     if ((i.type ?? '').toUpperCase() === formular) s += 500
     if (meta.includes(formular.toLowerCase())) s += 300
@@ -177,8 +190,11 @@ export function waehleLesbaresBerichtDokument(
     ) {
       s += 200
     }
+    if (istHauptformularDateiname(name)) s += 8_000
     // Directory-index.json hat type=text.gif — Primary stark bevorzugen.
     if (primaryNorm && name === primaryNorm) s += 50_000
+    // Exhibits nie gewinnen (auch falls Filter Lücken hat)
+    if (istExhibit(meta) || istExhibit(name)) s -= 100_000
     return s
   }
 
@@ -254,12 +270,17 @@ export async function ladeLesbarenBerichtText(
     }
   }
 
-  for (const doc of kandidaten.slice(0, 6)) {
+  for (const doc of kandidaten.slice(0, 8)) {
     try {
+      if (istExhibit(doc)) continue
       const hit = await ladeRohtext(ciks, accession, doc)
       const text = hit.text.slice(0, MAX_VOLLTEXT)
       if (text.length < 400) continue
-      if (istXbrlMuell(text)) continue
+      const istPrimary =
+        Boolean(primaryDocument) && doc.toLowerCase() === primaryDocument.trim().toLowerCase()
+      const istHaupt = istHauptformularDateiname(doc)
+      // iXBRL-Primary: Fließtext kann „Müll“ wirken — HTML-URL brauchen Segmente trotzdem.
+      if (istXbrlMuell(text) && !istPrimary && !istHaupt) continue
       return {
         text,
         documentName: doc,
