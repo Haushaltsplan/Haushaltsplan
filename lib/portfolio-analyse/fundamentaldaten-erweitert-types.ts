@@ -127,11 +127,23 @@ export type SecBacklogEintrag = {
   wertMio: number
 }
 
+/** Quartals-Stand (10-Q / FY=Q4) — Point-in-Time RPO/Backlog. */
+export type SecBacklogQuartalEintrag = {
+  jahr: number
+  quartal: 1 | 2 | 3 | 4
+  label: string
+  /** Periodenende ISO (YYYY-MM-DD). */
+  reportDate: string
+  wertMio: number
+}
+
 export type SecBacklogHistorie = {
   art: 'rpo' | 'backlog' | 'deferred_revenue'
   label: string
   quelleTag: string
   eintraege: SecBacklogEintrag[]
+  /** Letzte Quartale aus SEC Company Facts (10-Q + FY als Q4). */
+  quartale?: SecBacklogQuartalEintrag[]
   anzahlJahre: number
   aeltestesJahr: number
   juengstesJahr: number

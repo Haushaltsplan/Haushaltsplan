@@ -66,7 +66,7 @@ import {
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 /** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server- + Cloud-Cache). */
-export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 19
+export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 25
 const CACHE_VERSION = SEC_SEGMENT_HISTORIE_CACHE_VERSION
 /** Ziel: mindestens 12 Geschäftsjahre Segmentdaten. */
 const ZIEL_JAHRE = 12
@@ -626,6 +626,28 @@ function segmenteMitAnteilen(segmente: SecSegmentRoh[]): SecSegmentEintrag[] {
   }))
 }
 
+function quartalPeriodeAusJahrEintrag(
+  jahrTreffer: SecSegmentJahrEintrag | null | undefined,
+  qInfo: { jahr: number; quartal: number },
+  filing: QuartalFiling,
+): SecSegmentQuartalPeriode | null {
+  if (!jahrTreffer || jahrTreffer.segmente.length < 2) return null
+  return {
+    jahr: qInfo.jahr,
+    quartal: qInfo.quartal,
+    label: `${qInfo.jahr} Q${qInfo.quartal}`,
+    reportDate: filing.reportDate,
+    segmente: segmenteMitAnteilen(jahrTreffer.segmente),
+  }
+}
+
+function waehleJahrTreffer(
+  jahre: SecSegmentJahrEintrag[],
+  zielJahr: number,
+): SecSegmentJahrEintrag | null {
+  return jahre.find((j) => j.jahr === zielJahr) ?? jahre.sort((a, b) => b.jahr - a.jahr)[0] ?? null
+}
+
 /** Aktuelles Quartal aus 10-Q-Disaggregation (Three Months Ended). */
 function extrahiereQuartalAus10qHtml(
   html: string,
@@ -636,46 +658,181 @@ function extrahiereQuartalAus10qHtml(
 
   const details = extrahiereAlleDetailBloeckeAus10kHtml(html)
   const umsatz = details.find((d) => d.def.id === 'umsatz_detail')
-  if (!umsatz?.jahre.length) return { produkt: null, geo: null }
+  const geoBlock = details.find((d) => d.def.id === 'geo_umsatz' || d.def.art === 'geo')
 
-  const split = teileUmsatzDetailInProduktUndGeo(umsatz.jahre)
-  const jahrTreffer =
-    split.produkt.find((j) => j.jahr === qInfo.jahr) ??
-    split.produkt.sort((a, b) => b.jahr - a.jahr)[0] ??
-    null
-  const geoTreffer =
-    split.geo.find((j) => j.jahr === qInfo.jahr) ??
-    split.geo.sort((a, b) => b.jahr - a.jahr)[0] ??
-    null
+  let produkt: SecSegmentQuartalPeriode | null = null
+  let geo: SecSegmentQuartalPeriode | null = null
 
-  const label = `${qInfo.jahr} Q${qInfo.quartal}`
-  const produkt: SecSegmentQuartalPeriode | null =
-    jahrTreffer && jahrTreffer.segmente.length >= 2
-      ? {
-          jahr: qInfo.jahr,
-          quartal: qInfo.quartal,
-          label,
-          reportDate: filing.reportDate,
-          segmente: segmenteMitAnteilen(jahrTreffer.segmente),
-        }
-      : null
-  const geo: SecSegmentQuartalPeriode | null =
-    geoTreffer && geoTreffer.segmente.length >= 2
-      ? {
-          jahr: qInfo.jahr,
-          quartal: qInfo.quartal,
-          label,
-          reportDate: filing.reportDate,
-          segmente: segmenteMitAnteilen(geoTreffer.segmente),
-        }
-      : null
+  if (umsatz?.jahre.length) {
+    const split = teileUmsatzDetailInProduktUndGeo(umsatz.jahre)
+    produkt = quartalPeriodeAusJahrEintrag(waehleJahrTreffer(split.produkt, qInfo.jahr), qInfo, filing)
+    geo = quartalPeriodeAusJahrEintrag(waehleJahrTreffer(split.geo, qInfo.jahr), qInfo, filing)
+  }
+
+  if (!geo && geoBlock?.jahre.length) {
+    const geoJahre = filterJahreNachArt(geoBlock.jahre, 'geo')
+    geo = quartalPeriodeAusJahrEintrag(waehleJahrTreffer(geoJahre, qInfo.jahr), qInfo, filing)
+  }
+
+  if (!geo) {
+    const hist = extrahiereSegmentHistorieAus10kHtml(html)
+    if (hist.geo?.jahre.length) {
+      geo = quartalPeriodeAusJahrEintrag(waehleJahrTreffer(hist.geo.jahre, qInfo.jahr), qInfo, filing)
+    }
+  }
 
   return { produkt, geo }
+}
+
+function segmentNameKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/&amp;/g, '&')
+    .replace(/[^a-z0-9&]+/g, '')
+    .trim()
+}
+
+function findeSegmentMio(
+  segmente: { name: string; umsatzMio?: number | null }[],
+  name: string,
+): number | null {
+  const key = segmentNameKey(name)
+  const hit = segmente.find((s) => segmentNameKey(s.name) === key)
+  return hit?.umsatzMio ?? null
+}
+
+/**
+ * FY-Quelle für Q4: lieber granulare Disaggregation (wie 10-Q), nicht das
+ * gerollte Reporting (Google Services), sonst passen die Namen nicht.
+ */
+function fyHistorieFuerQ4Ableitung(
+  quartale: SecSegmentQuartalPeriode[],
+  fyFallback: SecSegmentHistorie | null,
+  kategorien: SecSegmentHistorieKategorie[],
+  art: 'produkt' | 'geo',
+): SecSegmentHistorie | null {
+  const qNamen = new Set(
+    quartale.flatMap((p) => p.segmente.map((s) => segmentNameKey(s.name))),
+  )
+  const score = (hist: SecSegmentHistorie | null | undefined): number => {
+    if (!hist?.jahre.length) return -1
+    let overlap = 0
+    const juengst = hist.jahre[hist.jahre.length - 1]!
+    for (const s of juengst.segmente) {
+      if (qNamen.has(segmentNameKey(s.name))) overlap++
+    }
+    return overlap * 10 + juengst.segmente.length
+  }
+
+  const kandidaten: SecSegmentHistorie[] = []
+  if (art === 'produkt') {
+    for (const k of kategorien) {
+      if (k.metrik !== 'umsatz') continue
+      if (
+        k.id === 'umsatz_detail' ||
+        k.id === 'franchise_umsatz' ||
+        (k.id.startsWith('dyn_') && /disaggregat/i.test(k.id))
+      ) {
+        const split = teileUmsatzDetailInProduktUndGeo(k.historie.jahre)
+        const hist = baueHistorie('produkt', mapAusJahrEintraegen(filterJahreNachArt(split.produkt, 'produkt')))
+        if (hist) kandidaten.push(hist)
+      } else if (k.art === 'produkt' || k.art === 'produkte_services') {
+        kandidaten.push(k.historie)
+      }
+    }
+  } else {
+    for (const k of kategorien) {
+      if (k.metrik !== 'umsatz') continue
+      if (k.art === 'geo' || k.id.startsWith('geo_') || k.id === 'revenues_geo_alt') {
+        kandidaten.push(k.historie)
+      } else if (k.id === 'umsatz_detail') {
+        const split = teileUmsatzDetailInProduktUndGeo(k.historie.jahre)
+        const hist = baueHistorie('geo', mapAusJahrEintraegen(filterJahreNachArt(split.geo, 'geo')))
+        if (hist) kandidaten.push(hist)
+      }
+    }
+  }
+  if (fyFallback) kandidaten.push(fyFallback)
+
+  let best: SecSegmentHistorie | null = null
+  let bestScore = -1
+  for (const k of kandidaten) {
+    const sc = score(k)
+    if (sc > bestScore) {
+      bestScore = sc
+      best = k
+    }
+  }
+  return bestScore >= 2 ? best : fyFallback
+}
+
+/**
+ * Q4 gibt es selten als 10-Q — ableiten aus FY − (Q1+Q2+Q3), wenn alle drei vorliegen.
+ */
+function ergaenzeQ4AusGeschaeftsjahr(
+  quartale: SecSegmentQuartalPeriode[],
+  fy: SecSegmentHistorie | null,
+): SecSegmentQuartalPeriode[] {
+  if (!fy?.jahre.length || quartale.length === 0) return quartale
+  const out = [...quartale]
+  const byJahr = new Map<number, Map<number, SecSegmentQuartalPeriode>>()
+  for (const p of out) {
+    let m = byJahr.get(p.jahr)
+    if (!m) {
+      m = new Map()
+      byJahr.set(p.jahr, m)
+    }
+    m.set(p.quartal, p)
+  }
+
+  for (const fyJahr of fy.jahre) {
+    const qs = byJahr.get(fyJahr.jahr)
+    if (!qs || qs.has(4)) continue
+    const q1 = qs.get(1)
+    const q2 = qs.get(2)
+    const q3 = qs.get(3)
+    if (!q1 || !q2 || !q3) continue
+
+    const namen = new Set<string>([
+      ...fyJahr.segmente.map((s) => s.name),
+      ...q1.segmente.map((s) => s.name),
+      ...q2.segmente.map((s) => s.name),
+      ...q3.segmente.map((s) => s.name),
+    ])
+    const segmente: SecSegmentRoh[] = []
+    for (const name of namen) {
+      const fyMio = findeSegmentMio(fyJahr.segmente, name)
+      const s1 = findeSegmentMio(q1.segmente, name) ?? 0
+      const s2 = findeSegmentMio(q2.segmente, name) ?? 0
+      const s3 = findeSegmentMio(q3.segmente, name) ?? 0
+      if (fyMio == null) continue
+      const q4Mio = Math.round((fyMio - s1 - s2 - s3) * 10) / 10
+      // Toleranz: Rundung / Restatement
+      if (q4Mio < -fyMio * 0.02) continue
+      segmente.push({
+        name,
+        umsatzMio: Math.max(0, q4Mio),
+        anteilPct: null,
+      })
+    }
+    if (segmente.filter((s) => (s.umsatzMio ?? 0) > 0).length < 2) continue
+    out.push({
+      jahr: fyJahr.jahr,
+      quartal: 4,
+      label: `${fyJahr.jahr} Q4`,
+      reportDate: `${fyJahr.jahr}-12-31`,
+      segmente: segmenteMitAnteilen(segmente),
+    })
+  }
+  return out
 }
 
 async function ladeQuartalSegmente(
   cik: number,
   filings: QuartalFiling[],
+  fyProdukt?: SecSegmentHistorie | null,
+  fyGeo?: SecSegmentHistorie | null,
+  kategorien: SecSegmentHistorieKategorie[] = [],
 ): Promise<{
   produktQuartale: SecSegmentQuartalHistorie | null
   geoQuartale: SecSegmentQuartalHistorie | null
@@ -706,9 +863,14 @@ async function ladeQuartalSegmente(
     }
   }
 
+  const fyProd = fyHistorieFuerQ4Ableitung(prod, fyProdukt ?? null, kategorien, 'produkt')
+  const fyG = fyHistorieFuerQ4Ableitung(geo, fyGeo ?? null, kategorien, 'geo')
+  const prodMitQ4 = ergaenzeQ4AusGeschaeftsjahr(prod, fyProd)
+  const geoMitQ4 = ergaenzeQ4AusGeschaeftsjahr(geo, fyG)
+
   return {
-    produktQuartale: baueQuartalHistorie('produkt', prod),
-    geoQuartale: baueQuartalHistorie('geo', geo),
+    produktQuartale: baueQuartalHistorie('produkt', prodMitQ4),
+    geoQuartale: baueQuartalHistorie('geo', geoMitQ4),
   }
 }
 
@@ -834,6 +996,10 @@ function waehleProduktHistorie(
     const aStale = a.historie.juengstesJahr < refJahr - 1 ? 1 : 0
     const bStale = b.historie.juengstesJahr < refJahr - 1 ? 1 : 0
     if (aStale !== bStale) return aStale - bStale
+    // Feinere Disaggregation (GOOGL Search/YouTube/…) vor groben Reportable Segments
+    const aSegs = a.historie.jahre.at(-1)?.segmente.length ?? 0
+    const bSegs = b.historie.jahre.at(-1)?.segmente.length ?? 0
+    if (bSegs !== aSegs && Math.max(aSegs, bSegs) >= 4) return bSegs - aSegs
     if (b.historie.anzahlJahre !== a.historie.anzahlJahre) {
       return b.historie.anzahlJahre - a.historie.anzahlJahre
     }
@@ -1237,18 +1403,48 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
       cloud.cik === cik &&
       cloud.paket != null
 
+    const mitAbgeleitetemQ4 = (paket: SecSegmentHistoriePaket): SecSegmentHistoriePaket => {
+      const fyProd = fyHistorieFuerQ4Ableitung(
+        paket.produktQuartale?.perioden ?? [],
+        paket.produkt,
+        paket.kategorien,
+        'produkt',
+      )
+      const fyG = fyHistorieFuerQ4Ableitung(
+        paket.geoQuartale?.perioden ?? [],
+        paket.geo,
+        paket.kategorien,
+        'geo',
+      )
+      const prodPerioden = ergaenzeQ4AusGeschaeftsjahr(paket.produktQuartale?.perioden ?? [], fyProd)
+      const geoPerioden = ergaenzeQ4AusGeschaeftsjahr(paket.geoQuartale?.perioden ?? [], fyG)
+      return {
+        ...paket,
+        produktQuartale: baueQuartalHistorie('produkt', prodPerioden) ?? paket.produktQuartale ?? null,
+        geoQuartale: baueQuartalHistorie('geo', geoPerioden) ?? paket.geoQuartale ?? null,
+      }
+    }
+
     const ergaenzeQuartale = async (
       paket: SecSegmentHistoriePaket | null,
     ): Promise<SecSegmentHistoriePaket | null> => {
       if (!paket) return null
-      if (paket.produktQuartale && paket.geoQuartale) return paket
-      if (qFilings.length === 0) return paket
-      const q = await ladeQuartalSegmente(cik, qFilings)
-      return {
+      if (paket.produktQuartale && paket.geoQuartale) {
+        return mitAbgeleitetemQ4(paket)
+      }
+      if (qFilings.length === 0) return mitAbgeleitetemQ4(paket)
+      const q = await ladeQuartalSegmente(
+        cik,
+        qFilings,
+        paket.produkt,
+        paket.geo,
+        paket.kategorien,
+      )
+      return mitAbgeleitetemQ4({
         ...paket,
         produktQuartale: q.produktQuartale ?? paket.produktQuartale ?? null,
         geoQuartale: q.geoQuartale ?? paket.geoQuartale ?? null,
-      }
+      })
     }
 
     if (cloudAktuell) {
@@ -1257,6 +1453,8 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
         let paket = { ...cloud.paket, geladenAm: new Date().toISOString() }
         if (!paket.produktQuartale || !paket.geoQuartale) {
           paket = (await ergaenzeQuartale(paket)) ?? paket
+        } else {
+          paket = mitAbgeleitetemQ4(paket)
         }
         setMemoryCache(sym, paket)
         return paket

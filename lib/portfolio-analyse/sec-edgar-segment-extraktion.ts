@@ -753,7 +753,9 @@ export function brauchtReportingRollup(jahre: SecSegmentJahrEintrag[]): boolean 
       }
     }
   }
-  return hits >= 2 && parents.size >= 2
+  // GOOGL: Search/YouTube/Network/… → nur Parent „Google Services“ (parents.size=1),
+  // trotzdem rollen — Jahresansicht bleibt Reporting-Segmente, Quartale bleiben granular.
+  return hits >= 2 && (parents.size >= 2 || hits >= 3)
 }
 
 export function berechneSegmentMargePct(umsatzMio: number | null, operatingIncomeMio: number | null): number | null {

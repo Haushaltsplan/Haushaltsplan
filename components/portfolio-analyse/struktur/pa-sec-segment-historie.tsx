@@ -1,6 +1,6 @@
 ﻿'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import { appTableScrollClassName } from '@/components/page-shell'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
@@ -11,6 +11,7 @@ import {
 } from '@/components/portfolio-analyse/struktur/pa-struktur-visuals'
 import type {
   SecBacklogHistorie,
+  SecBacklogQuartalEintrag,
   SecKennzahlJahr,
   SecKennzahlenHistorie,
   SecSegmentHistorie,
@@ -19,6 +20,11 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { segmentFarben } from '@/lib/portfolio-analyse/fundamentaldaten-struktur-hilfen'
 import { begrenzeSegmentHistorie } from '@/lib/portfolio-analyse/sec-segment-historie-hilfen'
+import {
+  flagCdnUrl,
+  segmentVisualFuerName,
+  simpleIconUrl,
+} from '@/lib/portfolio-analyse/segment-visuals'
 
 function alleSegmentNamen(hist: SecSegmentHistorie): string[] {
   const namen = new Set<string>()
@@ -105,6 +111,68 @@ function chartSegmenteFuerJahr(
     })
   }
   return out.sort((a, b) => chartNamen.indexOf(a.name) - chartNamen.indexOf(b.name))
+}
+
+function PaSegmentBadge({
+  name,
+  art,
+  farbe,
+  size = 14,
+}: {
+  name: string
+  art: 'produkt' | 'geo'
+  farbe?: string
+  size?: number
+}) {
+  const v = segmentVisualFuerName(name, art)
+  if (art === 'geo') {
+    if (v.flagCode) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={flagCdnUrl(v.flagCode, size <= 14 ? 20 : 40)}
+          alt=""
+          width={size}
+          height={Math.round(size * 0.75)}
+          className="shrink-0 rounded-[2px] object-cover"
+          loading="lazy"
+          decoding="async"
+        />
+      )
+    }
+    return (
+      <span className="inline-flex shrink-0 text-[11px] leading-none" aria-hidden>
+        {v.flagEmoji ?? '🌐'}
+      </span>
+    )
+  }
+  if (v.iconSlug) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={simpleIconUrl(v.iconSlug, v.iconColor)}
+        alt=""
+        width={size}
+        height={size}
+        className="shrink-0 object-contain"
+        loading="lazy"
+        decoding="async"
+      />
+    )
+  }
+  return (
+    <span
+      className="inline-flex shrink-0 items-center justify-center rounded-[3px] text-[8px] font-bold leading-none text-white"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: farbe ?? v.iconColor,
+      }}
+      aria-hidden
+    >
+      {v.initial}
+    </span>
+  )
 }
 
 function farbeFuerChartSegment(name: string, chartNamen: string[], farben: string[]): string {
@@ -198,12 +266,16 @@ function PaAktuellerMixListe({
   hist,
   farben,
   chartNamen,
+  art,
+  jahr: jahrProp,
 }: {
   hist: SecSegmentHistorie
   farben: string[]
   chartNamen: string[]
+  art: 'produkt' | 'geo'
+  jahr?: number
 }) {
-  const jahr = hist.juengstesJahr
+  const jahr = jahrProp ?? hist.juengstesJahr
   const segmente = chartSegmenteFuerJahr(hist, jahr, chartNamen).sort(
     (a, b) => b.anteilPct - a.anteilPct,
   )
@@ -219,8 +291,11 @@ function PaAktuellerMixListe({
           const farbe = farbeFuerChartSegment(s.name, chartNamen, farben)
           return (
             <li key={s.name}>
-              <div className="mb-0.5 flex items-baseline justify-between gap-2 text-[11px]">
-                <span className="min-w-0 truncate text-[var(--app-text)]">{s.name}</span>
+              <div className="mb-0.5 flex items-center justify-between gap-2 text-[11px]">
+                <span className="flex min-w-0 items-center gap-1.5 text-[var(--app-text)]">
+                  <PaSegmentBadge name={s.name} art={art} farbe={farbe} size={14} />
+                  <span className="truncate">{s.name}</span>
+                </span>
                 <span className="shrink-0 tabular-nums font-semibold text-[var(--app-text)]">
                   {s.anteilPct.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %
                 </span>
@@ -263,6 +338,76 @@ function umsatzMioFuerJahr(kz: SecKennzahlenHistorie | null | undefined, jahr: n
   return kz?.umsatzMio.find((e) => e.jahr === jahr)?.wert ?? null
 }
 
+function PaSecBacklogQuartale({
+  quartale,
+  label,
+}: {
+  quartale: SecBacklogQuartalEintrag[]
+  label: string
+}) {
+  const perioden = [...quartale]
+    .sort((a, b) => a.reportDate.localeCompare(b.reportDate))
+    .slice(-8)
+  if (perioden.length < 2) return null
+  const neueste = perioden[perioden.length - 1]!
+  const vor = perioden[perioden.length - 2]!
+  const qoq = umsatzWachstumPct(neueste.wertMio, vor.wertMio)
+  const vorJahr = perioden.find(
+    (p) => p.jahr === neueste.jahr - 1 && p.quartal === neueste.quartal,
+  )
+  const yoy = vorJahr ? umsatzWachstumPct(neueste.wertMio, vorJahr.wertMio) : null
+
+  return (
+    <div className="space-y-3 rounded-xl border border-[var(--app-border)]/50 bg-[var(--app-surface-muted)]/20 p-3 sm:p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
+          Quartale · {label} (10-Q + FY)
+        </p>
+        <p className="text-[10px] text-[var(--app-text-muted)]">
+          {perioden[0]!.label}–{neueste.label}
+        </p>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <PaStrukturKennzahl
+          label={`Aktuell ${neueste.label}`}
+          wert={formatBacklogMio(neueste.wertMio)}
+          hinweis={neueste.reportDate}
+        />
+        {qoq != null ? (
+          <PaStrukturKennzahl
+            label="QoQ"
+            wert={`${qoq > 0 ? '+' : ''}${qoq.toLocaleString('de-DE')}%`}
+            accent={qoq > 0 ? 'emerald' : qoq < -0.5 ? 'red' : 'default'}
+            hinweis={`vs. ${vor.label}`}
+          />
+        ) : null}
+        {yoy != null ? (
+          <PaStrukturKennzahl
+            label="YoY Quartal"
+            wert={`${yoy > 0 ? '+' : ''}${yoy.toLocaleString('de-DE')}%`}
+            accent={yoy > 0 ? 'emerald' : yoy < -0.5 ? 'red' : 'default'}
+            hinweis={`vs. ${vorJahr!.label}`}
+          />
+        ) : null}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        {[...perioden].reverse().map((p) => (
+          <div
+            key={`${p.label}-${p.reportDate}`}
+            className="rounded-lg border border-[var(--app-border)]/40 bg-[var(--app-surface)]/40 px-3 py-2"
+          >
+            <p className="text-[11px] font-semibold tabular-nums text-[var(--app-text)]">{p.label}</p>
+            <p className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--app-text)]">
+              {formatBacklogMio(p.wertMio)}
+            </p>
+            <p className="text-[10px] text-[var(--app-text-muted)]">{p.reportDate}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function PaSecBacklogHistorie({
   backlog,
   kennzahlen,
@@ -296,6 +441,7 @@ function PaSecBacklogHistorie({
 
   const punkte = sorted.map((e, ji) => ({ ...e, x: xFor(ji), y: yFor(e.wertMio) }))
   const neueste = sorted[sorted.length - 1]!
+  const quartale = backlog.quartale ?? []
 
   return (
     <div className="space-y-4">
@@ -326,6 +472,10 @@ function PaSecBacklogHistorie({
           )
         })()}
       </div>
+
+      {quartale.length >= 2 ? (
+        <PaSecBacklogQuartale quartale={quartale} label={backlog.label} />
+      ) : null}
 
       <div className="overflow-x-auto">
         <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block min-w-full">
@@ -389,7 +539,7 @@ function PaSecBacklogHistorie({
               <th className="px-2 py-1.5 font-medium">Jahr</th>
               <th className="px-2 py-1.5 font-medium text-right">{backlog.label}</th>
               <th className="px-2 py-1.5 font-medium text-right">YoY</th>
-              <th className="px-2 py-1.5 font-medium text-right">├À Umsatz</th>
+              <th className="px-2 py-1.5 font-medium text-right">÷ Umsatz</th>
             </tr>
           </thead>
           <tbody>
@@ -674,7 +824,15 @@ function jahreMitSchemaDaten(hist: SecSegmentHistorie, namen: string[]): number[
     .map((j) => j.jahr)
 }
 
-function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farben: string[] }) {
+function PaSecSegmentTabelle({
+  hist,
+  farben,
+  art,
+}: {
+  hist: SecSegmentHistorie
+  farben: string[]
+  art: 'produkt' | 'geo'
+}) {
   const [zeigeAlt, setZeigeAlt] = useState(false)
   const aktuell = useMemo(() => aktuelleSchemaNamen(hist), [hist])
   const alle = useMemo(() => alleSegmentNamen(hist), [hist])
@@ -715,14 +873,18 @@ function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farbe
             {namen.map((name, i) => (
               <tr key={name} className="border-t border-[var(--app-border)]/40">
                 <td className="sticky left-0 z-10 bg-[var(--app-surface)] py-2 pr-3 align-top">
-                  <span
-                    className="mr-2 inline-block h-2 w-2 rounded-sm"
-                    style={{
-                      backgroundColor: (zeigeAlt ? farben : tabellenFarben)[
-                        i % (zeigeAlt ? farben.length : tabellenFarben.length)
-                      ],
-                    }}
-                  />
+                  <span className="mr-1.5 inline-flex align-middle">
+                    <PaSegmentBadge
+                      name={name}
+                      art={art}
+                      farbe={
+                        (zeigeAlt ? farben : tabellenFarben)[
+                          i % (zeigeAlt ? farben.length : tabellenFarben.length)
+                        ]
+                      }
+                      size={14}
+                    />
+                  </span>
                   <span className="font-medium text-[var(--app-text)]">{name}</span>
                 </td>
                 {jahre.map((j, ji) => {
@@ -770,11 +932,13 @@ function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farbe
 function PaQuartalMix({
   quartale,
   titel,
+  art,
 }: {
   quartale: SecSegmentQuartalHistorie
   titel: string
+  art: 'produkt' | 'geo'
 }) {
-  const perioden = [...quartale.perioden].slice(-6)
+  const perioden = [...quartale.perioden].slice(-8)
   if (perioden.length === 0) return null
   const neueste = perioden[perioden.length - 1]!
   const farben = segmentFarben(neueste.segmente.length)
@@ -783,13 +947,13 @@ function PaQuartalMix({
     <div className="space-y-3 rounded-xl border border-[var(--app-border)]/50 bg-[var(--app-surface-muted)]/20 p-3 sm:p-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
-          Quartale · {titel} (10-Q, 3 Monate)
+          Quartale · {titel} (10-Q + Q4 aus GJ)
         </p>
         <p className="text-[10px] text-[var(--app-text-muted)]">
           {perioden[0]!.label}–{neueste.label}
         </p>
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {[...perioden].reverse().map((p) => (
           <div
             key={p.label}
@@ -803,9 +967,11 @@ function PaQuartalMix({
                 .map((s, i) => (
                   <li key={s.name} className="flex items-center justify-between gap-2 text-[10px]">
                     <span className="flex min-w-0 items-center gap-1.5 text-[var(--app-text-muted)]">
-                      <span
-                        className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-                        style={{ backgroundColor: farben[i % farben.length] }}
+                      <PaSegmentBadge
+                        name={s.name}
+                        art={art}
+                        farbe={farben[i % farben.length]}
+                        size={12}
                       />
                       <span className="truncate">{s.name}</span>
                     </span>
@@ -920,11 +1086,19 @@ function PaUmsatzmixBlock({
   hist,
   quartale,
   titel,
+  art,
 }: {
   hist: SecSegmentHistorie
   quartale?: SecSegmentQuartalHistorie | null
   titel: string
+  art: 'produkt' | 'geo'
 }) {
+  const jahre = useMemo(() => hist.jahre.map((j) => j.jahr), [hist])
+  const [jahr, setJahr] = useState(() => hist.juengstesJahr)
+  useEffect(() => {
+    setJahr(hist.juengstesJahr)
+  }, [hist.juengstesJahr, hist.art])
+
   const chartNamen = useMemo(() => chartSegmentNamen(hist), [hist])
   const farben = useMemo(
     () => segmentFarben(chartNamen.filter((n) => n !== ANDERE_NAME).length),
@@ -935,55 +1109,267 @@ function PaUmsatzmixBlock({
     [hist],
   )
   const [detailsOffen, setDetailsOffen] = useState(false)
+  const [sicht, setSicht] = useState<'jahre' | 'quartale'>('jahre')
+  const hatQuartale = (quartale?.anzahlPerioden ?? 0) > 0
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-4 rounded-xl border border-[var(--app-border)]/50 bg-[var(--app-surface-muted)]/20 p-3 sm:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] sm:gap-5 sm:p-4">
-        <div className="min-w-0 space-y-2">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
-            Geschäftsjahre {hist.aeltestesJahr}–{hist.juengstesJahr}
-          </p>
-          <PaSecSegmentStackedChart hist={hist} farben={farben} chartNamen={chartNamen} />
-          <div className="flex flex-wrap gap-x-2.5 gap-y-1 pt-0.5">
-            {chartNamen.map((name) => (
-              <span
-                key={name}
-                className="flex max-w-[9rem] items-center gap-1 text-[10px] text-[var(--app-text-muted)]"
-              >
-                <span
-                  className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: farbeFuerChartSegment(name, chartNamen, farben) }}
-                />
-                <span className="truncate">{name}</span>
-              </span>
-            ))}
-          </div>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="inline-flex rounded-xl border border-[var(--app-border)]/50 bg-[var(--app-surface-muted)]/35 p-0.5">
+          {(
+            [
+              ['jahre', 'Jahre'],
+              ['quartale', 'Quartale'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              disabled={id === 'quartale' && !hatQuartale}
+              onClick={() => setSicht(id)}
+              className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-all disabled:cursor-not-allowed disabled:opacity-35 ${
+                sicht === id
+                  ? 'bg-teal-500/25 text-teal-100 shadow-sm ring-1 ring-teal-400/30'
+                  : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-        <PaAktuellerMixListe hist={hist} farben={farben} chartNamen={chartNamen} />
+        {sicht === 'jahre' && jahre.length > 1 ? (
+          <label className="flex items-center gap-2 text-[11px] text-[var(--app-text-muted)]">
+            Jahr
+            <select
+              value={jahr}
+              onChange={(e) => setJahr(Number(e.target.value))}
+              className="rounded-lg border border-[var(--app-border)]/60 bg-[var(--app-surface)] px-2 py-1 text-[11px] tabular-nums text-[var(--app-text)] outline-none focus:ring-1 focus:ring-teal-400/40"
+            >
+              {[...jahre].reverse().map((j) => (
+                <option key={j} value={j}>
+                  {j}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
 
-      {quartale && quartale.anzahlPerioden > 0 ? (
-        <PaQuartalMix quartale={quartale} titel={titel} />
+      {sicht === 'jahre' ? (
+        <div className="grid gap-4 rounded-2xl border border-[var(--app-border)]/45 bg-gradient-to-br from-[var(--app-surface-muted)]/35 via-transparent to-teal-500/[0.05] p-3 sm:grid-cols-[minmax(0,1.15fr)_minmax(0,0.95fr)] sm:gap-5 sm:p-4">
+          <div className="min-w-0 space-y-2">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
+              {titel} · {hist.aeltestesJahr}–{hist.juengstesJahr}
+            </p>
+            <PaSecSegmentStackedChart hist={hist} farben={farben} chartNamen={chartNamen} />
+            <div className="flex flex-wrap gap-x-2.5 gap-y-1.5 pt-0.5">
+              {chartNamen.map((name) => (
+                <span
+                  key={name}
+                  className="flex max-w-[10rem] items-center gap-1.5 text-[10px] text-[var(--app-text-muted)]"
+                >
+                  <PaSegmentBadge
+                    name={name}
+                    art={art}
+                    farbe={farbeFuerChartSegment(name, chartNamen, farben)}
+                    size={12}
+                  />
+                  <span className="truncate">{name}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+          <PaAktuellerMixListe
+            hist={hist}
+            farben={farben}
+            chartNamen={chartNamen}
+            art={art}
+            jahr={jahr}
+          />
+        </div>
+      ) : hatQuartale && quartale ? (
+        <PaQuartalMix quartale={quartale} titel={titel} art={art} />
       ) : null}
 
       <button
         type="button"
         onClick={() => setDetailsOffen((v) => !v)}
-        className="flex w-full items-center justify-between rounded-lg border border-[var(--app-border)]/40 bg-[var(--app-surface-muted)]/30 px-3 py-2 text-left text-[11px] text-[var(--app-text-muted)] transition-colors hover:text-[var(--app-text)]"
+        className="flex w-full items-center justify-between rounded-xl border border-[var(--app-border)]/45 bg-[var(--app-surface-muted)]/25 px-3.5 py-2.5 text-left text-[11px] text-[var(--app-text-muted)] transition-colors hover:border-teal-500/30 hover:text-[var(--app-text)]"
       >
         <span>Jahresdetails (Umsatz, YoY, Marge)</span>
-        <span className="tabular-nums text-[var(--app-text-muted)]">{detailsOffen ? '▾' : '▸'}</span>
+        <span className="tabular-nums">{detailsOffen ? '▾' : '▸'}</span>
       </button>
       {detailsOffen ? (
-        <div className="rounded-xl border border-[var(--app-border)]/40 p-2 sm:p-3">
-          <PaSecSegmentTabelle hist={hist} farben={tabellenFarben} />
+        <div className="rounded-2xl border border-[var(--app-border)]/40 p-2 sm:p-3">
+          <PaSecSegmentTabelle hist={hist} farben={tabellenFarben} art={art} />
         </div>
       ) : null}
     </div>
   )
 }
 
-export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket }) {
+function StrukturKapitelRahmen({
+  id,
+  titel,
+  untertitel,
+  children,
+}: {
+  id: string
+  titel: string
+  untertitel: string
+  children: ReactNode
+}) {
+  return (
+    <section
+      id={id}
+      className="scroll-mt-24 space-y-4 rounded-2xl border border-[var(--app-border)]/55 bg-[var(--app-surface)]/40 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:p-5"
+    >
+      <header className="border-b border-[var(--app-border)]/45 pb-3">
+        <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-teal-300/80">
+          Struktur
+        </p>
+        <h3 className="mt-0.5 text-base font-semibold tracking-tight text-white sm:text-lg">
+          {titel}
+        </h3>
+        <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">{untertitel}</p>
+      </header>
+      {children}
+    </section>
+  )
+}
+
+function MixZusatzLeiste({ zusatz }: { zusatz: SecSegmentHistoriePaket['zusatz'] }) {
+  if (
+    zusatz.mitarbeiterAnzahl == null &&
+    zusatz.auslandsumsatzAnteilPct == null &&
+    zusatz.hauptkunden.length === 0
+  ) {
+    return null
+  }
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <PaStrukturKennzahl
+        label="Auslandsanteil Umsatz"
+        wert={zusatz.auslandsumsatzAnteilPct != null ? `${zusatz.auslandsumsatzAnteilPct} %` : null}
+      />
+      {zusatz.hauptkunden[0] ? (
+        <PaStrukturKennzahl
+          label="Top-Kunde Umsatzanteil"
+          wert={`${zusatz.hauptkunden[0].anteilPct} %`}
+          hinweis={zusatz.hauptkunden[0].name}
+        />
+      ) : null}
+      {zusatz.hauptkunden.length >= 2 ? (
+        <PaStrukturKennzahl
+          label="Top-3-Kunden Umsatzanteil"
+          wert={`${Math.round(
+            zusatz.hauptkunden.slice(0, 3).reduce((s, k) => s + k.anteilPct, 0) * 10,
+          ) / 10} %`}
+          hinweis={zusatz.hauptkunden
+            .slice(0, 3)
+            .map((k) => k.name)
+            .join(', ')}
+        />
+      ) : null}
+      {zusatz.mitarbeiterAnzahl != null ? (
+        <PaStrukturKennzahl
+          label="Mitarbeiter"
+          wert={zusatz.mitarbeiterAnzahl.toLocaleString('de-DE')}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+function MixSteuerungUndInhalt({
+  paket,
+  produkt,
+  geo,
+}: {
+  paket: SecSegmentHistoriePaket
+  produkt: SecSegmentHistorie | null
+  geo: SecSegmentHistorie | null
+}) {
+  const hatProdukt = (produkt?.anzahlJahre ?? 0) >= 1 && (produkt?.segmentNamen.length ?? 0) >= 1
+  const hatGeo = (geo?.anzahlJahre ?? 0) >= 1 && (geo?.segmentNamen.length ?? 0) >= 1
+  const hatProduktTabs = (produkt?.segmentNamen.length ?? 0) >= 2
+  const hatGeoTabs = (geo?.segmentNamen.length ?? 0) >= 2
+
+  const [umsatzmixTab, setUmsatzmixTab] = useState<'produkt' | 'geo'>(() =>
+    hatGeo ? 'geo' : 'produkt',
+  )
+
+  const aktiverMix =
+    umsatzmixTab === 'produkt' && hatProdukt && produkt
+      ? { titel: 'Produkt', hist: produkt, art: 'produkt' as const }
+      : umsatzmixTab === 'geo' && hatGeo && geo
+        ? { titel: 'Geo', hist: geo, art: 'geo' as const }
+        : hatProdukt && produkt
+          ? { titel: 'Produkt', hist: produkt, art: 'produkt' as const }
+          : hatGeo && geo
+            ? { titel: 'Geo', hist: geo, art: 'geo' as const }
+            : null
+
+  if (!aktiverMix) return null
+
+  return (
+    <div className="space-y-4">
+      {hatProduktTabs && hatGeoTabs ? (
+        <div
+          className="inline-flex rounded-xl border border-[var(--app-border)]/50 bg-[var(--app-surface-muted)]/40 p-0.5"
+          role="tablist"
+          aria-label="Umsatzmix"
+        >
+          {(
+            [
+              ['geo', 'Geografie', geo!.anzahlJahre],
+              ['produkt', 'Produkt', produkt!.anzahlJahre],
+            ] as const
+          ).map(([id, label, jahre]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={umsatzmixTab === id}
+              onClick={() => setUmsatzmixTab(id)}
+              className={`rounded-lg px-3.5 py-2 text-[11px] font-medium transition-all ${
+                umsatzmixTab === id
+                  ? 'bg-teal-500/25 text-teal-100 shadow-sm ring-1 ring-teal-400/30'
+                  : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+              }`}
+            >
+              {label}
+              <span className="ml-1.5 tabular-nums opacity-70">{jahre}J</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {aktiverMix.hist.anzahlJahre >= 2 ? (
+        <PaUmsatzmixBlock
+          hist={aktiverMix.hist}
+          titel={aktiverMix.titel}
+          art={aktiverMix.art}
+          quartale={
+            aktiverMix.art === 'produkt' ? paket.produktQuartale : paket.geoQuartale
+          }
+        />
+      ) : (
+        <PaSecSegmentEinzeljahr hist={aktiverMix.hist} titel={aktiverMix.titel} />
+      )}
+
+      <MixZusatzLeiste zusatz={paket.zusatz} />
+    </div>
+  )
+}
+
+export function PaSecSegmentHistorie({
+  paket,
+  layout = 'default',
+}: {
+  paket: SecSegmentHistoriePaket
+  layout?: 'default' | 'struktur'
+}) {
   const produkt = useMemo(
     () => (paket.produkt ? begrenzeSegmentHistorie(paket.produkt) : null),
     [paket.produkt],
@@ -994,41 +1380,19 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
   )
   const hatProdukt = (produkt?.anzahlJahre ?? 0) >= 1 && (produkt?.segmentNamen.length ?? 0) >= 1
   const hatGeo = (geo?.anzahlJahre ?? 0) >= 1 && (geo?.segmentNamen.length ?? 0) >= 1
-  const hatProduktTabs = (produkt?.segmentNamen.length ?? 0) >= 2
-  const hatGeoTabs = (geo?.segmentNamen.length ?? 0) >= 2
   const hatUmsatzmix = hatProdukt || hatGeo
-  const zusatz = paket.zusatz
 
-  const [umsatzmixTab, setUmsatzmixTab] = useState<'produkt' | 'geo'>(() =>
-    hatProdukt ? 'produkt' : 'geo',
-  )
+  if (!hatUmsatzmix && !paket.backlog && !paket.kennzahlen) return null
 
-  const aktiverMix =
-    umsatzmixTab === 'produkt' && hatProdukt && produkt
-      ? { titel: 'Produkt', hist: produkt }
-      : umsatzmixTab === 'geo' && hatGeo && geo
-        ? { titel: 'Geo', hist: geo }
-        : hatProdukt && produkt
-          ? { titel: 'Produkt', hist: produkt }
-          : hatGeo && geo
-            ? { titel: 'Geo', hist: geo }
-            : null
-
-  const jahresSpanne = useMemo(() => {
+  const jahresSpanne = (() => {
     const alle = [
       ...(produkt ? [produkt.aeltestesJahr, produkt.juengstesJahr] : []),
       ...(geo ? [geo.aeltestesJahr, geo.juengstesJahr] : []),
     ]
     if (alle.length === 0) return null
     return { min: Math.min(...alle), max: Math.max(...alle) }
-  }, [produkt, geo])
+  })()
 
-  if (!hatUmsatzmix && !paket.backlog) return null
-
-  const maxJahre = Math.max(produkt?.anzahlJahre ?? 0, geo?.anzahlJahre ?? 0)
-  const headerTitel = hatUmsatzmix
-    ? 'Geschäftsstruktur — Segment & Region'
-    : 'Backlog / RPO'
   const quelleName =
     paket.quelle === 'sec_edgar'
       ? 'SEC EDGAR'
@@ -1042,109 +1406,64 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
               : 'Marketscreener + StockAnalysis'
             : 'Marketscreener'
 
-  const headerUntertitel = hatUmsatzmix
-    ? maxJahre >= 2 && jahresSpanne
-      ? `${maxJahre} Jahre (${jahresSpanne.min}–${jahresSpanne.max}) · ${quelleName}`
-      : `Umsatzmix nach Produktgruppe und Region · ${quelleName}`
-    : paket.backlog?.quelleTag ?? 'Auftragsbestand'
+  const mixUntertitel =
+    jahresSpanne != null
+      ? `${jahresSpanne.min}–${jahresSpanne.max} · ${quelleName}`
+      : `Geo & Produkt · ${quelleName}`
+
+  const backlogBlock =
+    paket.backlog || paket.kennzahlen ? (
+      <div className="space-y-5">
+        {paket.backlog ? (
+          <PaSecBacklogHistorie backlog={paket.backlog} kennzahlen={paket.kennzahlen} />
+        ) : null}
+        {paket.kennzahlen && paket.kennzahlen.anzahlJahre >= 2 ? (
+          <PaSecKennzahlenPanel kz={paket.kennzahlen} />
+        ) : null}
+      </div>
+    ) : null
+
+  if (layout === 'struktur') {
+    return (
+      <div className="space-y-5">
+        {hatUmsatzmix ? (
+          <StrukturKapitelRahmen
+            id="pa-struktur-umsatzmix"
+            titel="Umsatzmix"
+            untertitel={mixUntertitel}
+          >
+            <MixSteuerungUndInhalt paket={paket} produkt={produkt} geo={geo} />
+          </StrukturKapitelRahmen>
+        ) : null}
+        {backlogBlock ? (
+          <StrukturKapitelRahmen
+            id="pa-struktur-backlog"
+            titel="Backlog / RPO"
+            untertitel={paket.backlog?.quelleTag ?? 'SEC Company Facts'}
+          >
+            {backlogBlock}
+          </StrukturKapitelRahmen>
+        ) : (
+          <section id="pa-struktur-backlog" className="scroll-mt-24" aria-hidden />
+        )}
+      </div>
+    )
+  }
 
   return (
     <PaCard variant="elevated" className="space-y-4 p-4 sm:p-5">
-      <PaStrukturSectionHeader titel={headerTitel} untertitel={headerUntertitel} />
-
-      <div className="space-y-3">
-        {hatUmsatzmix ? (
-          <>
-            {hatProduktTabs && hatGeoTabs ? (
-              <div
-                className="inline-flex rounded-lg border border-[var(--app-border)]/50 bg-[var(--app-surface-muted)]/40 p-0.5"
-                role="tablist"
-                aria-label="Umsatzmix"
-              >
-                {(
-                  [
-                    ['geo', 'Geografie', geo!.anzahlJahre],
-                    ['produkt', 'Produkt', produkt!.anzahlJahre],
-                  ] as const
-                ).map(([id, label, jahre]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    role="tab"
-                    aria-selected={umsatzmixTab === id}
-                    onClick={() => setUmsatzmixTab(id)}
-                    className={`rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors ${
-                      umsatzmixTab === id
-                        ? 'bg-teal-500/25 text-teal-200 shadow-sm ring-1 ring-teal-500/30'
-                        : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
-                    }`}
-                  >
-                    {label}
-                    <span className="ml-1 tabular-nums opacity-70">{jahre}J</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            {aktiverMix ? (
-              aktiverMix.hist.anzahlJahre >= 2 ? (
-                <PaUmsatzmixBlock
-                  hist={aktiverMix.hist}
-                  titel={aktiverMix.titel}
-                  quartale={
-                    aktiverMix.titel === 'Produkt'
-                      ? paket.produktQuartale
-                      : paket.geoQuartale
-                  }
-                />
-              ) : (
-                <PaSecSegmentEinzeljahr hist={aktiverMix.hist} titel={aktiverMix.titel} />
-              )
-            ) : null}
-          </>
-        ) : null}
-      </div>
-
-      {(zusatz.mitarbeiterAnzahl != null ||
-        zusatz.auslandsumsatzAnteilPct != null ||
-        zusatz.hauptkunden.length > 0) && (
-        <div className="grid gap-2 border-t border-[var(--app-border)]/60 pt-4 sm:grid-cols-2 lg:grid-cols-4">
-          <PaStrukturKennzahl
-            label="Auslandsanteil Umsatz"
-            wert={zusatz.auslandsumsatzAnteilPct != null ? `${zusatz.auslandsumsatzAnteilPct} %` : null}
-          />
-          {zusatz.hauptkunden[0] ? (
-            <PaStrukturKennzahl
-              label="Top-Kunde Umsatzanteil"
-              wert={`${zusatz.hauptkunden[0].anteilPct} %`}
-              hinweis={zusatz.hauptkunden[0].name}
-            />
-          ) : null}
-          {zusatz.hauptkunden.length >= 2 ? (
-            <PaStrukturKennzahl
-              label="Top-3-Kunden Umsatzanteil"
-              wert={`${Math.round(
-                zusatz.hauptkunden.slice(0, 3).reduce((s, k) => s + k.anteilPct, 0) * 10,
-              ) / 10} %`}
-              hinweis={zusatz.hauptkunden
-                .slice(0, 3)
-                .map((k) => k.name)
-                .join(', ')}
-            />
-          ) : null}
-          {zusatz.mitarbeiterAnzahl != null ? (
-            <PaStrukturKennzahl
-              label="Mitarbeiter"
-              wert={zusatz.mitarbeiterAnzahl.toLocaleString('de-DE')}
-            />
-          ) : null}
-        </div>
-      )}
-
-      {paket.backlog ? (
+      <PaStrukturSectionHeader
+        titel={hatUmsatzmix ? 'Geschäftsstruktur — Segment & Region' : 'Backlog / RPO'}
+        untertitel={hatUmsatzmix ? mixUntertitel : (paket.backlog?.quelleTag ?? 'Auftragsbestand')}
+      />
+      {hatUmsatzmix ? <MixSteuerungUndInhalt paket={paket} produkt={produkt} geo={geo} /> : null}
+      {backlogBlock ? (
         <div className="border-t border-[var(--app-border)]/60 pt-5">
-          <PaStrukturSectionHeader titel="Backlog / RPO" untertitel={paket.backlog.quelleTag} />
-          <PaSecBacklogHistorie backlog={paket.backlog} kennzahlen={paket.kennzahlen} />
+          <PaStrukturSectionHeader
+            titel="Backlog / RPO"
+            untertitel={paket.backlog?.quelleTag ?? 'SEC Company Facts'}
+          />
+          {backlogBlock}
         </div>
       ) : null}
     </PaCard>

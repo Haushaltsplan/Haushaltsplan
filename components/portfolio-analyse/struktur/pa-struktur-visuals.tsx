@@ -97,8 +97,10 @@ export function PaStrukturOwnershipDonut({ segmente }: { segmente: OwnershipSegm
     return <p className="text-sm text-[var(--app-text-muted)]">Keine Eigentümerdaten verfügbar.</p>
   }
 
+  const top = [...segmente].sort((a, b) => b.anteilPct - a.anteilPct)[0]
+
   return (
-    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start sm:gap-6">
+    <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-8">
       <DonutChart
         segmente={segmente.map((s) => ({
           key: s.key,
@@ -106,18 +108,34 @@ export function PaStrukturOwnershipDonut({ segmente }: { segmente: OwnershipSegm
           farbe: s.farbe,
           betrag: s.anteilPct,
         }))}
-        groesse={148}
-        dicke={24}
-        mitte={{ wert: '100 %', label: 'STRUKTUR' }}
+        groesse={168}
+        dicke={26}
+        mitte={{
+          wert: top ? `${top.anteilPct.toFixed(0)} %` : '100 %',
+          label: top?.label.toUpperCase() ?? 'STRUKTUR',
+        }}
       />
-      <ul className="min-w-0 flex-1 space-y-2 text-xs">
+      <ul className="min-w-0 w-full flex-1 space-y-2.5 text-xs">
         {segmente.map((s) => (
-          <li key={s.key} className="flex items-center justify-between gap-3">
-            <span className="flex items-center gap-2 text-[var(--app-text-muted)]">
-              <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: s.farbe }} />
-              {s.label}
-            </span>
-            <span className="tabular-nums font-medium text-[var(--app-text)]">{s.anteilPct.toFixed(1)} %</span>
+          <li key={s.key} className="space-y-1">
+            <div className="flex items-center justify-between gap-3">
+              <span className="flex min-w-0 items-center gap-2 text-[var(--app-text-muted)]">
+                <span
+                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: s.farbe }}
+                />
+                <span className="truncate">{s.label}</span>
+              </span>
+              <span className="shrink-0 tabular-nums font-semibold text-[var(--app-text)]">
+                {s.anteilPct.toFixed(1)} %
+              </span>
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${Math.min(100, s.anteilPct)}%`, backgroundColor: s.farbe }}
+              />
+            </div>
           </li>
         ))}
       </ul>

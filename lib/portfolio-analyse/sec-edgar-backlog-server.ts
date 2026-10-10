@@ -2,7 +2,10 @@
 
 import 'server-only'
 
-import type { SecBacklogHistorie } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+import type {
+  SecBacklogHistorie,
+  SecBacklogQuartalEintrag,
+} from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { ladeCompanyFactsJson } from '@/lib/portfolio-analyse/sec-edgar-companyfacts-server'
 
 type FactsUnit = {
@@ -22,6 +25,7 @@ type CompanyFactsJson = {
 }
 
 const MAX_JAHRE = 16
+const MAX_QUARTALE = 12
 
 function zuMioUsd(val: number): number {
   const abs = Math.abs(val)
@@ -38,6 +42,17 @@ function jahrAusEintrag(e: FactsUnit): number | null {
     if (Number.isFinite(y) && y >= 1990 && y <= 2035) return y
   }
   if (e.fy != null && e.fy >= 1990 && e.fy <= 2035) return e.fy
+  return null
+}
+
+function quartalAusFp(fp: string | undefined): 1 | 2 | 3 | 4 | null {
+  if (!fp) return null
+  const u = fp.toUpperCase()
+  if (u === 'FY') return 4
+  if (u === 'Q1') return 1
+  if (u === 'Q2') return 2
+  if (u === 'Q3') return 3
+  if (u === 'Q4') return 4
   return null
 }
 
@@ -72,6 +87,66 @@ function extrahiereJahresreiheMio(facts: CompanyFactsJson, tags: string[]): Map<
   return new Map([...map.entries()].map(([j, { val }]) => [j, val]))
 }
 
+/** Quartals-Stände: 10-Q (Q1–Q3) + 10-K/20-F FY als Q4. */
+function extrahiereQuartalreiheMio(
+  facts: CompanyFactsJson,
+  tags: string[],
+): SecBacklogQuartalEintrag[] {
+  type Roh = { end: string; filed: string; jahr: number; quartal: 1 | 2 | 3 | 4; val: number }
+  const byKey = new Map<string, Roh>()
+
+  for (const tag of tags) {
+    for (const ns of ['us-gaap', 'dei'] as const) {
+      const einheiten = facts.facts?.[ns]?.[tag]?.units
+      if (!einheiten) continue
+      for (const liste of Object.values(einheiten)) {
+        for (const e of liste ?? []) {
+          const form = (e.form ?? '').toUpperCase()
+          if (form && !['10-K', '10-Q', '20-F'].includes(form)) continue
+          const quartal = quartalAusFp(e.fp)
+          if (quartal == null) continue
+          if (quartal === 4 && form === '10-Q') continue
+          if (quartal < 4 && form !== '10-Q') continue
+          const end = e.end
+          if (!end || end.length < 8) continue
+          const val = e.val
+          if (val == null || !Number.isFinite(val) || val <= 0) continue
+          // Fiscal year (fy) für Label; Fallback Periodenende
+          const jahr =
+            e.fy != null && e.fy >= 1990 && e.fy <= 2035
+              ? e.fy
+              : jahrAusEintrag(e)
+          if (jahr == null) continue
+          const norm = zuMioUsd(val)
+          const filed = e.filed ?? end
+          const key = `${jahr}-Q${quartal}`
+          const prev = byKey.get(key)
+          if (
+            !prev ||
+            end > prev.end ||
+            (end === prev.end && filed > prev.filed) ||
+            (end === prev.end && filed === prev.filed && Math.abs(norm) > Math.abs(prev.val))
+          ) {
+            byKey.set(key, { end, filed, jahr, quartal, val: norm })
+          }
+        }
+      }
+    }
+    if (byKey.size >= 4) break
+  }
+
+  return [...byKey.values()]
+    .sort((a, b) => (a.end !== b.end ? a.end.localeCompare(b.end) : a.quartal - b.quartal))
+    .slice(-MAX_QUARTALE)
+    .map((r) => ({
+      jahr: r.jahr,
+      quartal: r.quartal,
+      label: `${r.jahr} Q${r.quartal}`,
+      reportDate: r.end,
+      wertMio: r.val,
+    }))
+}
+
 function findeExpliziteBacklogTags(facts: CompanyFactsJson): string[] {
   const gaap = facts.facts?.['us-gaap'] ?? {}
   return Object.keys(gaap).filter(
@@ -82,12 +157,25 @@ function findeExpliziteBacklogTags(facts: CompanyFactsJson): string[] {
   )
 }
 
+function findeRpoTags(facts: CompanyFactsJson): string[] {
+  const primary = ['RevenueRemainingPerformanceObligation']
+  const gaap = facts.facts?.['us-gaap'] ?? {}
+  const extra = Object.keys(gaap).filter(
+    (k) =>
+      /remainingperformanceobligation/i.test(k) &&
+      !/percentage|timing|yearone|yeartwo|expected/i.test(k) &&
+      k !== 'RevenueRemainingPerformanceObligation',
+  )
+  return [...primary, ...extra]
+}
+
 function mapZuHistorie(
   map: Map<number, number>,
   art: SecBacklogHistorie['art'],
   label: string,
   quelleTag: string,
   minJahre = 1,
+  quartale?: SecBacklogQuartalEintrag[],
 ): SecBacklogHistorie | null {
   if (map.size < minJahre) return null
   const eintraege = [...map.entries()]
@@ -99,10 +187,20 @@ function mapZuHistorie(
     label,
     quelleTag,
     eintraege,
+    ...(quartale && quartale.length > 0 ? { quartale } : {}),
     anzahlJahre: eintraege.length,
     aeltestesJahr: eintraege[0]!.jahr,
     juengstesJahr: eintraege[eintraege.length - 1]!.jahr,
   }
+}
+
+function mitQuartalen(
+  hist: SecBacklogHistorie | null,
+  quartale: SecBacklogQuartalEintrag[],
+): SecBacklogHistorie | null {
+  if (!hist) return null
+  if (quartale.length === 0) return hist
+  return { ...hist, quartale }
 }
 
 /** Backlog-Kennzahl aus bereits geladenen Company Facts. */
@@ -112,39 +210,57 @@ export function extrahiereBacklogAusCompanyFacts(facts: CompanyFactsJson): SecBa
   const explizit = findeExpliziteBacklogTags(facts)
   if (explizit.length > 0) {
     const best = explizit
-      .map((tag) => ({ tag, map: extrahiereJahresreiheMio(facts, [tag]) }))
-      .sort((a, b) => b.map.size - a.map.size)[0]
+      .map((tag) => ({
+        tag,
+        map: extrahiereJahresreiheMio(facts, [tag]),
+        quartale: extrahiereQuartalreiheMio(facts, [tag]),
+      }))
+      .sort((a, b) => b.map.size - a.map.size || b.quartale.length - a.quartale.length)[0]
     if (best && best.map.size >= 1) {
-      return mapZuHistorie(best.map, 'backlog', 'Auftragsbestand (Backlog)', best.tag)
+      return mapZuHistorie(
+        best.map,
+        'backlog',
+        'Auftragsbestand (Backlog)',
+        best.tag,
+        1,
+        best.quartale,
+      )
     }
   }
 
-  let rpo = extrahiereJahresreiheMio(facts, ['RevenueRemainingPerformanceObligation'])
-  // Auch Custom-/verwandte Tags mit RPO im Namen
-  if (rpo.size < 2) {
-    const gaap = facts.facts?.['us-gaap'] ?? {}
-    for (const tag of Object.keys(gaap)) {
-      if (
-        /remainingperformanceobligation/i.test(tag) &&
-        !/percentage|timing|yearone|yeartwo|expected/i.test(tag)
-      ) {
-        const m = extrahiereJahresreiheMio(facts, [tag])
-        if (m.size > rpo.size) rpo = m
-      }
+  const rpoTags = findeRpoTags(facts)
+  let rpo = extrahiereJahresreiheMio(facts, rpoTags)
+  let rpoTag = 'RevenueRemainingPerformanceObligation'
+  for (const tag of rpoTags) {
+    const m = extrahiereJahresreiheMio(facts, [tag])
+    if (m.size > rpo.size) {
+      rpo = m
+      rpoTag = tag
     }
   }
   if (rpo.size >= 1) {
+    const quartale = extrahiereQuartalreiheMio(facts, [rpoTag, ...rpoTags])
     return mapZuHistorie(
       rpo,
       'rpo',
       'Verbleibende Leistungsverpflichtungen (RPO)',
-      'RevenueRemainingPerformanceObligation',
+      rpoTag,
+      1,
+      quartale,
     )
   }
 
-  const deferred = extrahiereJahresreiheMio(facts, ['DeferredRevenue', 'ContractWithCustomerLiability'])
+  const deferredTags = ['DeferredRevenue', 'ContractWithCustomerLiability']
+  const deferred = extrahiereJahresreiheMio(facts, deferredTags)
   if (deferred.size >= 1) {
-    return mapZuHistorie(deferred, 'deferred_revenue', 'Deferred Revenue', 'DeferredRevenue')
+    return mapZuHistorie(
+      deferred,
+      'deferred_revenue',
+      'Deferred Revenue',
+      'DeferredRevenue',
+      1,
+      extrahiereQuartalreiheMio(facts, deferredTags),
+    )
   }
 
   const contractTotal = extrahiereJahresreiheMio(facts, ['ContractWithCustomerLiability'])
@@ -154,6 +270,8 @@ export function extrahiereBacklogAusCompanyFacts(facts: CompanyFactsJson): SecBa
       'deferred_revenue',
       'Vertragsverbindlichkeiten (Contract Liabilities)',
       'ContractWithCustomerLiability',
+      1,
+      extrahiereQuartalreiheMio(facts, ['ContractWithCustomerLiability']),
     )
   }
 
@@ -171,6 +289,12 @@ export function extrahiereBacklogAusCompanyFacts(facts: CompanyFactsJson): SecBa
       'deferred_revenue',
       'Vertragsverbindlichkeiten (Contract Liabilities)',
       'ContractWithCustomerLiability*',
+      1,
+      extrahiereQuartalreiheMio(facts, [
+        'ContractWithCustomerLiabilityCurrent',
+        'ContractWithCustomerLiabilityNoncurrent',
+        'ContractWithCustomerLiability',
+      ]),
     )
   }
 
@@ -208,13 +332,14 @@ export function mergeBacklogMitTextHistorie(
     const mio = extrahiereBacklogMioAusText(text)
     if (mio != null && !textMap.has(jahr)) textMap.set(jahr, mio)
   }
+  const q = xbrl?.quartale ?? []
 
   if (xbrl && xbrl.eintraege.length >= 2) {
     const merged = new Map(xbrl.eintraege.map((e) => [e.jahr, e.wertMio]))
     for (const [jahr, wert] of textMap) {
       if (!merged.has(jahr)) merged.set(jahr, wert)
     }
-    return mapZuHistorie(merged, xbrl.art, xbrl.label, xbrl.quelleTag)
+    return mitQuartalen(mapZuHistorie(merged, xbrl.art, xbrl.label, xbrl.quelleTag), q)
   }
 
   if (textMap.size >= 2) {
@@ -226,7 +351,7 @@ export function mergeBacklogMitTextHistorie(
       ...xbrl.eintraege.map((e) => [e.jahr, e.wertMio] as const),
       ...textMap.entries(),
     ])
-    return mapZuHistorie(merged, xbrl.art, xbrl.label, xbrl.quelleTag)
+    return mitQuartalen(mapZuHistorie(merged, xbrl.art, xbrl.label, xbrl.quelleTag), q)
   }
 
   return xbrl
@@ -237,12 +362,13 @@ export function mergeBacklogMitJahrWerten(
   jahrWerte: Map<number, number>,
 ): SecBacklogHistorie | null {
   if (jahrWerte.size === 0) return xbrl
+  const q = xbrl?.quartale ?? []
   if (xbrl && xbrl.eintraege.length >= 2) {
     const merged = new Map(xbrl.eintraege.map((e) => [e.jahr, e.wertMio]))
     for (const [jahr, wert] of jahrWerte) {
       if (!merged.has(jahr)) merged.set(jahr, wert)
     }
-    return mapZuHistorie(merged, xbrl.art, xbrl.label, xbrl.quelleTag)
+    return mitQuartalen(mapZuHistorie(merged, xbrl.art, xbrl.label, xbrl.quelleTag), q)
   }
   if (jahrWerte.size >= 2) {
     return mapZuHistorie(jahrWerte, 'backlog', 'Auftragsbestand (10-K-Text)', 'text')
@@ -252,7 +378,7 @@ export function mergeBacklogMitJahrWerten(
       ...xbrl.eintraege.map((e) => [e.jahr, e.wertMio] as const),
       ...jahrWerte.entries(),
     ])
-    return mapZuHistorie(merged, xbrl.art, xbrl.label, xbrl.quelleTag)
+    return mitQuartalen(mapZuHistorie(merged, xbrl.art, xbrl.label, xbrl.quelleTag), q)
   }
   return xbrl
 }

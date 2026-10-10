@@ -32,6 +32,7 @@ export function PaMsSegmentHistorieLoader({
   ticker,
   initial,
   umsatzZeile,
+  layout = 'default',
 }: {
   isin?: string | null
   name: string
@@ -39,6 +40,8 @@ export function PaMsSegmentHistorieLoader({
   ticker?: string | null
   initial?: SecSegmentHistoriePaket | null
   umsatzZeile?: FundamentalMetrikZeile | null
+  /** Struktur-Tab: getrennte Kapitel Umsatzmix / Backlog ohne äußere Karte. */
+  layout?: 'default' | 'struktur'
 }) {
   const ident = segmentIdentKey({ isin, symbolYahoo, ticker })
   const [paket, setPaket] = useState<SecSegmentHistoriePaket | null>(initial ?? null)
@@ -132,10 +135,10 @@ export function PaMsSegmentHistorieLoader({
     return (
       <div className="space-y-2">
         {laden ? (
-          <p className="text-xs text-[var(--app-text-muted)]">Geschäftsstruktur wird aktualisiert …</p>
+          <p className="text-xs text-[var(--app-text-muted)]">Umsatzmix wird aktualisiert …</p>
         ) : null}
         {fehler ? <p className="text-xs text-amber-400/90">{fehler}</p> : null}
-        <PaSecSegmentHistorie key={ident} paket={paket} />
+        <PaSecSegmentHistorie key={ident} paket={paket} layout={layout} />
       </div>
     )
   }
@@ -143,8 +146,16 @@ export function PaMsSegmentHistorieLoader({
   if (laden) {
     return (
       <PaCard variant="elevated" className="p-5 text-sm text-[var(--app-text-muted)]">
-        Geschäftsstruktur wird geladen …
+        Umsatzmix wird geladen …
       </PaCard>
+    )
+  }
+
+  if (layout === 'struktur') {
+    return (
+      <p className="rounded-2xl border border-[var(--app-border)]/55 bg-[var(--app-surface)]/40 p-5 text-sm text-[var(--app-text-muted)]">
+        {fehler ?? 'Keine Segment- oder Backlog-Daten verfügbar.'}
+      </p>
     )
   }
 

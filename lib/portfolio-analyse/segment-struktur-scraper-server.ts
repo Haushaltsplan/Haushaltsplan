@@ -1,4 +1,4 @@
-/** Orchestrierung: US → SEC first; EU → Marketscreener + StockAnalysis; Backlog. */
+/** Orchestrierung: US → nur SEC EDGAR; EU → Marketscreener + StockAnalysis; Backlog. */
 
 import 'server-only'
 
@@ -148,27 +148,6 @@ function anzahlProduktSegmente(historie: SecSegmentHistorie | null | undefined):
   return historie?.jahre.at(-1)?.segmente.length ?? 0
 }
 
-function anzahlGeoSegmente(historie: SecSegmentHistorie | null | undefined): number {
-  return historie?.jahre.at(-1)?.segmente.length ?? 0
-}
-
-/** SEC-Achse brauchbar: ≥2 Segmente im jüngsten Jahr oder ≥2 Jahre Historie. */
-function secAchseBrauchbar(historie: SecSegmentHistorie | null | undefined): boolean {
-  if (!historie?.jahre.length) return false
-  if ((historie.jahre.at(-1)?.segmente.length ?? 0) >= 2) return true
-  return historie.anzahlJahre >= 2 && historie.jahre.some((j) => j.segmente.length >= 2)
-}
-
-function secPaketBrauchbar(sec: SecSegmentHistoriePaket | null): boolean {
-  if (!sec) return false
-  if (!sec.produkt && !sec.geo) return false
-  return (
-    secAchseBrauchbar(sec.produkt) ||
-    secAchseBrauchbar(sec.geo) ||
-    segmentPaketPlausibel(sec)
-  )
-}
-
 function auslandAnteilAusGeo(geo: SecSegmentHistorie | null): number | null {
   if (!geo?.jahre.length) return null
   const seg = geo.jahre[geo.jahre.length - 1]!.segmente
@@ -215,75 +194,6 @@ function mergePakete(
     anzahl10k: Math.max(produkt?.anzahlJahre ?? 0, geo?.anzahlJahre ?? 0, ms?.anzahl10k ?? 0),
     geladenAm: new Date().toISOString(),
     quelle,
-  }
-}
-
-/**
- * SEC-Paket; MS/SA nur wenn eine Achse bei SEC komplett fehlt.
- * Produkt und Geo (Ländermix) kommen bevorzugt beide aus SEC EDGAR.
- */
-function mergeSecMitMssa(
-  sec: SecSegmentHistoriePaket,
-  mssa: SecSegmentHistoriePaket | null,
-): SecSegmentHistoriePaket {
-  const prodSecOk = secAchseBrauchbar(sec.produkt)
-  const geoSecOk = secAchseBrauchbar(sec.geo)
-
-  const produkt = prodSecOk ? sec.produkt : (mssa?.produkt ?? sec.produkt)
-  const geo = geoSecOk ? sec.geo : (mssa?.geo ?? sec.geo)
-
-  const prodAusMssa = !prodSecOk && !!mssa?.produkt && anzahlProduktSegmente(mssa.produkt) >= 1
-  const geoAusMssa = !geoSecOk && !!mssa?.geo && anzahlGeoSegmente(mssa.geo) >= 1
-  const hatSecAchse = prodSecOk || geoSecOk
-
-  // mixed = SEC + MS/SA-Ergänzung (UI: „SEC EDGAR + …“); sonst SEC oder reines MS/SA
-  let quelle: SecSegmentHistoriePaket['quelle'] = 'sec_edgar'
-  const secErgaenzt = hatSecAchse && (prodAusMssa || geoAusMssa)
-  if (secErgaenzt) quelle = 'mixed'
-  else if (!hatSecAchse && mssa) quelle = mssa.quelle
-
-  const auslandAnteil =
-    auslandAnteilAusGeo(geo) ??
-    sec.zusatz.auslandsumsatzAnteilPct ??
-    mssa?.zusatz.auslandsumsatzAnteilPct ??
-    null
-
-  const berichtJahr = Math.max(
-    produkt?.juengstesJahr ?? 0,
-    geo?.juengstesJahr ?? 0,
-    sec.berichtJahr ?? 0,
-    mssa?.berichtJahr ?? 0,
-  )
-
-  return {
-    produkt: produkt ?? null,
-    geo: geo ?? null,
-    produktQuartale: sec.produktQuartale ?? mssa?.produktQuartale ?? null,
-    geoQuartale: sec.geoQuartale ?? mssa?.geoQuartale ?? null,
-    kategorien: sec.kategorien.length > 0 ? sec.kategorien : (mssa?.kategorien ?? []),
-    zusatz: {
-      ...LEER_ZUSATZ,
-      ...mssa?.zusatz,
-      ...sec.zusatz,
-      auslandsumsatzAnteilPct: auslandAnteil,
-      mitarbeiterAnzahl: sec.zusatz.mitarbeiterAnzahl ?? mssa?.zusatz.mitarbeiterAnzahl ?? null,
-      hauptkunden:
-        sec.zusatz.hauptkunden.length > 0
-          ? sec.zusatz.hauptkunden
-          : (mssa?.zusatz.hauptkunden ?? []),
-    },
-    backlog: sec.backlog ?? mssa?.backlog ?? null,
-    kennzahlen: sec.kennzahlen ?? mssa?.kennzahlen ?? null,
-    berichtJahr: berichtJahr > 0 ? berichtJahr : null,
-    anzahl10k: Math.max(
-      produkt?.anzahlJahre ?? 0,
-      geo?.anzahlJahre ?? 0,
-      sec.anzahl10k,
-      mssa?.anzahl10k ?? 0,
-    ),
-    geladenAm: new Date().toISOString(),
-    quelle,
-    ...(secErgaenzt ? { secErgaenzt: true } : {}),
   }
 }
 
@@ -338,7 +248,8 @@ async function ergaenzeBacklog(
     backlog = await ladeSecBacklogFuerTicker(ticker)
   }
 
-  if (!backlog) {
+  // Non-US: Marketbeat / StockAnalysis, dann SEC als Fallback
+  if (!backlog && !us) {
     const [mb, sa] = await Promise.all([
       ticker ? ladeMarketbeatBacklogHistorie(ticker, opts.refresh) : Promise.resolve(null),
       ladeStockanalysisBacklogHistorie({ ...opts, refresh: opts.refresh }),
@@ -346,8 +257,7 @@ async function ergaenzeBacklog(
     backlog = waehleBacklog(sa, mb)
   }
 
-  // EU / ohne SEC-Treffer: SEC als Fallback
-  if (!backlog && ticker) {
+  if (!backlog && !us && ticker) {
     backlog = await ladeSecBacklogFuerTicker(ticker)
   }
 
@@ -510,30 +420,17 @@ async function scrapeLiveSegmentStruktur(opts: {
       } catch {
         sec = null
       }
-
-      if (secPaketBrauchbar(sec) && sec) {
-        const prodOk = secAchseBrauchbar(sec.produkt)
-        const geoOk = secAchseBrauchbar(sec.geo)
-        if (prodOk && geoOk) {
-          // Produkt + Ländermix beide aus SEC
-          paket = { ...sec, quelle: 'sec_edgar', geladenAm: new Date().toISOString() }
-        } else {
-          // Nur wirklich fehlende Achse aus MS/SA — vorhandene SEC-Achse behalten
-          const mssa = await ladeMssaPaket({
-            isin: isin ?? opts.isin,
-            name: opts.name,
-            symbolYahoo: opts.symbolYahoo,
-            ticker: opts.ticker,
-            refresh: opts.refresh,
-          })
-          paket = mergeSecMitMssa(sec, mssa)
-        }
+      // US: ausschließlich SEC EDGAR — kein Marketscreener/StockAnalysis-Mix mehr
+      if (sec) {
+        paket = { ...sec, quelle: 'sec_edgar', geladenAm: new Date().toISOString() }
+      } else {
+        paket = leeresPaket('sec_edgar')
       }
     }
   }
 
-  // EU oder SEC leer/ohne CIK → MS + SA
-  if (!paket) {
+  // EU (oder US ohne CIK): Marketscreener + StockAnalysis
+  if (!paket && !us) {
     paket = await ladeMssaPaket({
       isin: isin ?? opts.isin,
       name: opts.name,
@@ -543,13 +440,14 @@ async function scrapeLiveSegmentStruktur(opts: {
     })
     if (!paket) paket = leeresPaket()
 
-    // EU-Notfall: SEC-Produkt nur wenn MS/SA dünn und Bare-Ticker vorhanden
-    if (!us) {
-      const fallbackTicker = secTicker ?? usTicker(opts)
-      if (fallbackTicker) {
-        paket = await ergaenzeSecProduktFallback(paket, fallbackTicker)
-      }
+    const fallbackTicker = secTicker ?? usTicker(opts)
+    if (fallbackTicker) {
+      paket = await ergaenzeSecProduktFallback(paket, fallbackTicker)
     }
+  }
+
+  if (!paket && us) {
+    paket = leeresPaket('sec_edgar')
   }
 
   paket = await ergaenzeBacklog(paket, {
