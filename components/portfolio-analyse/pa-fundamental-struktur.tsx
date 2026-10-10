@@ -327,7 +327,7 @@ export function PaFundamentalStruktur({
       </StrukturKapitelShell>
 
       <PaMsSegmentHistorieLoader
-        key={isin?.trim() || ticker?.trim() || symbolYahoo?.trim() || paket.symbolYahoo || 'seg'}
+        key={selectionKey || isin?.trim() || ticker?.trim() || symbolYahoo?.trim() || 'seg'}
         isin={isin}
         name={paket.firmenname}
         symbolYahoo={symbolYahoo ?? paket.symbolYahoo}

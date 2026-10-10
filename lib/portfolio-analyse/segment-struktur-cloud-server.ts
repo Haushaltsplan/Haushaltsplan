@@ -6,8 +6,10 @@ import type { SecSegmentHistoriePaket } from '@/lib/portfolio-analyse/fundamenta
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 const TABLE = 'segment_struktur_cache' as const
-/** Bei Extraktions-Fixes erhöhen (invalidiert Cloud-Einträge). */
+/** Bei Breaking Changes erhöhen. Ältere Versionen ≥ MIN werden trotzdem gelesen (Repair on Read). */
 export const SEGMENT_STRUKTUR_CLOUD_VERSION = 21
+/** Unter dieser Version: verwerfen (zu alt / anderes Schema). */
+const MIN_ACCEPT_CLOUD_VERSION = 16
 const MAX_CLOUD_AGE_MS = 45 * 24 * 60 * 60 * 1000
 
 function istCloudKonfiguriert(): boolean {
@@ -35,7 +37,8 @@ export async function ladeSegmentStrukturAusCloud(
       paket_json: SecSegmentHistoriePaket
       aktualisiert_am: string
     }
-    if (row.cache_version !== SEGMENT_STRUKTUR_CLOUD_VERSION) return null
+    // Früher: strikte Version → jeder Fix invalidierte SEC-Caches → UI fiel auf StockAnalysis zurück.
+    if (row.cache_version < MIN_ACCEPT_CLOUD_VERSION) return null
     const age = Date.now() - new Date(row.aktualisiert_am).getTime()
     if (!Number.isFinite(age) || age > MAX_CLOUD_AGE_MS) return null
     const paket = row.paket_json

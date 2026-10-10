@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeSegmentStrukturAusCloud } from '@/lib/portfolio-analyse/segment-struktur-cloud-server'
 import { ladeGescrapteSegmentStruktur } from '@/lib/portfolio-analyse/segment-struktur-scraper-server'
+import { repariereSegmentPaket } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
 
 export const dynamic = 'force-dynamic'
 /** SEC-Live-Scrape bei Cold Cache kann >60s dauern — UI bricht bei Wechsel per Abort ab. */
@@ -31,12 +32,13 @@ export async function GET(req: Request) {
     }) ?? isinRaw
 
   try {
-    // Firmenwechsel: Cloud sofort, kein Live-Scrape (der hängt sonst Minuten).
+    // Firmenwechsel: Cloud sofort (auch ältere Cache-Versionen), kein Live-Scrape.
     if (preferCache && !refresh && isin && isin.length >= 10) {
       const cloud = await ladeSegmentStrukturAusCloud(isin)
       if (cloud) {
+        const paket = repariereSegmentPaket(cloud) ?? cloud
         return NextResponse.json(
-          { ok: true, paket: cloud, ausCache: true },
+          { ok: true, paket, ausCache: true },
           { headers: { 'Cache-Control': 'no-store' } },
         )
       }

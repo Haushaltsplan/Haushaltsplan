@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { PaSecSegmentHistorie } from '@/components/portfolio-analyse/struktur/pa-sec-segment-historie'
@@ -25,6 +25,17 @@ function segmentIdentKey(opts: {
   )
 }
 
+function hatSegmentInhalt(p: SecSegmentHistoriePaket | null | undefined): boolean {
+  return Boolean(p?.produkt?.jahre?.length || p?.geo?.jahre?.length || p?.backlog)
+}
+
+/** StockAnalysis-only nicht als „fertigen Cache“ zeigen — sonst blitzt SA vor SEC. */
+function istSofortZeigbar(p: SecSegmentHistoriePaket | null | undefined): boolean {
+  if (!hatSegmentInhalt(p)) return false
+  if (p!.quelle === 'stockanalysis') return false
+  return true
+}
+
 export function PaMsSegmentHistorieLoader({
   isin,
   name,
@@ -44,14 +55,18 @@ export function PaMsSegmentHistorieLoader({
   layout?: 'default' | 'struktur'
 }) {
   const ident = segmentIdentKey({ isin, symbolYahoo, ticker })
-  const [paket, setPaket] = useState<SecSegmentHistoriePaket | null>(initial ?? null)
+  const [paket, setPaket] = useState<SecSegmentHistoriePaket | null>(() =>
+    istSofortZeigbar(initial) ? (initial ?? null) : null,
+  )
   const [laden, setLaden] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
+  const aktivIdent = useRef(ident)
 
-  // Bei Unternehmenswechsel sofort alten Mix verwerfen (kein Mastercard-Bleed).
+  // Unternehmenswechsel: alten Mix sofort verwerfen, dann ggf. neues Initial setzen.
   useEffect(() => {
-    setPaket(initial ?? null)
+    aktivIdent.current = ident
     setFehler(null)
+    setPaket(istSofortZeigbar(initial) ? (initial ?? null) : null)
   }, [ident, initial])
 
   useEffect(() => {
@@ -61,19 +76,19 @@ export function PaMsSegmentHistorieLoader({
       return
     }
 
-    const hatCache =
-      Boolean(initial?.produkt?.jahre?.length) ||
-      Boolean(initial?.geo?.jahre?.length) ||
-      Boolean(initial?.backlog)
-
+    const hatCache = istSofortZeigbar(initial)
     const ac = new AbortController()
+    const requestIdent = ident
+    aktivIdent.current = requestIdent
+
     async function run() {
-      // Cloud/Initial sofort zeigen — kein Blockieren beim Firmenwechsel.
       if (hatCache) {
         setPaket(initial ?? null)
         setLaden(false)
         setFehler(null)
       } else {
+        // Kein SEC/Mixed-Initial → warten (nicht StockAnalysis vorblitzen)
+        setPaket(null)
         setLaden(true)
         setFehler(null)
       }
@@ -83,12 +98,11 @@ export function PaMsSegmentHistorieLoader({
       if (name) q.set('name', name)
       if (symbolYahoo) q.set('symbol', symbolYahoo)
       if (ticker) q.set('ticker', ticker)
-      // Mit Cache: nur Soft-Refresh aus Cloud/frisch; ohne Cache: Live erlaubt.
       if (hatCache) q.set('preferCache', '1')
 
       try {
         const { data: sessionData } = await supabase.auth.getSession()
-        if (ac.signal.aborted) return
+        if (ac.signal.aborted || aktivIdent.current !== requestIdent) return
         const token = sessionData.session?.access_token
         const headers: Record<string, string> = {}
         if (token) headers.Authorization = `Bearer ${token}`
@@ -104,7 +118,7 @@ export function PaMsSegmentHistorieLoader({
           fehler?: string
           ausCache?: boolean
         }
-        if (ac.signal.aborted) return
+        if (ac.signal.aborted || aktivIdent.current !== requestIdent) return
         if (!res.ok) {
           if (!hatCache) {
             setPaket(null)
@@ -122,6 +136,7 @@ export function PaMsSegmentHistorieLoader({
             umsatzMap.size > 0
               ? (normalisiereSegmentPaketGegenUmsatz(j.paket, umsatzMap) ?? j.paket)
               : j.paket
+          if (aktivIdent.current !== requestIdent) return
           setPaket(norm)
           setFehler(null)
         } else if (!hatCache) {
@@ -130,12 +145,13 @@ export function PaMsSegmentHistorieLoader({
         }
       } catch (e) {
         if (ac.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return
+        if (aktivIdent.current !== requestIdent) return
         if (!hatCache) {
           setPaket(null)
           setFehler('Segment-Abruf fehlgeschlagen.')
         }
       } finally {
-        if (!ac.signal.aborted) setLaden(false)
+        if (!ac.signal.aborted && aktivIdent.current === requestIdent) setLaden(false)
       }
     }
 

@@ -361,13 +361,10 @@ async function ergaenzeUsMargenAusStockanalysis(
   if (sa.produkt && segmentMargeAbdeckung(sa.produkt) > prodCov) {
     const saCov = segmentMargeAbdeckung(sa.produkt)
     if (produkt) {
+      // SEC-Umsatzmix behalten — StockAnalysis nur für OI/Margen drauflegen.
+      // Früher: bei schwacher Marge-Abdeckung kompletter SA-Ersatz → UI zeigte zuerst SA.
       const mit = ergaenzeSegmentHistorieMitMargen(produkt, sa.produkt)
-      const mitCov = segmentMargeAbdeckung(mit)
-      // Feine SEC-Disaggregation ohne OI → lieber SA-Reporting mit echten Margen
-      if (saCov >= 0.5 && mitCov < 0.5) {
-        produkt = sa.produkt
-        gemischt = true
-      } else if (mitCov > prodCov) {
+      if (segmentMargeAbdeckung(mit) > prodCov) {
         produkt = mit
         gemischt = true
       }
@@ -571,7 +568,15 @@ export async function ladeGescrapteSegmentStruktur(opts: {
       })
     ) {
       const fixed = repariereSegmentPaket(cloud) ?? cloud
-      return ergaenzeUmsatzAbgleich(fixed, { ...opts, isin })
+      const norm = (await ergaenzeUmsatzAbgleich(fixed, { ...opts, isin })) ?? fixed
+      // Repair-on-Read: Alt-Version still und leise auf aktuelle Cache-Version heben
+      void speichereSegmentStrukturInCloud({
+        isin,
+        ticker: opts.ticker ?? opts.symbolYahoo,
+        firmenname: opts.name,
+        paket: norm,
+      })
+      return norm
     }
     if (cloud) {
       console.warn(`[segment-struktur] Cloud verworfen (Plausibilität) für ${isin}`)
