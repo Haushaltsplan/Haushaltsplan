@@ -131,18 +131,41 @@ export function mergenFundamentaldatenZiele(
   return [...map.values()]
 }
 
-export async function ladeFundamentaldatenCacheZiele(opts?: {
+export type FundamentaldatenCacheZiele = {
+  ziele: FundamentaldatenAnfrage[]
+  depot: number
+  watchlist: number
+}
+
+export async function ladeFundamentaldatenCacheZieleDetailed(opts?: {
   signal?: AbortSignal
-}): Promise<FundamentaldatenAnfrage[]> {
+}): Promise<FundamentaldatenCacheZiele> {
   const res = await fetch('/api/portfolio-analyse/fundamentaldaten/cache-ziele', {
     cache: 'no-store',
     signal: opts?.signal,
   })
-  const j = (await res.json()) as { ok?: boolean; ziele?: FundamentaldatenAnfrage[]; message?: string }
+  const j = (await res.json()) as {
+    ok?: boolean
+    ziele?: FundamentaldatenAnfrage[]
+    depot?: number
+    watchlist?: number
+    message?: string
+  }
   if (!res.ok || !j.ok || !Array.isArray(j.ziele)) {
     throw new Error(j.message ?? 'Cache-Ziele konnten nicht geladen werden.')
   }
-  return j.ziele
+  return {
+    ziele: j.ziele,
+    depot: typeof j.depot === 'number' ? j.depot : 0,
+    watchlist: typeof j.watchlist === 'number' ? j.watchlist : 0,
+  }
+}
+
+export async function ladeFundamentaldatenCacheZiele(opts?: {
+  signal?: AbortSignal
+}): Promise<FundamentaldatenAnfrage[]> {
+  const { ziele } = await ladeFundamentaldatenCacheZieleDetailed(opts)
+  return ziele
 }
 
 export type AlleAktualisierenFortschritt = {

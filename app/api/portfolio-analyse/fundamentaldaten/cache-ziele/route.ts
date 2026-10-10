@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import { ladeEffektiveNachkaufWatchlist } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
-import { ladeDepotAktieAnfragen } from '@/lib/portfolio-analyse/depot-gewichte-server'
+import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import type { FundamentaldatenAnfrage } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 export const runtime = 'nodejs'
@@ -22,28 +21,40 @@ function unique(werte: Array<string | null | undefined>): string[] {
   return out
 }
 
-/** Fundamentaldaten-Batch: nur Depot ∪ Watchlist — ohne Nachkauf-Radar-Whitelist. */
+/**
+ * Fundamentaldaten-/Segment-Batch: Depot ∪ Watchlist.
+ * Gleiche Quelle wie Nachkauf-Radar (Live-Depot zuerst, Snapshot-Fallback) —
+ * nicht nur Snapshot, sonst fehlen Depot-Titel wenn der Snapshot leer/veraltet ist.
+ */
 export async function GET(req: Request) {
   return jsonMitOwner(req, async () => {
   try {
-    const [depot, watchlist] = await Promise.all([
-      ladeDepotAktieAnfragen(),
-      ladeEffektiveNachkaufWatchlist(),
-    ])
+    const kandidaten = await ladeNachkaufKandidaten()
     const ziele: FundamentaldatenAnfrage[] = []
     const gesehen = new Set<string>()
+    let depotN = 0
+    let watchlistN = 0
 
-    for (const d of depot) {
-      const isin = d.isin?.trim().toUpperCase()
+    // Depot zuerst (wie Radar-Priorität), dann Watchlist.
+    const sortiert = [...kandidaten].sort((a, b) => {
+      const pa = a.quelle === 'depot' ? 0 : 1
+      const pb = b.quelle === 'depot' ? 0 : 1
+      return pa - pb
+    })
+
+    for (const k of sortiert) {
+      const isin = k.isin?.trim().toUpperCase()
       if (!isin || gesehen.has(isin)) continue
       gesehen.add(isin)
+      if (k.quelle === 'depot') depotN++
+      else watchlistN++
       const ken = isinKenntnis(isin)
       ziele.push({
-        ...d,
         isin,
-        symbolYahoo: d.symbolYahoo ?? ken?.symbolYahoo ?? null,
+        name: k.name,
+        symbolYahoo: k.symbolYahoo ?? ken?.symbolYahoo ?? null,
         symbolCandidates: unique([
-          ...(d.symbolCandidates ?? []),
+          ...(k.symbolCandidates ?? []),
           ken?.symbolYahoo,
           ...(ken?.symbolCandidates ?? []),
         ]),
@@ -52,26 +63,13 @@ export async function GET(req: Request) {
       })
     }
 
-    for (const w of watchlist) {
-      const isin = w.isin?.trim().toUpperCase()
-      if (!isin || gesehen.has(isin)) continue
-      gesehen.add(isin)
-      const ken = isinKenntnis(isin)
-      ziele.push({
-        isin,
-        name: w.name,
-        symbolYahoo: w.symbolYahoo ?? ken?.symbolYahoo ?? null,
-        symbolCandidates: unique([
-          ...w.symbolCandidates,
-          ken?.symbolYahoo,
-          ...(ken?.symbolCandidates ?? []),
-        ]),
-        frequenz: 'jahr',
-        cacheModus: 'erneuern',
-      })
-    }
-
-    return NextResponse.json({ ok: true, ziele, anzahl: ziele.length })
+    return NextResponse.json({
+      ok: true,
+      ziele,
+      anzahl: ziele.length,
+      depot: depotN,
+      watchlist: watchlistN,
+    })
   } catch (e) {
     console.error('[fundamentaldaten/cache-ziele]', e)
     return NextResponse.json(

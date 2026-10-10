@@ -17,7 +17,10 @@ import {
   strukturKmText,
   usdKompakt,
 } from '@/lib/portfolio-analyse/fundamentaldaten-struktur-hilfen'
-import type { AlleAktualisierenFortschritt } from '@/lib/portfolio-analyse/fundamentaldaten-client'
+import {
+  ladeFundamentaldatenCacheZieleDetailed,
+  type AlleAktualisierenFortschritt,
+} from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import {
   aktualisiereAlleSegmentStrukturen,
 } from '@/lib/portfolio-analyse/segment-struktur-client'
@@ -72,8 +75,20 @@ export function PaFundamentalStruktur({
 
   const aktualisiereAlleSegmente = useCallback(async () => {
     if (alleLaeuft) return
+    let zieleMeta: { ziele: { length: number }; depot: number; watchlist: number }
+    try {
+      zieleMeta = await ladeFundamentaldatenCacheZieleDetailed()
+    } catch (e) {
+      setAlleFehler(e instanceof Error ? e.message : 'Cache-Ziele fehlgeschlagen')
+      return
+    }
+    if (zieleMeta.ziele.length === 0) {
+      setAlleFehler('Keine Titel zum Aktualisieren (Depot/Watchlist leer).')
+      return
+    }
     const okStart = window.confirm(
-      'Umsatzmix/Segmente für Depot ∪ Watchlist neu scrapen und in der Cloud speichern?\n\n' +
+      `Umsatzmix/Segmente neu scrapen und in der Cloud speichern?\n\n` +
+        `${zieleMeta.ziele.length} Titel · Depot ${zieleMeta.depot} · Watchlist ${zieleMeta.watchlist}\n` +
         'SEC/Marketscreener — Seite offen lassen (oft 20–60 Min).',
     )
     if (!okStart) return
@@ -84,7 +99,7 @@ export function PaFundamentalStruktur({
     setAlleFehler(null)
     setAlleFortschritt({
       index: 0,
-      gesamt: 0,
+      gesamt: zieleMeta.ziele.length,
       name: 'Starte …',
       ok: true,
       fehlgeschlagen: 0,

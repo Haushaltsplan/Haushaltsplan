@@ -41,7 +41,7 @@ import {
 import {
   aktualisiereAlleFundamentaldaten,
   ladeFundamentaldatenAusLocalCache,
-  ladeFundamentaldatenCacheZiele,
+  ladeFundamentaldatenCacheZieleDetailed,
   ladeFundamentaldatenClient,
   type AlleAktualisierenFortschritt,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
@@ -251,10 +251,14 @@ export function PaFundamentalInhalt({
   const aktualisiereAllePakete = useCallback(async () => {
     if (alleLaeuft || aktualisiere) return
     let ziele: FundamentaldatenAnfrage[] = []
+    let depotN = 0
+    let watchlistN = 0
     try {
-      // Strikt nur Server: Depot ∪ Cloud-Watchlist — kein Client-Merge (sonst
-      // alte localStorage-/Whitelist-Reste wie verkaufte Titel mitgeschrapt).
-      ziele = await ladeFundamentaldatenCacheZiele()
+      // Live-Depot ∪ Cloud-Watchlist (gleiche Quelle wie Nachkauf-Radar).
+      const meta = await ladeFundamentaldatenCacheZieleDetailed()
+      ziele = meta.ziele
+      depotN = meta.depot
+      watchlistN = meta.watchlist
     } catch (e) {
       setFehler(e instanceof Error ? e.message : 'Cache-Ziele fehlgeschlagen')
       return
@@ -265,7 +269,8 @@ export function PaFundamentalInhalt({
     }
     const okStart = window.confirm(
       `${ziele.length} Titel neu scrapen und den Cloud-Cache überschreiben?\n\n` +
-        'Nur Depot und Watchlist. Langsamer Batch mit Retries (oft 45–90 Min) — Seite offen lassen.',
+        `Depot ${depotN} · Watchlist ${watchlistN}\n` +
+        'Langsamer Batch mit Retries (oft 45–90 Min) — Seite offen lassen.',
     )
     if (!okStart) return
 
