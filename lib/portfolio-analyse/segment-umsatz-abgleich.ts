@@ -10,6 +10,7 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import type { FundamentalMetrikZeile } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { anteileBerechnen, type SecSegmentRoh } from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
+import { repariereInkohaerenteSegmentJahre } from '@/lib/portfolio-analyse/sec-edgar-segment-normalisierung'
 
 const SUMMEN_TOLERANZ = 0.012
 
@@ -135,7 +136,7 @@ export function normalisiereSegmentHistorieGegenUmsatz(
 
   if (jahre.length < 1) return hist
 
-  return {
+  const skaliert: SecSegmentHistorie = {
     ...hist,
     jahre,
     segmentNamen: segmentNamenAusJahren(jahre),
@@ -143,26 +144,38 @@ export function normalisiereSegmentHistorieGegenUmsatz(
     aeltestesJahr: jahre[0]!.jahr,
     juengstesJahr: jahre[jahre.length - 1]!.jahr,
   }
+  return repariereInkohaerenteSegmentJahre(skaliert) ?? skaliert
+}
+
+/** Schema-Kollisionen auch ohne Umsatz-Map bereinigen (Cloud-/Cache-Pfad). */
+export function repariereSegmentPaket(
+  paket: SecSegmentHistoriePaket | null | undefined,
+): SecSegmentHistoriePaket | null {
+  if (!paket) return null
+  const produkt = repariereInkohaerenteSegmentJahre(paket.produkt) ?? paket.produkt
+  const geo = repariereInkohaerenteSegmentJahre(paket.geo) ?? paket.geo
+  if (produkt === paket.produkt && geo === paket.geo) return paket
+  return { ...paket, produkt, geo }
 }
 
 export function normalisiereSegmentPaketGegenUmsatz(
   paket: SecSegmentHistoriePaket | null | undefined,
   umsatzProJahr: Map<number, number>,
 ): SecSegmentHistoriePaket | null {
-  if (!paket || umsatzProJahr.size === 0) return paket ?? null
+  if (!paket) return null
+  if (umsatzProJahr.size === 0) return repariereSegmentPaket(paket)
 
   const produkt = normalisiereSegmentHistorieGegenUmsatz(paket.produkt, umsatzProJahr)
   const geo = normalisiereSegmentHistorieGegenUmsatz(paket.geo, umsatzProJahr, {
     geoUmsatzOnly: true,
   })
 
-  if (produkt === paket.produkt && geo === paket.geo) return paket
-
-  return {
+  const out = {
     ...paket,
     produkt,
     geo,
   }
+  return repariereSegmentPaket(out) ?? out
 }
 
 export function summeSegmentUmsatzMio(

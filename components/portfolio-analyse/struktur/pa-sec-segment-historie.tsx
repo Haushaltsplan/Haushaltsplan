@@ -66,15 +66,39 @@ const CHART_MAX_SEGMENTE = 6
 const ANDERE_NAME = 'Andere'
 const ANDERE_FARBE = '#64748b'
 
-/** Top-N Segmente nach jüngstem Mix; Rest als „Andere“ (nur Anzeige). */
+/**
+ * Chart-Legende: jüngste Top-Segmente + über Jahre stabile Namen
+ * (Reporting-Wechsel wie DHR 2018→2021 bleiben farbig, nicht als Lücke).
+ */
 function chartSegmentNamen(hist: SecSegmentHistorie, max = CHART_MAX_SEGMENTE): string[] {
   const juengst = hist.jahre.at(-1)?.segmente ?? []
   const ranked = [...juengst]
     .filter((s) => (s.anteilPct ?? 0) > 0)
     .sort((a, b) => (b.anteilPct ?? 0) - (a.anteilPct ?? 0))
-  const top = ranked.slice(0, max).map((s) => s.name)
-  const hatAndere = ranked.length > top.length
-  return hatAndere ? [...top, ANDERE_NAME] : top
+  const topJuengst = ranked.slice(0, Math.max(3, Math.min(4, max))).map((s) => s.name)
+
+  const freq = new Map<string, number>()
+  const weight = new Map<string, number>()
+  for (const j of hist.jahre) {
+    for (const s of j.segmente) {
+      const pct = s.anteilPct ?? 0
+      if (pct <= 0) continue
+      freq.set(s.name, (freq.get(s.name) ?? 0) + 1)
+      weight.set(s.name, (weight.get(s.name) ?? 0) + pct)
+    }
+  }
+  const minFreq = Math.max(2, Math.ceil(hist.jahre.length * 0.35))
+  const stabil = [...freq.entries()]
+    .filter(([name, c]) => c >= minFreq && !topJuengst.includes(name))
+    .sort((a, b) => (weight.get(b[0]) ?? 0) - (weight.get(a[0]) ?? 0))
+    .map(([n]) => n)
+
+  const top = [...topJuengst, ...stabil].slice(0, max)
+  const topSet = new Set(top)
+  const brauchtAndere =
+    ranked.length > topJuengst.length ||
+    hist.jahre.some((j) => j.segmente.some((s) => (s.anteilPct ?? 0) > 0.05 && !topSet.has(s.name)))
+  return brauchtAndere ? [...top, ANDERE_NAME] : top
 }
 
 function chartSegmenteFuerJahr(
@@ -94,7 +118,7 @@ function chartSegmenteFuerJahr(
     if (pct <= 0) continue
     if (topSet.has(s.name)) {
       out.push({ name: s.name, anteilPct: pct, umsatzMio: s.umsatzMio ?? null })
-    } else if (chartNamen.includes(ANDERE_NAME)) {
+    } else {
       anderePct += pct
       if (s.umsatzMio != null) {
         andereMio += s.umsatzMio
@@ -102,14 +126,59 @@ function chartSegmenteFuerJahr(
       }
     }
   }
-  if (chartNamen.includes(ANDERE_NAME) && anderePct > 0.05) {
+
+  const matchedPct = out.reduce((a, s) => a + s.anteilPct, 0)
+  // Reporting-Ära ohne overlap zum aktuellen Schema: Jahres-eigene Top-Segmente zeigen
+  if (matchedPct < 35 && raw.length >= 2) {
+    const eigen = [...raw]
+      .filter((s) => (s.anteilPct ?? 0) > 0)
+      .sort((a, b) => (b.anteilPct ?? 0) - (a.anteilPct ?? 0))
+      .slice(0, CHART_MAX_SEGMENTE)
+    const eigenOut = eigen.map((s) => ({
+      name: s.name,
+      anteilPct: s.anteilPct ?? 0,
+      umsatzMio: s.umsatzMio ?? null,
+    }))
+    const rest = raw
+      .filter((s) => !eigen.some((e) => e.name === s.name))
+      .reduce((a, s) => a + (s.anteilPct ?? 0), 0)
+    if (rest > 0.05) {
+      eigenOut.push({
+        name: ANDERE_NAME,
+        anteilPct: Math.round(rest * 10) / 10,
+        umsatzMio: null,
+      })
+    }
+    const sumEigen = eigenOut.reduce((a, s) => a + s.anteilPct, 0)
+    if (sumEigen > 0.5 && sumEigen < 99.5) {
+      const faktor = 100 / sumEigen
+      for (const s of eigenOut) s.anteilPct = Math.round(s.anteilPct * faktor * 10) / 10
+    }
+    return eigenOut
+  }
+
+  if (anderePct > 0.05) {
     out.push({
       name: ANDERE_NAME,
       anteilPct: Math.round(anderePct * 10) / 10,
       umsatzMio: andereHatMio ? andereMio : null,
     })
   }
-  return out.sort((a, b) => chartNamen.indexOf(a.name) - chartNamen.indexOf(b.name))
+
+  // Mix-Balken immer auf 100 % strecken — fehlende Zeilen dürfen nicht wie Umsatz-Crash wirken
+  const sumPct = out.reduce((a, s) => a + s.anteilPct, 0)
+  if (sumPct > 0.5 && sumPct < 99.5) {
+    const faktor = 100 / sumPct
+    for (const s of out) {
+      s.anteilPct = Math.round(s.anteilPct * faktor * 10) / 10
+    }
+  }
+
+  const namenMitAndere =
+    out.some((s) => s.name === ANDERE_NAME) && !chartNamen.includes(ANDERE_NAME)
+      ? [...chartNamen, ANDERE_NAME]
+      : chartNamen
+  return out.sort((a, b) => namenMitAndere.indexOf(a.name) - namenMitAndere.indexOf(b.name))
 }
 
 function PaSegmentBadge({
@@ -176,8 +245,14 @@ function PaSegmentBadge({
 
 function farbeFuerChartSegment(name: string, chartNamen: string[], farben: string[]): string {
   if (name === ANDERE_NAME) return ANDERE_FARBE
-  const i = chartNamen.indexOf(name)
-  return farben[Math.max(0, i) % farben.length]!
+  let i = chartNamen.indexOf(name)
+  if (i < 0) {
+    // Reporting-Ära mit anderen Namen: stabile Farbe aus dem Namen
+    let h = 0
+    for (let k = 0; k < name.length; k++) h = (h * 31 + name.charCodeAt(k)) >>> 0
+    i = h % Math.max(1, farben.length)
+  }
+  return farben[i % farben.length]!
 }
 
 function PaSecSegmentStackedChart({

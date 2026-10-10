@@ -43,6 +43,7 @@ import {
   bereinigeHistorieGegenJahresumsatz,
   ergaenzeJahresluecken,
   interpoliereJahresluecken,
+  repariereInkohaerenteSegmentJahre,
 } from '@/lib/portfolio-analyse/sec-edgar-segment-normalisierung'
 import { extrahiereNarrativeSegmentTabellen } from '@/lib/portfolio-analyse/sec-edgar-narrative-tabellen'
 import {
@@ -69,7 +70,7 @@ import {
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 /** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server- + Cloud-Cache). */
-export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 29
+export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 35
 const CACHE_VERSION = SEC_SEGMENT_HISTORIE_CACHE_VERSION
 /** Ziel: mindestens 12 Geschäftsjahre Segmentdaten. */
 const ZIEL_JAHRE = 12
@@ -336,7 +337,9 @@ function finalisiereSegmentHistorie(
   quellen: SecSegmentJahrEintrag[][],
 ): SecSegmentHistorie | null {
   if (!hist && quellen.length === 0) return null
-  return interpoliereJahresluecken(ergaenzeJahresluecken(hist, quellen))
+  return repariereInkohaerenteSegmentJahre(
+    interpoliereJahresluecken(ergaenzeJahresluecken(hist, quellen)),
+  )
 }
 
 async function bauePaketAusZustand(
@@ -400,11 +403,11 @@ async function bauePaketAusZustand(
       sammleProduktQuellen(kategorien),
     )
     // Nach Verwerfen von Fehldaten (z. B. Investment-Gains als „2023“) Lücken neu füllen.
-    produkt = interpoliereJahresluecken(produkt)
+    produkt = repariereInkohaerenteSegmentJahre(interpoliereJahresluecken(produkt))
   }
   if (geo) {
     geo = bereinigeHistorieGegenJahresumsatz(geo, umsatzProJahr, sammleGeoQuellen(kategorien))
-    geo = interpoliereJahresluecken(geo)
+    geo = repariereInkohaerenteSegmentJahre(interpoliereJahresluecken(geo))
   }
 
   if (produkt) produkt = ergaenzeSegmentHistorieMitMargen(produkt, oiJahrEintraege)

@@ -10,7 +10,7 @@ import type {
 import { isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const TABLE = 'fundamentaldaten_paket_cache' as const
-export const FUNDAMENTALDATEN_CACHE_VERSION = 10
+export const FUNDAMENTALDATEN_CACHE_VERSION = 11
 /** Frisch: kein erneuter Scrape. Danach einmal prüfen, ob sich die GuV geändert hat. */
 const FRISCH_MS = 20 * 60 * 60 * 1000
 

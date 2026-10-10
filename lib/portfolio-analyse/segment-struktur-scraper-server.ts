@@ -36,7 +36,10 @@ import { ladeSecSegmentHistorie } from '@/lib/portfolio-analyse/sec-edgar-segmen
 import { segmentMargeAbdeckung } from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
 import { ergaenzeSegmentHistorieMitMargen } from '@/lib/portfolio-analyse/segment-margen-hilfen'
 import { ladeStockanalysisSegmentPaket } from '@/lib/portfolio-analyse/stockanalysis-segment-server'
-import { normalisiereSegmentPaketGegenUmsatz } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
+import {
+  normalisiereSegmentPaketGegenUmsatz,
+  repariereSegmentPaket,
+} from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
 import { baueUmsatzProJahrAusYahoo } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-guv-server'
 
 const LEER_ZUSATZ: SecZusatzRisikoFelder = {
@@ -536,6 +539,7 @@ async function scrapeLiveSegmentStruktur(opts: {
   })
 
   paket = await ergaenzeUmsatzAbgleich(paket, { ...opts, isin })
+  paket = repariereSegmentPaket(paket) ?? paket
 
   if (!paket.produkt && !paket.geo && !paket.backlog) return null
   return paket
@@ -566,7 +570,8 @@ export async function ladeGescrapteSegmentStruktur(opts: {
         name: opts.name,
       })
     ) {
-      return ergaenzeUmsatzAbgleich(cloud, { ...opts, isin })
+      const fixed = repariereSegmentPaket(cloud) ?? cloud
+      return ergaenzeUmsatzAbgleich(fixed, { ...opts, isin })
     }
     if (cloud) {
       console.warn(`[segment-struktur] Cloud verworfen (Plausibilität) für ${isin}`)

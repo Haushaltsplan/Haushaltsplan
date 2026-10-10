@@ -12,6 +12,7 @@ import {
   istPlausiblerSegmentname,
   kanonisereSegmentNamen,
   rollupZuReportingSegmenten,
+  segmentIstGeo,
   type SecSegmentJahrEintrag,
   type SecSegmentRoh,
 } from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
@@ -68,6 +69,18 @@ const ZUSATZ_ALIASE: [RegExp, string][] = [
   [/^franchise\s+revenues?$/i, 'Franchise revenues'],
   [/^asset\s+based\s+fees?$/i, 'Asset Based Fees'],
   [/^asset\s+linked\s+fees?$/i, 'Asset Linked Fees'],
+  [/^instruments\s*and\s*accessories$/i, 'Instruments and Accessories'],
+  [/^instrumentsand\s*accessories$/i, 'Instruments and Accessories'],
+  [/^rest\s+of\s+(?:the\s+)?world$/i, 'Rest of the World'],
+  [/^rest\s+of\s+world$/i, 'Rest of the World'],
+  [/^other\s+countries$/i, 'Other countries'],
+  [/^all\s+other\s+countries$/i, 'All Other Countries'],
+  [/^wearables,?\s*home\s*(?:and|&)\s*accessories$/i, 'Wearables, Home and Accessories'],
+  [/^wearables\s+homeand\s+accessories$/i, 'Wearables, Home and Accessories'],
+  [/^software\s+as\s+a?\s*service$/i, 'Software as a Service'],
+  [/^sleep\s+and\s+respiratory$/i, 'Sleep and Breathing Health'],
+  [/^sleep\s+and\s+breathing\s+health$/i, 'Sleep and Breathing Health'],
+  [/^residential\s+care\s+software$/i, 'Residential Care Software'],
 ]
 
 function wendeZusatzAlias(name: string): string {
@@ -359,6 +372,10 @@ export function ergaenzeJahresluecken(
   }
 
   const byJahr = new Map(primaer.jahre.map((j) => [j.jahr, j.segmente]))
+  const schema = ermittleDominanteSegmentNamen(primaer.jahre)
+  const medianN = medianZahl(
+    primaer.jahre.map((j) => j.segmente.filter((s) => (s.umsatzMio ?? 0) > 0).length),
+  )
   for (const liste of quellen) {
     for (const j of liste) {
       if (j.segmente.length < 2) continue
@@ -369,7 +386,13 @@ export function ergaenzeJahresluecken(
       }
       const altSum = alt.reduce((s, x) => s + (x.umsatzMio ?? 0), 0)
       const neuSum = j.segmente.reduce((s, x) => s + (x.umsatzMio ?? 0), 0)
-      if (neuSum > altSum * 1.08 && alt.length < j.segmente.length) {
+      const altBruch = jahrIstSchemaBruch(alt, schema, medianN)
+      const neuBruch = jahrIstSchemaBruch(j.segmente, schema, medianN)
+      if (altBruch && !neuBruch) {
+        byJahr.set(j.jahr, j.segmente)
+        continue
+      }
+      if (neuSum > altSum * 1.08 && alt.length < j.segmente.length && !neuBruch) {
         byJahr.set(j.jahr, j.segmente)
       }
     }
@@ -379,6 +402,262 @@ export function ergaenzeJahresluecken(
     .sort((a, b) => a[0] - b[0])
     .map(([jahr, segmente]) => ({ jahr, segmente }))
   return vereinheitlicheSegmentHistorie({ ...primaer, jahre })
+}
+
+function medianZahl(werte: number[]): number {
+  if (werte.length === 0) return 0
+  const s = [...werte].sort((a, b) => a - b)
+  const m = Math.floor(s.length / 2)
+  return s.length % 2 === 1 ? s[m]! : (s[m - 1]! + s[m]!) / 2
+}
+
+/** Reine Regionslabels (auch McD-„U.S.“-Operating), wenn daneben echte Produktlinien stehen. */
+const REINE_REGION_LABEL =
+  /^(?:u\.s\.?|united states|europe|asia(?:[- ]pacific)?|americas?|emea|apac|international|foreign|domestic|rest of (?:the )?world|other countries|other foreign countries|latin america|north america|south america)$/i
+
+function entferneGeoAusProduktWennGemischt(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  const ohneGeo = segmente.filter(
+    (s) => !segmentIstGeo(s.name) && !REINE_REGION_LABEL.test(s.name.trim()),
+  )
+  // McD o. Ä.: nur Regions-Operating-Segmente → Original behalten
+  if (ohneGeo.length < 2) return segmente
+  return ohneGeo
+}
+
+function istGenerischesUmsatzLabel(name: string): boolean {
+  return /^(products?|services?|product sales|service revenue|goods|merchandise)$/i.test(
+    name.trim(),
+  )
+}
+
+/**
+ * AAPL u. a.: „Product + Service“ parallel zu iPhone/iPad/Mac → Aggregate entfernen.
+ * Ein einzelnes „Product“ neben Consumables/Instruments (TMO) ist ein Peer-Schnitt — behalten.
+ */
+function entferneGenerischenUmsatzSchnitt(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  const generic = segmente.filter((s) => istGenerischesUmsatzLabel(s.name))
+  const specific = segmente.filter((s) => !istGenerischesUmsatzLabel(s.name))
+  const hatProduct = generic.some((s) => /^products?$/i.test(s.name.trim()))
+  const hatService = generic.some((s) => /^services?$/i.test(s.name.trim()))
+  // Nur der klassische Product+Service-Doppel-Schnitt (nicht TMO-„Product“ allein)
+  if (!hatProduct || !hatService || specific.length < 2) return segmente
+  const gSum = generic.reduce((a, s) => a + (s.umsatzMio ?? 0), 0)
+  const sSum = specific.reduce((a, s) => a + (s.umsatzMio ?? 0), 0)
+  const total = gSum + sSum
+  if (total <= 0) return segmente
+  const gShare = gSum / total
+  const sShare = sSum / total
+  if (gShare >= 0.35 && gShare <= 0.65 && sShare >= 0.35 && sShare <= 0.65) {
+    return specific
+  }
+  return segmente
+}
+
+/** Geo: nur bei echtem Doppel-Schnitt (US/ROW ≈ andere Regionen, je ~½) einen Schnitt behalten. */
+function entferneGrobenGeoSchnitt(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  const grob = segmente.filter((s) => {
+    const n = s.name.trim()
+    return (
+      /^(united states|u\.s\.?)$/i.test(n) ||
+      /^rest of (?:the )?world$/i.test(n) ||
+      /^other countries$/i.test(n) ||
+      /^all other countries$/i.test(n) ||
+      /^foreign$/i.test(n) ||
+      /^international$/i.test(n)
+    )
+  })
+  const fein = segmente.filter((s) => !grob.includes(s))
+  if (grob.length < 2 || fein.length < 2) return segmente
+  const gSum = grob.reduce((a, s) => a + (s.umsatzMio ?? 0), 0)
+  const fSum = fein.reduce((a, s) => a + (s.umsatzMio ?? 0), 0)
+  const total = gSum + fSum
+  if (total <= 0) return segmente
+  const gShare = gSum / total
+  const fShare = fSum / total
+  // Echtes Nebeneinander zweier Voll-Schnitte (nicht NVDA mit US+China+Europa in einem Schnitt)
+  if (gShare >= 0.35 && gShare <= 0.65 && fShare >= 0.35 && fShare <= 0.65) {
+    return grob
+  }
+  return segmente
+}
+
+/** Namen, die in den „schlanken“ Jahren stabil vorkommen (= Reporting-Schema). */
+export function ermittleDominanteSegmentNamen(jahre: SecSegmentJahrEintrag[]): string[] {
+  if (jahre.length === 0) return []
+  const counts = jahre.map((j) => j.segmente.filter((s) => (s.umsatzMio ?? 0) > 0).length)
+  const med = medianZahl(counts)
+  const lean = jahre.filter((j) => {
+    const n = j.segmente.filter((s) => (s.umsatzMio ?? 0) > 0).length
+    return n >= 2 && n <= med + 1.5
+  })
+  const pool = lean.length >= 2 ? lean : jahre
+  const freq = new Map<string, number>()
+  for (const j of pool) {
+    for (const s of j.segmente) {
+      if ((s.umsatzMio ?? 0) <= 0) continue
+      freq.set(s.name, (freq.get(s.name) ?? 0) + 1)
+    }
+  }
+  const schwell = Math.max(2, Math.ceil(pool.length * 0.5))
+  return [...freq.entries()]
+    .filter(([, c]) => c >= schwell)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([n]) => n)
+}
+
+function nameInSchema(name: string, schema: string[], nameMap: Map<string, string>): boolean {
+  const k = kanonischerName(name, nameMap)
+  const sk = segmentSchluessel(k)
+  return schema.some((n) => {
+    const sn = kanonischerName(n, nameMap)
+    return sn === k || segmentSchluessel(sn) === sk
+  })
+}
+
+function jahrIstSchemaBruch(
+  segmente: SecSegmentRoh[],
+  schema: string[],
+  medianN: number,
+  nameMap: Map<string, string> = new Map(),
+): boolean {
+  if (schema.length < 2) return false
+  const clean = segmente.filter((s) => (s.umsatzMio ?? 0) > 0)
+  if (clean.length < 2) return true
+  const treffer = schema.filter((n) =>
+    clean.some((s) => nameInSchema(s.name, [n], nameMap)),
+  ).length
+  const allSum = clean.reduce((a, s) => a + (s.umsatzMio ?? 0), 0)
+  const schemaSum = clean
+    .filter((s) => nameInSchema(s.name, schema, nameMap))
+    .reduce((a, s) => a + (s.umsatzMio ?? 0), 0)
+  const cov = allSum > 0 ? schemaSum / allSum : 0
+  const aufgegblaht =
+    clean.length >= Math.max(medianN + 4, Math.ceil(medianN * 1.75)) &&
+    clean.length > schema.length + 2
+
+  if (aufgegblaht && treffer >= Math.min(2, schema.length)) return true
+
+  if (
+    treffer >= Math.min(2, schema.length) &&
+    clean.length > schema.length + 1 &&
+    cov >= 0.22 &&
+    cov <= 0.88
+  ) {
+    return true
+  }
+
+  if (aufgegblaht && treffer === 0 && clean.length >= medianN + 5) return true
+
+  return false
+}
+
+function interpoliereSegmenteZwischenJahren(
+  segPrev: SecSegmentRoh[],
+  segNext: SecSegmentRoh[],
+  prevJahr: number,
+  nextJahr: number,
+  zielJahr: number,
+  nameMap: Map<string, string>,
+  nurNamen?: string[],
+): SecSegmentRoh[] | null {
+  const span = nextJahr - prevJahr
+  if (span <= 0) return null
+  const w = (zielJahr - prevJahr) / span
+  const namen = nurNamen?.length
+    ? nurNamen
+    : [
+        ...new Set([
+          ...segPrev.map((s) => kanonischerName(s.name, nameMap)),
+          ...segNext.map((s) => kanonischerName(s.name, nameMap)),
+        ]),
+      ]
+  const segmente: SecSegmentRoh[] = []
+  for (const name of namen) {
+    const a = segmentNachName(segPrev, name, nameMap)
+    const b = segmentNachName(segNext, name, nameMap)
+    const va = a?.umsatzMio ?? null
+    const vb = b?.umsatzMio ?? null
+    if (va == null && vb == null) continue
+    const umsatzMio =
+      va != null && vb != null ? Math.round((va * (1 - w) + vb * w) * 10) / 10 : (va ?? vb)
+    if (umsatzMio == null || umsatzMio <= 0) continue
+    const oiA = a?.operatingIncomeMio ?? null
+    const oiB = b?.operatingIncomeMio ?? null
+    const operatingIncomeMio =
+      oiA != null && oiB != null
+        ? Math.round((oiA * (1 - w) + oiB * w) * 10) / 10
+        : oiA ?? oiB
+    segmente.push({
+      name,
+      umsatzMio,
+      anteilPct: null,
+      operatingIncomeMio,
+      margePct: null,
+    })
+  }
+  return segmente.length >= 2 ? anteileBerechnen(segmente) : null
+}
+
+/**
+ * Jahre mit vermischten Segment-Schnitten (z. B. TMO 2023: Product/Consumables/Instruments
+ * + Operating-Segmente + Geo) durch Interpolation aus benachbarten schlanken Jahren ersetzen.
+ */
+export function repariereInkohaerenteSegmentJahre(
+  hist: SecSegmentHistorie | null,
+): SecSegmentHistorie | null {
+  if (!hist || hist.jahre.length < 3) return hist
+  const vorab = vereinheitlicheSegmentHistorie(hist) ?? hist
+  const schema = ermittleDominanteSegmentNamen(vorab.jahre)
+  if (schema.length < 2) return vorab
+
+  const medianN = medianZahl(
+    vorab.jahre.map((j) => j.segmente.filter((s) => (s.umsatzMio ?? 0) > 0).length),
+  )
+  const byJahr = new Map(vorab.jahre.map((j) => [j.jahr, j.segmente]))
+  const nameMap = aligniereSegmentNamenUeberJahre(vorab.jahre)
+  const sorted = [...byJahr.keys()].sort((a, b) => a - b)
+  const min = sorted[0]!
+  const max = sorted[sorted.length - 1]!
+
+  const istBruch = (jahr: number): boolean => {
+    const segs = byJahr.get(jahr)
+    return !segs || jahrIstSchemaBruch(segs, schema, medianN, nameMap)
+  }
+
+  let geaendert = false
+  for (const y of sorted) {
+    if (!istBruch(y)) continue
+
+    let prev = y - 1
+    while (prev >= min && istBruch(prev)) prev--
+    let next = y + 1
+    while (next <= max && istBruch(next)) next++
+    if (prev < min || next > max || !byJahr.has(prev) || !byJahr.has(next)) {
+      // Ohne Nachbarn nicht zurechtschneiden: skalierte Teil-Summen verfälschen den Mix.
+      continue
+    }
+    if (next - prev > 6) continue
+
+    const interp = interpoliereSegmenteZwischenJahren(
+      byJahr.get(prev)!,
+      byJahr.get(next)!,
+      prev,
+      next,
+      y,
+      nameMap,
+      schema,
+    )
+    if (interp) {
+      byJahr.set(y, interp)
+      geaendert = true
+    }
+  }
+
+  if (!geaendert) return vorab
+  const jahre = [...byJahr.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([jahr, segmente]) => ({ jahr, segmente }))
+  return vereinheitlicheSegmentHistorie({ ...vorab, jahre })
 }
 
 /** Kleine Lücken zwischen bekannten Jahren linear interpolieren (max. 5 Jahre). */
@@ -401,33 +680,15 @@ export function interpoliereJahresluecken(hist: SecSegmentHistorie | null): SecS
     if (prev < min || next > max) continue
     if (next - prev - 1 > 5) continue
 
-    const segPrev = byJahr.get(prev)!
-    const segNext = byJahr.get(next)!
-    const w = (y - prev) / (next - prev)
-    const namen = [
-      ...new Set([
-        ...segPrev.map((s) => kanonischerName(s.name, nameMap)),
-        ...segNext.map((s) => kanonischerName(s.name, nameMap)),
-      ]),
-    ]
-    const segmente: SecSegmentRoh[] = []
-
-    for (const name of namen) {
-      const a = segmentNachName(segPrev, name, nameMap)
-      const b = segmentNachName(segNext, name, nameMap)
-      const va = a?.umsatzMio ?? null
-      const vb = b?.umsatzMio ?? null
-      if (va == null && vb == null) continue
-      const umsatzMio =
-        va != null && vb != null
-          ? Math.round((va * (1 - w) + vb * w) * 10) / 10
-          : va ?? vb
-      if (umsatzMio == null || umsatzMio <= 0) continue
-      segmente.push({ name, umsatzMio, anteilPct: null })
-    }
-    if (segmente.length >= 2) {
-      byJahr.set(y, anteileBerechnen(segmente))
-    }
+    const interp = interpoliereSegmenteZwischenJahren(
+      byJahr.get(prev)!,
+      byJahr.get(next)!,
+      prev,
+      next,
+      y,
+      nameMap,
+    )
+    if (interp) byJahr.set(y, interp)
   }
 
   const jahre = [...byJahr.entries()]
@@ -468,8 +729,13 @@ function dedupliziereSegmente(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
   return [...byName.values()]
 }
 
-function scoreJahrKandidat(segmente: SecSegmentRoh[], konzern: number | undefined): number {
+function scoreJahrKandidat(
+  segmente: SecSegmentRoh[],
+  konzern: number | undefined,
+  schema: string[] = [],
+): number {
   let score = segmente.length >= 2 && segmente.length <= 10 ? 20 : 0
+  if (segmente.length > 12) score -= 35
   score -= segmente.filter((s) => istPeriodenLabel(s.name)).length * 50
   if (konzern && konzern > 0) {
     const summe = segmente.reduce((s, x) => s + (x.umsatzMio ?? 0), 0)
@@ -477,6 +743,13 @@ function scoreJahrKandidat(segmente: SecSegmentRoh[], konzern: number | undefine
       const ratio = summe / konzern
       score += 30 - Math.min(30, Math.abs(1 - ratio) * 40)
     }
+  }
+  if (schema.length >= 2) {
+    const names = new Set(segmente.map((s) => s.name))
+    const treffer = schema.filter((n) => names.has(n)).length
+    score += treffer * 12
+    score -= Math.max(0, segmente.length - schema.length) * 4
+    if (treffer === schema.length && segmente.length <= schema.length + 1) score += 25
   }
   return score
 }
@@ -488,6 +761,12 @@ function bereinigeJahrSegmente(
 ): SecSegmentRoh[] | null {
   let clean = filterPeriodenSegmente(segmente).filter((s) => (s.umsatzMio ?? 0) > 0)
   clean = clean.filter((s) => istPlausiblerSegmentname(s.name))
+  if (art === 'produkt') {
+    clean = entferneGeoAusProduktWennGemischt(clean)
+    clean = entferneGenerischenUmsatzSchnitt(clean)
+  } else if (art === 'geo') {
+    clean = entferneGrobenGeoSchnitt(clean)
+  }
   if (clean.length < 2) return null
 
   if (art === 'produkt' && brauchtReportingRollup([{ jahr: 0, segmente: clean }])) {
@@ -508,13 +787,14 @@ function waehleBesteJahrSegmente(
   kandidaten: SecSegmentRoh[][],
   konzern: number | undefined,
   art: SecSegmentHistorie['art'],
+  schema: string[] = [],
 ): SecSegmentRoh[] | null {
   let best: SecSegmentRoh[] | null = null
   let bestScore = -Infinity
   for (const roh of kandidaten) {
     const val = bereinigeJahrSegmente(roh, konzern, art)
     if (!val) continue
-    const score = scoreJahrKandidat(val, konzern)
+    const score = scoreJahrKandidat(val, konzern, schema)
     if (score > bestScore) {
       bestScore = score
       best = val
@@ -538,6 +818,25 @@ export function bereinigeHistorieGegenJahresumsatz(
   for (const q of quellen) for (const j of q) jahreSet.add(j.jahr)
   if (jahreSet.size === 0) return hist
 
+  const rohJahre: SecSegmentJahrEintrag[] = []
+  for (const jahr of [...jahreSet].sort((a, b) => a - b)) {
+    const prim = hist?.jahre.find((j) => j.jahr === jahr)?.segmente
+    if (prim?.length) rohJahre.push({ jahr, segmente: prim })
+  }
+  const schema = ermittleDominanteSegmentNamen(
+    rohJahre.length >= 2
+      ? rohJahre
+      : [...jahreSet]
+          .sort((a, b) => a - b)
+          .flatMap((jahr) => {
+            for (const q of quellen) {
+              const alt = q.find((j) => j.jahr === jahr)
+              if (alt) return [alt]
+            }
+            return []
+          }),
+  )
+
   const jahre: SecSegmentJahrEintrag[] = []
   for (const jahr of [...jahreSet].sort((a, b) => a - b)) {
     const kandidaten: SecSegmentRoh[][] = []
@@ -548,19 +847,19 @@ export function bereinigeHistorieGegenJahresumsatz(
       if (alt) kandidaten.push(alt)
     }
     const konzern = umsatzProJahr.get(jahr)
-    const segmente = waehleBesteJahrSegmente(kandidaten, konzern, art)
+    const segmente = waehleBesteJahrSegmente(kandidaten, konzern, art, schema)
     if (segmente) jahre.push({ jahr, segmente })
   }
 
   if (jahre.length < 2) return hist
 
-  const segmentNamen = [...new Set(jahre.flatMap((j) => j.segmente.map((s) => s.name)))].sort()
-  return {
+  const roh: SecSegmentHistorie = {
     art,
     jahre,
-    segmentNamen,
+    segmentNamen: [...new Set(jahre.flatMap((j) => j.segmente.map((s) => s.name)))].sort(),
     anzahlJahre: jahre.length,
     aeltestesJahr: jahre[0]!.jahr,
     juengstesJahr: jahre[jahre.length - 1]!.jahr,
   }
+  return repariereInkohaerenteSegmentJahre(vereinheitlicheSegmentHistorie(roh) ?? roh)
 }

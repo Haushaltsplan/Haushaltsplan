@@ -7,7 +7,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 const TABLE = 'segment_struktur_cache' as const
 /** Bei Extraktions-Fixes erhöhen (invalidiert Cloud-Einträge). */
-export const SEGMENT_STRUKTUR_CLOUD_VERSION = 18
+export const SEGMENT_STRUKTUR_CLOUD_VERSION = 21
 const MAX_CLOUD_AGE_MS = 45 * 24 * 60 * 60 * 1000
 
 function istCloudKonfiguriert(): boolean {

@@ -79,7 +79,7 @@ const XBRL_OPERATING_TAG = 'ScheduleOfSegmentReportingInformationBySegmentTextBl
 const XBRL_OPERATING_FALLBACK = 'SegmentReportingDisclosureTextBlock'
 
 const SKIP_LABELS =
-  /^(net revenue[s]?|total revenue[s]?|total net sales|revenue[s]?|revenues?|total[s]?|consolidated|eliminations?|intercompany|corporate|other(\s+and)?\s+unallocated|unallocated|not\s+assigned|all\s+other|year ended|in millions|\(in millions\)|cost of revenue|operating expenses|operating income|gross profit|depreciation|amortization|assets|liabilities|capital expenditures|adjusted ebitda|reconciling items|long-lived assets|property and equipment|revenue from operations|revenue from external customers|revenues from external customers|consolidated revenues|intersegment revenues|segment operating profit|operating profit|gross margin|employee benefit|less: other segment items)$/i
+  /^(net revenue[s]?|total revenue[s]?|total net sales|revenue[s]?|revenues?|total[s]?|consolidated|eliminations?|intercompany|corporate|other(\s+and)?\s+unallocated|unallocated|not\s+assigned|all\s+other|year ended|in millions|\(in millions\)|cost of revenue|operating expenses|operating income|gross profit|depreciation|amortization|assets|liabilities|capital expenditures|adjusted ebitda|reconciling items|long-lived assets|property and equipment|revenue from operations|revenue from external customers|revenues from external customers|consolidated revenues|intersegment revenues|segment operating profit|operating profit|gross margin|employee benefit|less: other segment items|reportable segment net sales|reportable segments?|other adjustments|other operating segment)$/i
 
 const JUNK_LABEL =
   /incorporated|recognized|privacy|union\s*\(|&#|payments,|chief executive|officer since|previous business|accounts receivable|contract assets|receivables from contracts|shares outstanding|weighted[- ]average|diluted|basic shares|per share|stockholders|shareholders|remeasurement|held for sale|medical costs|payable|long-term assets|capitalized software|common stock|preferred stock|class [a-z0-9]/i
@@ -1483,7 +1483,8 @@ export function istPlausiblerSegmentname(name: string): boolean {
   if (/^fiscal\s+\d{4}$/i.test(n)) return false
   if (/^\w{3,9}\s+\d{1,2},/i.test(n)) return false
   if (/^millions|^may \d|^\(millions/i.test(n)) return false
-  if (/^primary$|^secondary$|^total company$|^all other$/i.test(n)) return false
+  if (/^primary$|^secondary$|^total company$|^all other$|^total segments?$/i.test(n)) return false
+  if (/^(actual|non-?gaap|gross revenue|rebates and incentives)/i.test(n)) return false
   return true
 }
 
@@ -1564,7 +1565,8 @@ export function entferneSubtotalZeilen(segmente: SecSegmentRoh[]): SecSegmentRoh
     if (sv <= 0) continue
     const n = s.name.toLowerCase()
     const kandidat =
-      /\btotal\b|subtotal|gesamt|\badvertising$/i.test(n) || /services total$/i.test(n)
+      /\btotal\b|subtotal|gesamt|reportable segment|\badvertising$/i.test(n) ||
+      /services total$/i.test(n)
     if (!kandidat) continue
     const others = segmente.filter((o) => o.name !== s.name)
     for (let mask = 1; mask < 1 << others.length; mask++) {
@@ -1581,7 +1583,7 @@ export function entferneSubtotalZeilen(segmente: SecSegmentRoh[]): SecSegmentRoh
 
   for (const s of segmente) {
     const n = s.name.toLowerCase()
-    if (/\btotal\b|subtotal|gesamt/i.test(n)) toRemove.add(s.name)
+    if (/\btotal\b|subtotal|gesamt|reportable segment/i.test(n)) toRemove.add(s.name)
     if (/\badvertising$/i.test(n) && !/search|youtube|network/i.test(n)) toRemove.add(s.name)
     if (/services total$/i.test(n)) toRemove.add(s.name)
   }
