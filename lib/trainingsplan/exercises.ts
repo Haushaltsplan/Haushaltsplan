@@ -9,8 +9,8 @@ const DEMO = {
     'https://firebasestorage.googleapis.com/v0/b/personalfinanceai-cursor.appspot.com/o/trainai%2Fcreator-media%2F2026-10-07%2Ftrainai-push-up-5d1917138ec8dbbe.gif?alt=media&token=5ffaa42b-b340-4299-b808-b9994c93f8d4',
   shoulderPress:
     'https://firebasestorage.googleapis.com/v0/b/personalfinanceai-cursor.appspot.com/o/trainai%2Fcreator-media%2F2026-10-07%2Ftrainai-standing-dumbbell-shoulder-press-0db9b3923cf09e15.gif?alt=media&token=b04dcaff-ad88-43c5-9364-0326dd988c81',
-  dip:
-    'https://firebasestorage.googleapis.com/v0/b/personalfinanceai-cursor.appspot.com/o/trainai%2Fcreator-media%2F2026-10-07%2Ftrainai-parallel-bar-dip-45c22987363500ff.gif?alt=media&token=f2110d06-b2ba-4441-8f5b-c7754241f654',
+  closeGripPushUp:
+    'https://firebasestorage.googleapis.com/v0/b/personalfinanceai-cursor.appspot.com/o/trainai%2Fcreator-media%2F2026-10-07%2Ftrainai-close-grip-push-up-c38a2f786a7fcc9f.gif?alt=media&token=1a9c37b3-c18f-461c-b769-dec6889c8f91',
   plank:
     'https://firebasestorage.googleapis.com/v0/b/personalfinanceai-cursor.appspot.com/o/trainai%2Fcreator-media%2F2026-10-07%2Ftrainai-forearm-plank-ba1f71356fbbda2f.gif?alt=media&token=abf9279c-c754-4d5f-828b-10ccc346d9e2',
   reverseCrunch:
@@ -49,14 +49,14 @@ export const KRAFT1_EXERCISES: WorkoutExercise[] = [
     emoji: '🏋️',
   },
   {
-    id: 'dips',
-    name: 'Dips (Stuhlkante / Bank)',
+    id: 'close-grip-pushups',
+    name: 'Enge Liegestütze (Trizeps)',
     sets: 3,
     reps: '8–12',
     restSec: 75,
-    tip: 'Schultern tief, kontrolliert — Form wie Parallelbarren, zu Hause an der Bank.',
-    demoGifUrl: DEMO.dip,
-    emoji: '🪑',
+    tip: 'Hände schulterbreit oder enger, Ellbogen nah am Körper — Trizeps ohne Bank/Dip-Barren.',
+    demoGifUrl: DEMO.closeGripPushUp,
+    emoji: '💪',
   },
   {
     id: 'plank',

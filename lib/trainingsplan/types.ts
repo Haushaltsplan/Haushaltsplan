@@ -5,7 +5,7 @@ export type RennradFokus = 'ausdauer' | 'tempo' | 'longride'
 export type ExerciseId =
   | 'pushups'
   | 'shoulder-press'
-  | 'dips'
+  | 'close-grip-pushups'
   | 'plank'
   | 'leg-raises'
   | 'rower-intervals'

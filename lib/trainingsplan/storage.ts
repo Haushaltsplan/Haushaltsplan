@@ -1,7 +1,7 @@
 import { TRAININGS_PROFIL } from '@/lib/trainingsplan/profile'
 import { heuteIsoLocal, weekStartMontag } from '@/lib/trainingsplan/date-utils'
-import { buildDefaultWeek } from '@/lib/trainingsplan/weekly-plan'
-import type { FlexDayMode, TrainingsPersistState } from '@/lib/trainingsplan/types'
+import { buildDefaultWeek, exercisesForKind } from '@/lib/trainingsplan/weekly-plan'
+import type { DaySession, FlexDayMode, TrainingsPersistState } from '@/lib/trainingsplan/types'
 
 export const TRAININGS_STORAGE_KEY = 'omnia-trainingsplan-v1'
 export const TRAININGS_STATE_VERSION = 4 as const
@@ -43,10 +43,23 @@ export function loadTrainingsState(): TrainingsPersistState {
       return syncWeekIfNeeded(migrated)
     }
 
-    return syncWeekIfNeeded({ ...ensureFlexFlag(parsed), flexDayMode: flexMode })
+    return syncWeekIfNeeded({
+      ...refreshExerciseCatalog(ensureFlexFlag(parsed)),
+      flexDayMode: flexMode,
+    })
   } catch {
     return createFreshState()
   }
+}
+
+/** Übungskatalog aus dem Code nachziehen (z. B. Dips → enge Liegestütze). */
+function refreshExerciseCatalog(state: TrainingsPersistState): TrainingsPersistState {
+  const days: DaySession[] = state.days.map((d) => {
+    const fresh = exercisesForKind(d.kind)
+    if (!fresh) return { ...d, exercises: undefined }
+    return { ...d, exercises: fresh }
+  })
+  return { ...state, days }
 }
 
 function ensureFlexFlag(state: TrainingsPersistState): TrainingsPersistState {
