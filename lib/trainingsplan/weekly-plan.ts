@@ -4,7 +4,7 @@ import {
   KRAFT2_EXERCISES,
 } from '@/lib/trainingsplan/exercises'
 import { addDaysIso, weekStartMontag } from '@/lib/trainingsplan/date-utils'
-import type { DaySession, SessionKind } from '@/lib/trainingsplan/types'
+import type { DaySession, FlexDayMode, SessionKind } from '@/lib/trainingsplan/types'
 
 type TemplateSlot = {
   /** 0 = Montag … 6 = Sonntag */
@@ -14,19 +14,22 @@ type TemplateSlot = {
   subtitle: string
   durationMin: number
   rennradFokus?: DaySession['rennradFokus']
+  isFlexDay?: boolean
 }
 
 /**
- * Standardwoche:
- * Mo = echte Ruhe · Do = Aktiv-Recovery (leichtes Kurz-Kraft) statt zweitem Totaltag.
- * Mit ~5500–6000 km/Jahr reicht ein voller Ruhetag + aktive Erholung.
+ * Standardwoche (immer):
+ * - 1 fester Ruhetag (Mo)
+ * - 3 Rennradtage (nie hintereinander: Di / Fr / So)
+ * - 2 schwere Krafttage (Mi / Sa)
+ * - 1 Flex-Tag (Do): wählbar Ruhe ODER Kurz-Kraft
  */
 export const WOCHEN_TEMPLATE: TemplateSlot[] = [
   {
     offset: 0,
     kind: 'ruhe',
     title: 'Ruhetag',
-    subtitle: 'Volle Regeneration — Schlaf, Protein, leichte Mobility',
+    subtitle: 'Feste Regeneration — Schlaf, Protein, leichte Mobility',
     durationMin: 0,
   },
   {
@@ -47,9 +50,10 @@ export const WOCHEN_TEMPLATE: TemplateSlot[] = [
   {
     offset: 3,
     kind: 'aktiv',
-    title: 'Aktiv-Recovery — Mini-Kraft',
-    subtitle: 'Kurz & leicht (~20 Min.) · Durchblutung, Core, Grip — kein schwerer Oberkörper',
+    title: 'Flex-Tag — Kurz-Kraft',
+    subtitle: 'Wahlweise: Kurz-Kraft (~20 Min.) oder zweiter Ruhetag',
     durationMin: 22,
+    isFlexDay: true,
   },
   {
     offset: 4,
@@ -76,8 +80,26 @@ export const WOCHEN_TEMPLATE: TemplateSlot[] = [
   },
 ]
 
+export const FLEX_AKTIV_META = {
+  kind: 'aktiv' as const,
+  title: 'Flex-Tag — Kurz-Kraft',
+  subtitle: 'Leichtes Mini-Kraft (~20 Min.) · Core & Grip — kein schwerer Oberkörper',
+  durationMin: 22,
+}
+
+export const FLEX_RUHE_META = {
+  kind: 'ruhe' as const,
+  title: 'Flex-Tag — Extra-Ruhe',
+  subtitle: 'Zweiter Ruhetag diese Woche — volle Erholung',
+  durationMin: 0,
+}
+
 export function istSchwereKraft(kind: SessionKind): boolean {
   return kind === 'kraft1' || kind === 'kraft2'
+}
+
+export function istRennrad(kind: SessionKind): boolean {
+  return kind === 'rennrad'
 }
 
 export function istTrainierbareKraft(kind: SessionKind): boolean {
@@ -91,13 +113,28 @@ export function exercisesForKind(kind: SessionKind) {
   return undefined
 }
 
+export function applyFlexMode(session: DaySession, mode: FlexDayMode): DaySession {
+  if (!session.isFlexDay) return session
+  const meta = mode === 'aktiv' ? FLEX_AKTIV_META : FLEX_RUHE_META
+  return {
+    ...session,
+    kind: meta.kind,
+    title: meta.title,
+    subtitle: meta.subtitle,
+    durationMin: meta.durationMin,
+    rennradFokus: undefined,
+    exercises: exercisesForKind(meta.kind),
+  }
+}
+
 export function sessionFromTemplate(
   weekStart: string,
   slot: TemplateSlot,
   completed = false,
+  flexMode: FlexDayMode = 'aktiv',
 ): DaySession {
   const dateIso = addDaysIso(weekStart, slot.offset)
-  return {
+  let session: DaySession = {
     id: `${dateIso}-${slot.kind}`,
     dateIso,
     weekday: (slot.offset + 1) % 7,
@@ -108,12 +145,20 @@ export function sessionFromTemplate(
     rennradFokus: slot.rennradFokus,
     exercises: exercisesForKind(slot.kind),
     completed,
+    isFlexDay: slot.isFlexDay,
   }
+  if (slot.isFlexDay) {
+    session = applyFlexMode(session, flexMode)
+  }
+  return session
 }
 
-export function buildDefaultWeek(weekStartIso?: string): DaySession[] {
+export function buildDefaultWeek(
+  weekStartIso?: string,
+  flexMode: FlexDayMode = 'aktiv',
+): DaySession[] {
   const start = weekStartIso ?? weekStartMontag()
-  return WOCHEN_TEMPLATE.map((slot) => sessionFromTemplate(start, slot))
+  return WOCHEN_TEMPLATE.map((slot) => sessionFromTemplate(start, slot, false, flexMode))
 }
 
 export function kindLabel(kind: SessionKind): string {
@@ -123,7 +168,7 @@ export function kindLabel(kind: SessionKind): string {
     case 'kraft2':
       return 'Kraft 2'
     case 'aktiv':
-      return 'Aktiv'
+      return 'Kurz-Kraft'
     case 'rennrad':
       return 'Rennrad'
     case 'ruhe':

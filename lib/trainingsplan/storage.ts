@@ -1,20 +1,22 @@
 import { TRAININGS_PROFIL } from '@/lib/trainingsplan/profile'
 import { heuteIsoLocal, weekStartMontag } from '@/lib/trainingsplan/date-utils'
 import { buildDefaultWeek } from '@/lib/trainingsplan/weekly-plan'
-import type { TrainingsPersistState } from '@/lib/trainingsplan/types'
+import type { FlexDayMode, TrainingsPersistState } from '@/lib/trainingsplan/types'
 
 export const TRAININGS_STORAGE_KEY = 'omnia-trainingsplan-v1'
-export const TRAININGS_STATE_VERSION = 2 as const
+export const TRAININGS_STATE_VERSION = 3 as const
+export const DEFAULT_FLEX_MODE: FlexDayMode = 'aktiv'
 
-export function createFreshState(coachName?: string): TrainingsPersistState {
+export function createFreshState(coachName?: string, flexDayMode: FlexDayMode = DEFAULT_FLEX_MODE): TrainingsPersistState {
   const weekStartIso = weekStartMontag()
   return {
     version: TRAININGS_STATE_VERSION,
     weekStartIso,
-    days: buildDefaultWeek(weekStartIso),
+    days: buildDefaultWeek(weekStartIso, flexDayMode),
     completedHistory: [],
     lastRescheduleNote: null,
     coachName: coachName?.trim() || TRAININGS_PROFIL.defaultName,
+    flexDayMode,
   }
 }
 
@@ -23,15 +25,15 @@ export function loadTrainingsState(): TrainingsPersistState {
   try {
     const raw = localStorage.getItem(TRAININGS_STORAGE_KEY)
     if (!raw) return createFreshState()
-    const parsed = JSON.parse(raw) as TrainingsPersistState & { version?: number }
+    const parsed = JSON.parse(raw) as TrainingsPersistState & { version?: number; flexDayMode?: FlexDayMode }
     if (!parsed || !Array.isArray(parsed.days)) {
       return createFreshState()
     }
-    // v1 → v2: neuer Wochenplan (Aktiv-Tag statt 2. Ruhe)
+    const flexMode: FlexDayMode = parsed.flexDayMode === 'ruhe' ? 'ruhe' : 'aktiv'
+
     if (parsed.version !== TRAININGS_STATE_VERSION) {
-      const migrated = createFreshState(parsed.coachName)
+      const migrated = createFreshState(parsed.coachName, flexMode)
       migrated.completedHistory = parsed.completedHistory ?? []
-      // Completed-Flags nach Datum übernehmen, wo möglich
       const doneDates = new Set(
         (parsed.days ?? []).filter((d) => d.completed).map((d) => d.dateIso),
       )
@@ -40,10 +42,26 @@ export function loadTrainingsState(): TrainingsPersistState {
       )
       return syncWeekIfNeeded(migrated)
     }
-    return syncWeekIfNeeded(parsed)
+
+    // Bestehende Woche: Flex-Flag nachziehen falls fehlend (Do-Slot)
+    const withFlex = ensureFlexFlag(parsed)
+    return syncWeekIfNeeded({ ...withFlex, flexDayMode: flexMode })
   } catch {
     return createFreshState()
   }
+}
+
+function ensureFlexFlag(state: TrainingsPersistState): TrainingsPersistState {
+  if (state.days.some((d) => d.isFlexDay)) return state
+  // Heuristik: Tag zwischen Kraft1 und Tempo-Rad / Donnerstag der Woche
+  const days = state.days.map((d) => {
+    const isThu = new Date(d.dateIso + 'T12:00:00').getDay() === 4
+    if (isThu && (d.kind === 'aktiv' || d.kind === 'ruhe')) {
+      return { ...d, isFlexDay: true }
+    }
+    return d
+  })
+  return { ...state, days }
 }
 
 export function saveTrainingsState(state: TrainingsPersistState): void {
@@ -73,12 +91,14 @@ export function syncWeekIfNeeded(state: TrainingsPersistState): TrainingsPersist
     })
   }
 
+  const flexMode = state.flexDayMode ?? DEFAULT_FLEX_MODE
   return {
     ...state,
     version: TRAININGS_STATE_VERSION,
     weekStartIso: currentStart,
-    days: buildDefaultWeek(currentStart),
+    days: buildDefaultWeek(currentStart, flexMode),
     completedHistory: history,
     lastRescheduleNote: null,
+    flexDayMode: flexMode,
   }
 }

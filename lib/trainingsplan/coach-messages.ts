@@ -65,8 +65,8 @@ export function coachTagesbotschaft(
       }
     case 'aktiv':
       return {
-        headline: `Aktiv-Recovery, ${n}`,
-        body: 'Kurzes leichtes Kraft (~20 Min.) — kein Totaltag. Schultern schonen, Core & Grip pflegen. Bei Bedarf vor/zurück schieben.',
+        headline: `Kurz-Kraft-Flex, ${n}`,
+        body: 'Leicht & kurz (~20 Min.) — Core & Grip. Oder auf Extra-Ruhe umschalten. Nie zwei Radtage hintereinander.',
         mood: 'aktiv',
       }
     case 'rennrad':
@@ -85,8 +85,10 @@ export function coachTagesbotschaft(
     case 'ruhe':
     default:
       return {
-        headline: `Ruhetag, ${n}`,
-        body: 'Ein echter Off-Day reicht bei deinem Radvolumen. Aktiv-Recovery ist Do — Ruhe kannst du vor/zurück schieben.',
+        headline: heute.isFlexDay ? `Extra-Ruhe (Flex), ${n}` : `Ruhetag, ${n}`,
+        body: heute.isFlexDay
+          ? 'Zweiter Erholungstag. Umschalten auf Kurz-Kraft geht jederzeit, solange der Tag offen ist.'
+          : 'Feste Regeneration. 3 Rad · 2 Kraft · Flex nach Wahl — Ruhe kannst du vor/zurück schieben.',
         mood: 'ruhe',
       }
   }

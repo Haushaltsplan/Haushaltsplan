@@ -5,8 +5,8 @@ import {
 import { addDaysIso, daysBetween, heuteIsoLocal } from '@/lib/trainingsplan/date-utils'
 import type { DaySession, SessionKind, TrainingsStats } from '@/lib/trainingsplan/types'
 
-/** Geplante Einheiten/Woche (ohne reine Ruhe). */
-const WORKOUTS_PRO_WOCHE = 6 // 3× Rad + 2× Kraft + 1× Aktiv
+/** Geplante Einheiten/Woche: 3× Rad + 2× Kraft (+ optional Flex-Kurz-Kraft). */
+const WORKOUTS_PRO_WOCHE = 5.5
 const KRAFT_PRO_WOCHE = 2
 const RAD_KM_PRO_WOCHE_SCHAETZ = 120
 

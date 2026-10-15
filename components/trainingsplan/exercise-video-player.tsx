@@ -5,7 +5,9 @@ import type { WorkoutExercise } from '@/lib/trainingsplan/types'
 
 /**
  * Zeigt eine echte Person bei der Übungsausführung (looping Demo-GIF).
- * Optionaler MP4-Fallback — GIF hat Vorrang, weil zuverlässiger und formklar.
+ * TrainAI-Demos sind quadratisch — daher aspect-square + object-contain.
+ * Globale Regel `#app-main img { height: auto }` wird per absolute + !h-full
+ * ausgehebelt, sonst wird die Figur unten abgeschnitten.
  */
 export function ExerciseVideoPlayer({ exercise }: { exercise: WorkoutExercise }) {
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -29,32 +31,43 @@ export function ExerciseVideoPlayer({ exercise }: { exercise: WorkoutExercise })
   const showVideo = !showGif && Boolean(exercise.videoUrl) && !videoFailed
 
   return (
-    <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-[var(--app-border)] bg-gradient-to-br from-zinc-900 to-black">
-      {showGif ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={exercise.id}
-          src={exercise.demoGifUrl}
-          alt={`Demo: ${exercise.name}`}
-          className="h-full w-full object-contain bg-black"
-          onError={() => setGifFailed(true)}
-        />
-      ) : showVideo ? (
-        <video
-          ref={videoRef}
-          key={`vid-${exercise.id}`}
-          className="h-full w-full object-cover"
-          src={exercise.videoUrl}
-          autoPlay
-          loop
-          muted
-          playsInline
-          onError={() => setVideoFailed(true)}
-        />
-      ) : (
-        <FormDemoFallback exercise={exercise} />
-      )}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-4 py-3">
+    <div className="overflow-hidden rounded-2xl border border-[var(--app-border)] bg-zinc-950">
+      <div className="flex justify-center bg-zinc-200 dark:bg-zinc-800">
+        <div
+          className={
+            showGif
+              ? 'relative aspect-square w-full max-w-[min(100%,380px)]'
+              : 'relative aspect-video w-full'
+          }
+        >
+          {showGif ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={exercise.id}
+              src={exercise.demoGifUrl}
+              alt={`Demo: ${exercise.name}`}
+              className="absolute inset-0 !h-full !max-h-none w-full object-contain object-center"
+              onError={() => setGifFailed(true)}
+            />
+          ) : showVideo ? (
+            <video
+              ref={videoRef}
+              key={`vid-${exercise.id}`}
+              className="absolute inset-0 !h-full !max-h-none w-full object-contain object-center"
+              src={exercise.videoUrl}
+              autoPlay
+              loop
+              muted
+              playsInline
+              onError={() => setVideoFailed(true)}
+            />
+          ) : (
+            <FormDemoFallback exercise={exercise} />
+          )}
+        </div>
+      </div>
+
+      <div className="border-t border-[var(--app-border)] bg-black/50 px-4 py-2.5">
         <p className="text-sm font-semibold text-white">{exercise.name}</p>
         <p className="text-xs text-white/70">
           {exercise.sets} Sätze · {exercise.reps}

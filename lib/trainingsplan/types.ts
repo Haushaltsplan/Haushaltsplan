@@ -43,6 +43,9 @@ export type LinkedStravaRide = {
   startDateIso: string
 }
 
+/** Flex-Slot: wahlweise zweiter Ruhetag oder kurzer Krafttag. */
+export type FlexDayMode = 'ruhe' | 'aktiv'
+
 export type DaySession = {
   id: string
   dateIso: string
@@ -55,6 +58,8 @@ export type DaySession = {
   exercises?: WorkoutExercise[]
   completed: boolean
   postponedFrom?: string
+  /** Wählbarer Slot (Ruhe ↔ Kurz-Kraft), genau einer pro Woche. */
+  isFlexDay?: boolean
   /** Von Strava gematchte Fahrt(en) an diesem Tag. */
   stravaRides?: LinkedStravaRide[]
 }
@@ -68,10 +73,12 @@ export type TrainingsStats = {
 }
 
 export type TrainingsPersistState = {
-  version: 2
+  version: 3
   weekStartIso: string
   days: DaySession[]
   completedHistory: { dateIso: string; kind: SessionKind; radKm?: number }[]
   lastRescheduleNote: string | null
   coachName: string
+  /** Wahl für den Flex-Tag: Ruhe oder Kurz-Kraft. */
+  flexDayMode: FlexDayMode
 }

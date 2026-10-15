@@ -19,6 +19,7 @@ import {
 } from '@/lib/trainingsplan/profile'
 import { berechneStats } from '@/lib/trainingsplan/progress'
 import {
+  setzeFlexTag,
   verschiebeAufMorgen,
   verschiebeTag,
   werteAlsRennrad,
@@ -30,7 +31,12 @@ import {
 } from '@/lib/trainingsplan/storage'
 import { attachStravaToDays, ridesByDate, sumRideKm } from '@/lib/trainingsplan/strava-rides'
 import { buildDefaultWeek } from '@/lib/trainingsplan/weekly-plan'
-import type { DaySession, LinkedStravaRide, TrainingsPersistState } from '@/lib/trainingsplan/types'
+import type {
+  DaySession,
+  FlexDayMode,
+  LinkedStravaRide,
+  TrainingsPersistState,
+} from '@/lib/trainingsplan/types'
 import type { StravaActivityRow } from '@/lib/strava/strava-types'
 import { stravaApiFetch } from '@/lib/strava/strava-api-fetch'
 import { supabase } from '@/lib/supabase'
@@ -178,6 +184,19 @@ export function TrainingsplanClient() {
     setState({ ...state, days: stripStrava(result.days), lastRescheduleNote: result.note })
   }
 
+  function setFlexMode(mode: FlexDayMode) {
+    if (!state) return
+    const result = setzeFlexTag(state.days, mode)
+    setToast(result.note)
+    if (!result.ok) return
+    setState({
+      ...state,
+      days: stripStrava(result.days),
+      flexDayMode: mode,
+      lastRescheduleNote: result.note,
+    })
+  }
+
   function claimStravaAsRide(dateIso: string) {
     if (!state) return
     const result = werteAlsRennrad(withStrava(state.days), dateIso)
@@ -210,10 +229,10 @@ export function TrainingsplanClient() {
     }
     setState({
       ...state,
-      days: buildDefaultWeek(state.weekStartIso),
+      days: buildDefaultWeek(state.weekStartIso, state.flexDayMode ?? 'aktiv'),
       lastRescheduleNote: null,
     })
-    setToast('Wochenplan zurückgesetzt — inkl. Aktiv-Donnerstag.')
+    setToast('Wochenplan zurückgesetzt — 1 Ruhe · 3 Rad · 2 Kraft · 1 Flex.')
   }
 
   if (!state || !stats) {
@@ -269,7 +288,7 @@ export function TrainingsplanClient() {
               Equipment: {TRAININGS_EQUIPMENT.join(' · ')}
             </span>
             <span className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-2 py-1 text-teal-200/90">
-              Do = Aktiv-Recovery (statt 2. Totaltag)
+              1 Ruhe · 3 Rad · 2 Kraft · Flex = Ruhe oder Kurz-Kraft
             </span>
           </div>
           <div className="space-y-3">
@@ -281,6 +300,7 @@ export function TrainingsplanClient() {
                 onStart={() => setActiveWorkout(session)}
                 onPostpone={() => postpone(session.dateIso)}
                 onShift={(dir) => shiftDay(session.dateIso, dir)}
+                onSetFlexMode={setFlexMode}
                 onCompleteEasy={() => markComplete(session.dateIso)}
                 onClaimStravaRide={() => claimStravaAsRide(session.dateIso)}
                 onAutoCompleteFromStrava={() => markComplete(session.dateIso)}
@@ -303,8 +323,8 @@ export function TrainingsplanClient() {
             ))}
           </ul>
           <p className="mt-3 text-xs text-[var(--app-text-muted)]">
-            Rennrad ~{TRAININGS_PROFIL.rennradKmJahr} km/Jahr — ein echter Ruhetag + Aktiv-Donnerstag
-            reicht. Radkilometer kommen aus Strava.
+            Rennrad ~{TRAININGS_PROFIL.rennradKmJahr} km/Jahr — nie zwei Radtage hintereinander.
+            Flex-Tag wählbar als Extra-Ruhe oder Kurz-Kraft. km aus Strava.
           </p>
         </PageSectionPanel>
       </PageSection>

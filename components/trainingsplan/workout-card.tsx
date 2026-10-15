@@ -11,6 +11,7 @@ export function WorkoutCard({
   onStart,
   onPostpone,
   onShift,
+  onSetFlexMode,
   onCompleteEasy,
   onClaimStravaRide,
   onAutoCompleteFromStrava,
@@ -20,6 +21,7 @@ export function WorkoutCard({
   onStart: () => void
   onPostpone: () => void
   onShift: (dir: 'vor' | 'zurueck') => void
+  onSetFlexMode: (mode: 'ruhe' | 'aktiv') => void
   onCompleteEasy: () => void
   onClaimStravaRide: () => void
   onAutoCompleteFromStrava: () => void
@@ -58,6 +60,11 @@ export function WorkoutCard({
             {session.completed ? (
               <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
                 Erledigt
+              </span>
+            ) : null}
+            {session.isFlexDay ? (
+              <span className="rounded-md bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-300">
+                Flex
               </span>
             ) : null}
           </div>
@@ -134,7 +141,34 @@ export function WorkoutCard({
             </button>
           ) : null}
 
-          {session.kind === 'ruhe' || session.kind === 'aktiv' ? (
+          {session.isFlexDay && !session.completed ? (
+            <div className="flex w-full flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => onSetFlexMode('aktiv')}
+                className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                  session.kind === 'aktiv'
+                    ? 'bg-teal-500/90 text-white'
+                    : 'border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                }`}
+              >
+                Als Kurz-Kraft
+              </button>
+              <button
+                type="button"
+                onClick={() => onSetFlexMode('ruhe')}
+                className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                  session.kind === 'ruhe'
+                    ? 'bg-slate-500/80 text-white'
+                    : 'border border-[var(--app-border)] bg-[var(--app-surface)] text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                }`}
+              >
+                Als Extra-Ruhe
+              </button>
+            </div>
+          ) : null}
+
+          {session.kind === 'ruhe' || session.kind === 'aktiv' || session.isFlexDay ? (
             <>
               <button
                 type="button"
@@ -181,7 +215,7 @@ export function WorkoutCard({
                 <img
                   src={ex.demoGifUrl}
                   alt=""
-                  className="h-8 w-8 shrink-0 rounded-md object-cover ring-1 ring-[var(--app-border)]"
+                  className="!h-8 !w-8 shrink-0 rounded-md object-cover object-center ring-1 ring-[var(--app-border)]"
                   loading="lazy"
                 />
               ) : (
