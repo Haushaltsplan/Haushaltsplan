@@ -22,7 +22,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: { default: "Omnia", template: "%s · Omnia" },
   description:
-    "Omnia — Finanzen, Speisekammer, Kalender, Etsy KI Agent, Portfolio, Markt & Prompts und mehr an einem Ort.",
+    "Omnia — Finanzen, Speisekammer, Kalender, Rennrad, Trainingsplan, Etsy KI Agent, Portfolio, Markt & Prompts und mehr an einem Ort.",
   applicationName: "Omnia",
   icons: {
     icon: [
