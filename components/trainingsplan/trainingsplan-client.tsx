@@ -232,7 +232,7 @@ export function TrainingsplanClient() {
       days: buildDefaultWeek(state.weekStartIso, state.flexDayMode ?? 'aktiv'),
       lastRescheduleNote: null,
     })
-    setToast('Wochenplan zurückgesetzt — 1 Ruhe · 3 Rad · 2 Kraft · 1 Flex.')
+    setToast('Wochenplan zurückgesetzt — Do Rad · Fr Kraft · Sa Flex.')
   }
 
   if (!state || !stats) {
@@ -288,7 +288,7 @@ export function TrainingsplanClient() {
               Equipment: {TRAININGS_EQUIPMENT.join(' · ')}
             </span>
             <span className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-2 py-1 text-teal-200/90">
-              1 Ruhe · 3 Rad · 2 Kraft · Flex = Ruhe oder Kurz-Kraft
+              Di/Do/So Rad · Mi/Fr Kraft · Sa Flex · Mo Ruhe
             </span>
           </div>
           <div className="space-y-3">
@@ -323,8 +323,8 @@ export function TrainingsplanClient() {
             ))}
           </ul>
           <p className="mt-3 text-xs text-[var(--app-text-muted)]">
-            Rennrad ~{TRAININGS_PROFIL.rennradKmJahr} km/Jahr — nie zwei Radtage hintereinander.
-            Flex-Tag wählbar als Extra-Ruhe oder Kurz-Kraft. km aus Strava.
+            Rennrad ~{TRAININGS_PROFIL.rennradKmJahr} km/Jahr — nach Rad kommt Kraft (nie zwei
+            Rad-/Krafttage hintereinander). Flex (Sa) = Extra-Ruhe oder Kurz-Kraft.
           </p>
         </PageSectionPanel>
       </PageSection>

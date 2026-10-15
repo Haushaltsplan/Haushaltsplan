@@ -20,9 +20,9 @@ type TemplateSlot = {
 /**
  * Standardwoche (immer):
  * - 1 fester Ruhetag (Mo)
- * - 3 Rennradtage (nie hintereinander: Di / Fr / So)
- * - 2 schwere Krafttage (Mi / Sa)
- * - 1 Flex-Tag (Do): wählbar Ruhe ODER Kurz-Kraft
+ * - 3 Rennradtage (nie hintereinander: Di / Do / So)
+ * - 2 schwere Krafttage (Mi / Fr) — nach Rad-Tag kommt Kraft
+ * - 1 Flex-Tag (Sa): wählbar Ruhe ODER Kurz-Kraft
  */
 export const WOCHEN_TEMPLATE: TemplateSlot[] = [
   {
@@ -49,14 +49,6 @@ export const WOCHEN_TEMPLATE: TemplateSlot[] = [
   },
   {
     offset: 3,
-    kind: 'aktiv',
-    title: 'Flex-Tag — Kurz-Kraft',
-    subtitle: 'Wahlweise: Kurz-Kraft (~20 Min.) oder zweiter Ruhetag',
-    durationMin: 22,
-    isFlexDay: true,
-  },
-  {
-    offset: 4,
     kind: 'rennrad',
     title: 'Rennrad — Tempo / Zügig',
     subtitle: 'Tempo-Blöcke · W/kg im Blick · Strava zählt',
@@ -64,11 +56,19 @@ export const WOCHEN_TEMPLATE: TemplateSlot[] = [
     rennradFokus: 'tempo',
   },
   {
-    offset: 5,
+    offset: 4,
     kind: 'kraft2',
     title: 'Kraft 2 — Rudern, Rücken, Bizeps & Grip',
-    subtitle: 'Pull + Farmer’s Carry · SportPlus + Hanteln',
+    subtitle: 'Pull + Farmer’s Carry · SportPlus + Hanteln · Tag nach dem Rad',
     durationMin: 50,
+  },
+  {
+    offset: 5,
+    kind: 'aktiv',
+    title: 'Flex-Tag — Kurz-Kraft',
+    subtitle: 'Wahlweise: Kurz-Kraft (~20 Min.) oder zweiter Ruhetag',
+    durationMin: 22,
+    isFlexDay: true,
   },
   {
     offset: 6,

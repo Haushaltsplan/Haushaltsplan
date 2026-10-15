@@ -88,7 +88,7 @@ export function coachTagesbotschaft(
         headline: heute.isFlexDay ? `Extra-Ruhe (Flex), ${n}` : `Ruhetag, ${n}`,
         body: heute.isFlexDay
           ? 'Zweiter Erholungstag. Umschalten auf Kurz-Kraft geht jederzeit, solange der Tag offen ist.'
-          : 'Feste Regeneration. 3 Rad · 2 Kraft · Flex nach Wahl — Ruhe kannst du vor/zurück schieben.',
+          : 'Feste Regeneration. Di/Do/So Rad · Mi/Fr Kraft · Sa Flex — Ruhe kannst du vor/zurück schieben.',
         mood: 'ruhe',
       }
   }

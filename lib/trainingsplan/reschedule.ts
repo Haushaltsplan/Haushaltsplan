@@ -88,7 +88,7 @@ function swapSessionBodies(a: DaySession, b: DaySession): [DaySession, DaySessio
   ]
 }
 
-/** Flex-Tag (Do) zwischen Extra-Ruhe und Kurz-Kraft umschalten. */
+/** Flex-Tag (Sa) zwischen Extra-Ruhe und Kurz-Kraft umschalten. */
 export function setzeFlexTag(days: DaySession[], mode: FlexDayMode): RescheduleResult {
   const sorted = cloneDays(days)
   const idx = sorted.findIndex((d) => d.isFlexDay)

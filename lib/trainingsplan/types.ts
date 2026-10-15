@@ -73,7 +73,7 @@ export type TrainingsStats = {
 }
 
 export type TrainingsPersistState = {
-  version: 3
+  version: 4
   weekStartIso: string
   days: DaySession[]
   completedHistory: { dateIso: string; kind: SessionKind; radKm?: number }[]

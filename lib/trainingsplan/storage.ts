@@ -4,7 +4,7 @@ import { buildDefaultWeek } from '@/lib/trainingsplan/weekly-plan'
 import type { FlexDayMode, TrainingsPersistState } from '@/lib/trainingsplan/types'
 
 export const TRAININGS_STORAGE_KEY = 'omnia-trainingsplan-v1'
-export const TRAININGS_STATE_VERSION = 3 as const
+export const TRAININGS_STATE_VERSION = 4 as const
 export const DEFAULT_FLEX_MODE: FlexDayMode = 'aktiv'
 
 export function createFreshState(coachName?: string, flexDayMode: FlexDayMode = DEFAULT_FLEX_MODE): TrainingsPersistState {
@@ -43,9 +43,7 @@ export function loadTrainingsState(): TrainingsPersistState {
       return syncWeekIfNeeded(migrated)
     }
 
-    // Bestehende Woche: Flex-Flag nachziehen falls fehlend (Do-Slot)
-    const withFlex = ensureFlexFlag(parsed)
-    return syncWeekIfNeeded({ ...withFlex, flexDayMode: flexMode })
+    return syncWeekIfNeeded({ ...ensureFlexFlag(parsed), flexDayMode: flexMode })
   } catch {
     return createFreshState()
   }
@@ -53,10 +51,10 @@ export function loadTrainingsState(): TrainingsPersistState {
 
 function ensureFlexFlag(state: TrainingsPersistState): TrainingsPersistState {
   if (state.days.some((d) => d.isFlexDay)) return state
-  // Heuristik: Tag zwischen Kraft1 und Tempo-Rad / Donnerstag der Woche
+  // Heuristik: Samstag (Flex-Slot ab v4)
   const days = state.days.map((d) => {
-    const isThu = new Date(d.dateIso + 'T12:00:00').getDay() === 4
-    if (isThu && (d.kind === 'aktiv' || d.kind === 'ruhe')) {
+    const isSat = new Date(d.dateIso + 'T12:00:00').getDay() === 6
+    if (isSat && (d.kind === 'aktiv' || d.kind === 'ruhe')) {
       return { ...d, isFlexDay: true }
     }
     return d
