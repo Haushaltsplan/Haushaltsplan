@@ -18,20 +18,33 @@ import {
   TRAININGS_ZIEL,
 } from '@/lib/trainingsplan/profile'
 import { berechneStats } from '@/lib/trainingsplan/progress'
-import { verschiebeAufMorgen } from '@/lib/trainingsplan/reschedule'
+import {
+  verschiebeAufMorgen,
+  verschiebeTag,
+  werteAlsRennrad,
+} from '@/lib/trainingsplan/reschedule'
 import {
   createFreshState,
   loadTrainingsState,
   saveTrainingsState,
 } from '@/lib/trainingsplan/storage'
+import { attachStravaToDays, ridesByDate, sumRideKm } from '@/lib/trainingsplan/strava-rides'
 import { buildDefaultWeek } from '@/lib/trainingsplan/weekly-plan'
-import type { DaySession, TrainingsPersistState } from '@/lib/trainingsplan/types'
+import type { DaySession, LinkedStravaRide, TrainingsPersistState } from '@/lib/trainingsplan/types'
+import type { StravaActivityRow } from '@/lib/strava/strava-types'
+import { stravaApiFetch } from '@/lib/strava/strava-api-fetch'
 import { supabase } from '@/lib/supabase'
+
+function stripStrava(days: DaySession[]): DaySession[] {
+  return days.map(({ stravaRides: _r, ...rest }) => rest)
+}
 
 export function TrainingsplanClient() {
   const [state, setState] = useState<TrainingsPersistState | null>(null)
+  const [stravaMap, setStravaMap] = useState<Map<string, LinkedStravaRide[]>>(new Map())
   const [activeWorkout, setActiveWorkout] = useState<DaySession | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [stravaStatus, setStravaStatus] = useState<'idle' | 'loading' | 'ok' | 'off'>('idle')
 
   useEffect(() => {
     let cancelled = false
@@ -61,7 +74,7 @@ export function TrainingsplanClient() {
 
   useEffect(() => {
     if (!state) return
-    saveTrainingsState(state)
+    saveTrainingsState({ ...state, days: stripStrava(state.days) })
   }, [state])
 
   useEffect(() => {
@@ -70,17 +83,56 @@ export function TrainingsplanClient() {
     return () => window.clearTimeout(t)
   }, [toast])
 
+  useEffect(() => {
+    let cancelled = false
+    setStravaStatus('loading')
+
+    void (async () => {
+      try {
+        const res = await stravaApiFetch('/api/strava/activities')
+        if (!res.ok) {
+          if (!cancelled) setStravaStatus('off')
+          return
+        }
+        const json = (await res.json()) as {
+          activities?: StravaActivityRow[]
+          omnia_weight_kg?: number | null
+        }
+        const activities = json.activities ?? []
+        if (cancelled) return
+        setStravaMap(ridesByDate(activities, json.omnia_weight_kg ?? TRAININGS_PROFIL.gewichtKg))
+        setStravaStatus('ok')
+      } catch {
+        if (!cancelled) setStravaStatus('off')
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const heute = heuteIsoLocal()
+
+  const daysWithStrava = useMemo(() => {
+    if (!state) return []
+    return attachStravaToDays(state.days, stravaMap)
+  }, [state, stravaMap])
+
   const stats = useMemo(
-    () => (state ? berechneStats(state.days, state.completedHistory, heute) : null),
-    [state, heute],
+    () => (state ? berechneStats(daysWithStrava, state.completedHistory, heute) : null),
+    [state, daysWithStrava, heute],
   )
 
-  const heuteSession = state?.days.find((d) => d.dateIso === heute)
-  const weekDays = useMemo(() => {
-    if (!state) return []
-    return [...state.days].sort((a, b) => a.dateIso.localeCompare(b.dateIso))
-  }, [state])
+  const heuteSession = daysWithStrava.find((d) => d.dateIso === heute)
+  const weekDays = useMemo(
+    () => [...daysWithStrava].sort((a, b) => a.dateIso.localeCompare(b.dateIso)),
+    [daysWithStrava],
+  )
+
+  function withStrava(days: DaySession[]) {
+    return attachStravaToDays(days, stravaMap)
+  }
 
   function patch(updater: (s: TrainingsPersistState) => TrainingsPersistState) {
     setState((prev) => {
@@ -90,14 +142,19 @@ export function TrainingsplanClient() {
   }
 
   function markComplete(dateIso: string) {
+    const enriched = daysWithStrava.find((d) => d.dateIso === dateIso)
     patch((s) => {
       const days = s.days.map((d) => (d.dateIso === dateIso ? { ...d, completed: true } : d))
-      const done = days.find((d) => d.dateIso === dateIso)
       const history = [...s.completedHistory]
-      if (done && done.kind !== 'ruhe') {
-        const key = `${done.dateIso}:${done.kind}`
+      const kind = enriched?.kind ?? days.find((d) => d.dateIso === dateIso)?.kind
+      if (kind && kind !== 'ruhe') {
+        const key = `${dateIso}:${kind}`
         if (!history.some((h) => `${h.dateIso}:${h.kind}` === key)) {
-          history.push({ dateIso: done.dateIso, kind: done.kind })
+          history.push({
+            dateIso,
+            kind,
+            radKm: sumRideKm(enriched?.stravaRides) || undefined,
+          })
         }
       }
       return { ...s, days, completedHistory: history, lastRescheduleNote: null }
@@ -107,10 +164,43 @@ export function TrainingsplanClient() {
 
   function postpone(dateIso: string) {
     if (!state) return
-    const result = verschiebeAufMorgen(state.days, dateIso, heute)
+    const result = verschiebeAufMorgen(withStrava(state.days), dateIso, heute)
     setToast(result.note)
     if (!result.ok) return
-    setState({ ...state, days: result.days, lastRescheduleNote: result.note })
+    setState({ ...state, days: stripStrava(result.days), lastRescheduleNote: result.note })
+  }
+
+  function shiftDay(dateIso: string, dir: 'vor' | 'zurueck') {
+    if (!state) return
+    const result = verschiebeTag(withStrava(state.days), dateIso, dir, heute)
+    setToast(result.note)
+    if (!result.ok) return
+    setState({ ...state, days: stripStrava(result.days), lastRescheduleNote: result.note })
+  }
+
+  function claimStravaAsRide(dateIso: string) {
+    if (!state) return
+    const result = werteAlsRennrad(withStrava(state.days), dateIso)
+    setToast(result.note)
+    if (!result.ok) return
+    const done = result.days.find((d) => d.dateIso === dateIso)
+    const history = [...state.completedHistory]
+    if (done) {
+      const key = `${done.dateIso}:${done.kind}`
+      if (!history.some((h) => `${h.dateIso}:${h.kind}` === key)) {
+        history.push({
+          dateIso: done.dateIso,
+          kind: done.kind,
+          radKm: sumRideKm(done.stravaRides),
+        })
+      }
+    }
+    setState({
+      ...state,
+      days: stripStrava(result.days),
+      completedHistory: history,
+      lastRescheduleNote: result.note,
+    })
   }
 
   function resetWeek() {
@@ -123,7 +213,7 @@ export function TrainingsplanClient() {
       days: buildDefaultWeek(state.weekStartIso),
       lastRescheduleNote: null,
     })
-    setToast('Wochenplan zurückgesetzt.')
+    setToast('Wochenplan zurückgesetzt — inkl. Aktiv-Donnerstag.')
   }
 
   if (!state || !stats) {
@@ -142,13 +232,25 @@ export function TrainingsplanClient() {
         title="Trainingsplan"
         description={`${TRAININGS_PROFIL.alter} J. · ${TRAININGS_PROFIL.groesseCm} cm · ~${TRAININGS_PROFIL.gewichtKg} kg · Ziel ${TRAININGS_ZIEL.label}`}
         actions={
-          <button
-            type="button"
-            onClick={resetWeek}
-            className="rounded-xl border border-[var(--app-border)] px-3 py-2 text-xs text-[var(--app-text-muted)] hover:text-[var(--app-text)]"
-          >
-            Woche reset
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-xl border border-[var(--app-border)] px-3 py-2 text-[11px] text-[var(--app-text-muted)]">
+              Strava:{' '}
+              {stravaStatus === 'loading'
+                ? 'lädt…'
+                : stravaStatus === 'ok'
+                  ? 'verbunden'
+                  : stravaStatus === 'off'
+                    ? 'nicht verfügbar'
+                    : '—'}
+            </span>
+            <button
+              type="button"
+              onClick={resetWeek}
+              className="rounded-xl border border-[var(--app-border)] px-3 py-2 text-xs text-[var(--app-text-muted)] hover:text-[var(--app-text)]"
+            >
+              Woche reset
+            </button>
+          </div>
         }
       />
 
@@ -166,6 +268,9 @@ export function TrainingsplanClient() {
             <span className="rounded-lg border border-[var(--app-border)] px-2 py-1">
               Equipment: {TRAININGS_EQUIPMENT.join(' · ')}
             </span>
+            <span className="rounded-lg border border-teal-500/30 bg-teal-500/10 px-2 py-1 text-teal-200/90">
+              Do = Aktiv-Recovery (statt 2. Totaltag)
+            </span>
           </div>
           <div className="space-y-3">
             {weekDays.map((session) => (
@@ -175,7 +280,10 @@ export function TrainingsplanClient() {
                 isToday={session.dateIso === heute}
                 onStart={() => setActiveWorkout(session)}
                 onPostpone={() => postpone(session.dateIso)}
+                onShift={(dir) => shiftDay(session.dateIso, dir)}
                 onCompleteEasy={() => markComplete(session.dateIso)}
+                onClaimStravaRide={() => claimStravaAsRide(session.dateIso)}
+                onAutoCompleteFromStrava={() => markComplete(session.dateIso)}
               />
             ))}
           </div>
@@ -195,8 +303,8 @@ export function TrainingsplanClient() {
             ))}
           </ul>
           <p className="mt-3 text-xs text-[var(--app-text-muted)]">
-            Rennrad ~{TRAININGS_PROFIL.rennradKmJahr} km/Jahr — Kraft ohne unnötige Masse, damit W/kg
-            am Berg stimmt.
+            Rennrad ~{TRAININGS_PROFIL.rennradKmJahr} km/Jahr — ein echter Ruhetag + Aktiv-Donnerstag
+            reicht. Radkilometer kommen aus Strava.
           </p>
         </PageSectionPanel>
       </PageSection>
@@ -222,7 +330,6 @@ export function TrainingsplanClient() {
   )
 }
 
-/** Für SSR/Tests ohne Side-Effects. */
 export function trainingsplanEmptyState() {
   return createFreshState()
 }

@@ -1,4 +1,5 @@
 import { TRAININGS_ZIEL } from '@/lib/trainingsplan/profile'
+import { sumRideKm } from '@/lib/trainingsplan/strava-rides'
 import type { DaySession, SessionKind } from '@/lib/trainingsplan/types'
 
 function anrede(name: string): string {
@@ -10,7 +11,7 @@ export function coachTagesbotschaft(
   heute: DaySession | undefined,
   name: string,
   rescheduleNote: string | null,
-): { headline: string; body: string; mood: 'kraft' | 'rad' | 'ruhe' | 'feier' | 'shift' } {
+): { headline: string; body: string; mood: 'kraft' | 'rad' | 'ruhe' | 'feier' | 'shift' | 'aktiv' } {
   const n = anrede(name)
 
   if (rescheduleNote) {
@@ -29,11 +30,23 @@ export function coachTagesbotschaft(
     }
   }
 
+  const stravaKm = sumRideKm(heute.stravaRides)
   if (heute.completed) {
     return {
       headline: `Stark, ${n}!`,
-      body: 'Einheit abgehakt. Regeneration ist Fortschritt — Protein, Schlaf, morgen wieder da.',
+      body:
+        stravaKm > 0
+          ? `Einheit abgehakt — Strava zeigt ${stravaKm} km. Regeneration ist Fortschritt.`
+          : 'Einheit abgehakt. Regeneration ist Fortschritt — Protein, Schlaf, morgen wieder da.',
       mood: 'feier',
+    }
+  }
+
+  if (stravaKm > 0 && (heute.kind === 'ruhe' || heute.kind === 'aktiv')) {
+    return {
+      headline: `${n}, Strava hat eine Fahrt!`,
+      body: `${stravaKm} km erkannt — du kannst den Tag als Rad-Einheit werten. Ruhe lässt sich vor/zurück schieben.`,
+      mood: 'rad',
     }
   }
 
@@ -50,22 +63,30 @@ export function coachTagesbotschaft(
         body: 'Farmer’s Carry und SportPlus bauen die Kraft, die du in ~2 Jahren auf der Baustelle brauchst. Plus Sixpack-Fokus.',
         mood: 'kraft',
       }
+    case 'aktiv':
+      return {
+        headline: `Aktiv-Recovery, ${n}`,
+        body: 'Kurzes leichtes Kraft (~20 Min.) — kein Totaltag. Schultern schonen, Core & Grip pflegen. Bei Bedarf vor/zurück schieben.',
+        mood: 'aktiv',
+      }
     case 'rennrad':
       return {
         headline: `Ab aufs Rennrad, ${n}!`,
         body:
-          heute.rennradFokus === 'longride'
-            ? 'Longride: Grundlage tanken. Achte im Wiegetritt auf Rumpfspannung — W/kg schützen.'
-            : heute.rennradFokus === 'tempo'
-              ? 'Tempo-Tag: zügig, aber kontrolliert. Relative Leistung am Berg bleibt heilig.'
-              : 'Ausdauer/Intervalle: saubere Technik, Rumpf fest — kein totes Gewicht mitschleppen.',
+          stravaKm > 0
+            ? `Strava hat schon ${stravaKm} km — kannst du als erledigt übernehmen.`
+            : heute.rennradFokus === 'longride'
+              ? 'Longride: Grundlage tanken. Achte im Wiegetritt auf Rumpfspannung — W/kg schützen. Strava sync’t automatisch.'
+              : heute.rennradFokus === 'tempo'
+                ? 'Tempo-Tag: zügig, aber kontrolliert. Relative Leistung am Berg bleibt heilig.'
+                : 'Ausdauer/Intervalle: saubere Technik, Rumpf fest — kein totes Gewicht mitschleppen.',
         mood: 'rad',
       }
     case 'ruhe':
     default:
       return {
         headline: `Ruhetag, ${n}`,
-        body: 'Regeneration ist Teil des Plans. Leichte Mobility reicht — Schultern und Beine danken es dir für Mittwoch/Samstag.',
+        body: 'Ein echter Off-Day reicht bei deinem Radvolumen. Aktiv-Recovery ist Do — Ruhe kannst du vor/zurück schieben.',
         mood: 'ruhe',
       }
   }
@@ -94,6 +115,12 @@ export function coachAbschluss(name: string, kind: SessionKind): { title: string
     return {
       title: `Kraft-Session geschafft, ${n}!`,
       tip: 'Leichte Dehnung für Brust/Schulter oder Lat. Schlaf ist dein Steroid-Ersatz — Ziel Februar bleibt greifbar.',
+    }
+  }
+  if (kind === 'aktiv') {
+    return {
+      title: `Aktiv-Session durch, ${n}!`,
+      tip: 'Genau richtig dosiert. Kein Muskelkater-Monster — morgen bist du frisch fürs Rad oder die nächste Einheit.',
     }
   }
   return {

@@ -1,7 +1,8 @@
 'use client'
 
 import { formatDeDate, weekdayName } from '@/lib/trainingsplan/date-utils'
-import { kindAccent, kindEmoji } from '@/lib/trainingsplan/weekly-plan'
+import { sumRideKm } from '@/lib/trainingsplan/strava-rides'
+import { istTrainierbareKraft, kindAccent, kindEmoji } from '@/lib/trainingsplan/weekly-plan'
 import type { DaySession } from '@/lib/trainingsplan/types'
 
 export function WorkoutCard({
@@ -9,18 +10,28 @@ export function WorkoutCard({
   isToday,
   onStart,
   onPostpone,
+  onShift,
   onCompleteEasy,
+  onClaimStravaRide,
+  onAutoCompleteFromStrava,
 }: {
   session: DaySession
   isToday: boolean
   onStart: () => void
   onPostpone: () => void
+  onShift: (dir: 'vor' | 'zurueck') => void
   onCompleteEasy: () => void
+  onClaimStravaRide: () => void
+  onAutoCompleteFromStrava: () => void
 }) {
   const accent = kindAccent(session.kind)
-  const canTrain = session.kind === 'kraft1' || session.kind === 'kraft2'
-  const canMark =
-    !session.completed && (session.kind === 'rennrad' || session.kind === 'ruhe' || canTrain)
+  const canTrain = istTrainierbareKraft(session.kind)
+  const stravaKm = sumRideKm(session.stravaRides)
+  const hasStrava = stravaKm > 0
+  const canClaimRide =
+    !session.completed && hasStrava && (session.kind === 'ruhe' || session.kind === 'aktiv')
+  const canTakeStravaRad =
+    !session.completed && hasStrava && session.kind === 'rennrad'
 
   return (
     <article
@@ -65,7 +76,23 @@ export function WorkoutCard({
         </div>
       </div>
 
-      {!session.completed && session.kind !== 'ruhe' ? (
+      {hasStrava ? (
+        <div className="mt-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-rose-300">Strava</p>
+          {session.stravaRides!.map((r) => (
+            <p key={r.stravaId} className="mt-1 text-xs text-[var(--app-text)]">
+              <span className="font-medium">{r.name}</span>
+              {' · '}
+              {r.distanceKm} km · {r.movingTimeMin} Min.
+              {r.avgWatts != null ? ` · ${Math.round(r.avgWatts)} W` : ''}
+              {r.avgWkg != null ? ` · ${r.avgWkg} W/kg` : ''}
+              {r.elevationM != null && r.elevationM > 0 ? ` · ${Math.round(r.elevationM)} hm` : ''}
+            </p>
+          ))}
+        </div>
+      ) : null}
+
+      {!session.completed ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {canTrain ? (
             <button
@@ -76,34 +103,72 @@ export function WorkoutCard({
               Mit-Trainieren
             </button>
           ) : null}
-          {session.kind === 'rennrad' ? (
+
+          {canTakeStravaRad ? (
+            <button
+              type="button"
+              onClick={onAutoCompleteFromStrava}
+              className="rounded-xl bg-rose-500/90 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-400"
+            >
+              Strava übernehmen ({stravaKm} km)
+            </button>
+          ) : null}
+
+          {session.kind === 'rennrad' && !hasStrava ? (
             <button
               type="button"
               onClick={onCompleteEasy}
-              className="rounded-xl bg-rose-500/80 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-400"
+              className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20"
             >
-              Fahrt erledigt
+              Manuell erledigt
             </button>
           ) : null}
-          <button
-            type="button"
-            onClick={onPostpone}
-            className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
-          >
-            Auf morgen verschieben
-          </button>
-        </div>
-      ) : null}
 
-      {!session.completed && session.kind === 'ruhe' && canMark ? (
-        <div className="mt-3">
-          <button
-            type="button"
-            onClick={onCompleteEasy}
-            className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
-          >
-            Ruhe abhaken
-          </button>
+          {canClaimRide ? (
+            <button
+              type="button"
+              onClick={onClaimStravaRide}
+              className="rounded-xl bg-rose-500/90 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-400"
+            >
+              Als Rad-Einheit werten ({stravaKm} km)
+            </button>
+          ) : null}
+
+          {session.kind === 'ruhe' || session.kind === 'aktiv' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onShift('vor')}
+                className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
+              >
+                ← Nach vorne
+              </button>
+              <button
+                type="button"
+                onClick={() => onShift('zurueck')}
+                className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
+              >
+                Nach hinten →
+              </button>
+              {session.kind === 'ruhe' ? (
+                <button
+                  type="button"
+                  onClick={onCompleteEasy}
+                  className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
+                >
+                  Ruhe abhaken
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={onPostpone}
+              className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-xs font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
+            >
+              Auf morgen verschieben
+            </button>
+          )}
         </div>
       ) : null}
 
@@ -111,7 +176,17 @@ export function WorkoutCard({
         <ul className="mt-3 space-y-1 border-t border-[var(--app-border)] pt-3">
           {session.exercises.map((ex) => (
             <li key={ex.id} className="flex items-center gap-2 text-xs text-[var(--app-text-muted)]">
-              <span aria-hidden>{ex.emoji}</span>
+              {ex.demoGifUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={ex.demoGifUrl}
+                  alt=""
+                  className="h-8 w-8 shrink-0 rounded-md object-cover ring-1 ring-[var(--app-border)]"
+                  loading="lazy"
+                />
+              ) : (
+                <span aria-hidden>{ex.emoji}</span>
+              )}
               <span className="min-w-0 flex-1 truncate text-[var(--app-text)]">{ex.name}</span>
               <span className="shrink-0 tabular-nums">
                 {ex.sets}× {ex.reps}

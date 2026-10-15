@@ -4,11 +4,12 @@ import { buildDefaultWeek } from '@/lib/trainingsplan/weekly-plan'
 import type { TrainingsPersistState } from '@/lib/trainingsplan/types'
 
 export const TRAININGS_STORAGE_KEY = 'omnia-trainingsplan-v1'
+export const TRAININGS_STATE_VERSION = 2 as const
 
 export function createFreshState(coachName?: string): TrainingsPersistState {
   const weekStartIso = weekStartMontag()
   return {
-    version: 1,
+    version: TRAININGS_STATE_VERSION,
     weekStartIso,
     days: buildDefaultWeek(weekStartIso),
     completedHistory: [],
@@ -22,9 +23,22 @@ export function loadTrainingsState(): TrainingsPersistState {
   try {
     const raw = localStorage.getItem(TRAININGS_STORAGE_KEY)
     if (!raw) return createFreshState()
-    const parsed = JSON.parse(raw) as TrainingsPersistState
-    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.days)) {
+    const parsed = JSON.parse(raw) as TrainingsPersistState & { version?: number }
+    if (!parsed || !Array.isArray(parsed.days)) {
       return createFreshState()
+    }
+    // v1 → v2: neuer Wochenplan (Aktiv-Tag statt 2. Ruhe)
+    if (parsed.version !== TRAININGS_STATE_VERSION) {
+      const migrated = createFreshState(parsed.coachName)
+      migrated.completedHistory = parsed.completedHistory ?? []
+      // Completed-Flags nach Datum übernehmen, wo möglich
+      const doneDates = new Set(
+        (parsed.days ?? []).filter((d) => d.completed).map((d) => d.dateIso),
+      )
+      migrated.days = migrated.days.map((d) =>
+        doneDates.has(d.dateIso) ? { ...d, completed: true } : d,
+      )
+      return syncWeekIfNeeded(migrated)
     }
     return syncWeekIfNeeded(parsed)
   } catch {
@@ -41,10 +55,6 @@ export function saveTrainingsState(state: TrainingsPersistState): void {
   }
 }
 
-/**
- * Neue Kalenderwoche → Template neu, History behalten.
- * Innerhalb derselben Woche bleibt der (ggf. umgebaute) Plan unangetastet.
- */
 export function syncWeekIfNeeded(state: TrainingsPersistState): TrainingsPersistState {
   const currentStart = weekStartMontag(heuteIsoLocal())
   if (state.weekStartIso === currentStart && state.days.length > 0) {
@@ -56,11 +66,16 @@ export function syncWeekIfNeeded(state: TrainingsPersistState): TrainingsPersist
     if (!d.completed || d.kind === 'ruhe') continue
     const key = `${d.dateIso}:${d.kind}`
     if (history.some((h) => `${h.dateIso}:${h.kind}` === key)) continue
-    history.push({ dateIso: d.dateIso, kind: d.kind })
+    history.push({
+      dateIso: d.dateIso,
+      kind: d.kind,
+      radKm: d.stravaRides?.reduce((s, r) => s + r.distanceKm, 0),
+    })
   }
 
   return {
     ...state,
+    version: TRAININGS_STATE_VERSION,
     weekStartIso: currentStart,
     days: buildDefaultWeek(currentStart),
     completedHistory: history,

@@ -1,4 +1,8 @@
-import { KRAFT1_EXERCISES, KRAFT2_EXERCISES } from '@/lib/trainingsplan/exercises'
+import {
+  AKTIV_EXERCISES,
+  KRAFT1_EXERCISES,
+  KRAFT2_EXERCISES,
+} from '@/lib/trainingsplan/exercises'
 import { addDaysIso, weekStartMontag } from '@/lib/trainingsplan/date-utils'
 import type { DaySession, SessionKind } from '@/lib/trainingsplan/types'
 
@@ -12,20 +16,24 @@ type TemplateSlot = {
   rennradFokus?: DaySession['rennradFokus']
 }
 
-/** Standardwoche laut Spezifikation. */
+/**
+ * Standardwoche:
+ * Mo = echte Ruhe · Do = Aktiv-Recovery (leichtes Kurz-Kraft) statt zweitem Totaltag.
+ * Mit ~5500–6000 km/Jahr reicht ein voller Ruhetag + aktive Erholung.
+ */
 export const WOCHEN_TEMPLATE: TemplateSlot[] = [
   {
     offset: 0,
     kind: 'ruhe',
     title: 'Ruhetag',
-    subtitle: 'Regeneration — Schlaf, Protein, leichte Mobility',
+    subtitle: 'Volle Regeneration — Schlaf, Protein, leichte Mobility',
     durationMin: 0,
   },
   {
     offset: 1,
     kind: 'rennrad',
     title: 'Rennrad — Ausdauer / Intervalle',
-    subtitle: 'Z2–Z3 mit kurzen Intervallen · Rumpfspannung im Wiegetritt',
+    subtitle: 'Z2–Z3 mit kurzen Intervallen · Rumpfspannung im Wiegetritt · Strava zählt',
     durationMin: 75,
     rennradFokus: 'ausdauer',
   },
@@ -38,16 +46,16 @@ export const WOCHEN_TEMPLATE: TemplateSlot[] = [
   },
   {
     offset: 3,
-    kind: 'ruhe',
-    title: 'Ruhetag / Aktiv-Pause',
-    subtitle: 'Spaziergang, Dehnen, optional leichtes Core',
-    durationMin: 20,
+    kind: 'aktiv',
+    title: 'Aktiv-Recovery — Mini-Kraft',
+    subtitle: 'Kurz & leicht (~20 Min.) · Durchblutung, Core, Grip — kein schwerer Oberkörper',
+    durationMin: 22,
   },
   {
     offset: 4,
     kind: 'rennrad',
     title: 'Rennrad — Tempo / Zügig',
-    subtitle: 'Tempo-Blöcke · W/kg im Blick behalten',
+    subtitle: 'Tempo-Blöcke · W/kg im Blick · Strava zählt',
     durationMin: 70,
     rennradFokus: 'tempo',
   },
@@ -62,7 +70,7 @@ export const WOCHEN_TEMPLATE: TemplateSlot[] = [
     offset: 6,
     kind: 'rennrad',
     title: 'Rennrad — Grundlage / Longride',
-    subtitle: 'Langer Grundlagensatz · Bergfestigkeit ohne Extra-Gewicht',
+    subtitle: 'Langer Grundlagensatz · Bergfestigkeit · Strava zählt',
     durationMin: 120,
     rennradFokus: 'longride',
   },
@@ -72,9 +80,14 @@ export function istSchwereKraft(kind: SessionKind): boolean {
   return kind === 'kraft1' || kind === 'kraft2'
 }
 
+export function istTrainierbareKraft(kind: SessionKind): boolean {
+  return kind === 'kraft1' || kind === 'kraft2' || kind === 'aktiv'
+}
+
 export function exercisesForKind(kind: SessionKind) {
   if (kind === 'kraft1') return KRAFT1_EXERCISES.map((e) => ({ ...e }))
   if (kind === 'kraft2') return KRAFT2_EXERCISES.map((e) => ({ ...e }))
+  if (kind === 'aktiv') return AKTIV_EXERCISES.map((e) => ({ ...e }))
   return undefined
 }
 
@@ -109,6 +122,8 @@ export function kindLabel(kind: SessionKind): string {
       return 'Kraft 1'
     case 'kraft2':
       return 'Kraft 2'
+    case 'aktiv':
+      return 'Aktiv'
     case 'rennrad':
       return 'Rennrad'
     case 'ruhe':
@@ -122,6 +137,8 @@ export function kindEmoji(kind: SessionKind): string {
       return '🏋️'
     case 'kraft2':
       return '🚣'
+    case 'aktiv':
+      return '🧘'
     case 'rennrad':
       return '🚴'
     case 'ruhe':
@@ -135,6 +152,8 @@ export function kindAccent(kind: SessionKind): string {
       return 'text-orange-400'
     case 'kraft2':
       return 'text-sky-400'
+    case 'aktiv':
+      return 'text-teal-400'
     case 'rennrad':
       return 'text-rose-400'
     case 'ruhe':

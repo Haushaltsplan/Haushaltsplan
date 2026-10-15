@@ -12,6 +12,7 @@ function cloneDays(days: DaySession[]): DaySession[] {
   return days.map((d) => ({
     ...d,
     exercises: d.exercises?.map((e) => ({ ...e })),
+    stravaRides: d.stravaRides?.map((r) => ({ ...r })),
   }))
 }
 
@@ -27,9 +28,6 @@ function rebuildIds(days: DaySession[]): DaySession[] {
   }))
 }
 
-/**
- * Prüft, ob zwei schwere Oberkörper-Einheiten aufeinanderfolgen.
- */
 export function hatKraftKonflikt(days: DaySession[]): boolean {
   const sorted = [...days].sort((a, b) => a.dateIso.localeCompare(b.dateIso))
   for (let i = 0; i < sorted.length - 1; i++) {
@@ -54,6 +52,94 @@ function makeRuhe(dateIso: string, title = 'Ruhetag (angepasst)'): DaySession {
   }
 }
 
+function swapSessionBodies(a: DaySession, b: DaySession): [DaySession, DaySession] {
+  const aBody = {
+    kind: a.kind,
+    title: a.title,
+    subtitle: a.subtitle,
+    durationMin: a.durationMin,
+    rennradFokus: a.rennradFokus,
+    exercises: a.exercises,
+    completed: a.completed,
+    postponedFrom: a.postponedFrom,
+  }
+  const bBody = {
+    kind: b.kind,
+    title: b.title,
+    subtitle: b.subtitle,
+    durationMin: b.durationMin,
+    rennradFokus: b.rennradFokus,
+    exercises: b.exercises,
+    completed: b.completed,
+    postponedFrom: b.postponedFrom,
+  }
+  return [
+    { ...a, ...bBody, dateIso: a.dateIso, stravaRides: a.stravaRides },
+    { ...b, ...aBody, dateIso: b.dateIso, stravaRides: b.stravaRides },
+  ]
+}
+
+/**
+ * Verschiebt einen Tag (Ruhe, Aktiv, Kraft, Rad) um einen Slot vor/zurück
+ * durch Tausch mit dem Nachbarn. Kraft-Abstand wird danach erzwungen.
+ */
+export function verschiebeTag(
+  days: DaySession[],
+  dateIso: string,
+  direction: 'vor' | 'zurueck',
+  heute: string = heuteIsoLocal(),
+): RescheduleResult {
+  const sorted = cloneDays(days).sort((a, b) => a.dateIso.localeCompare(b.dateIso))
+  const idx = sorted.findIndex((d) => d.dateIso === dateIso)
+  if (idx < 0) return { days, note: 'Tag nicht gefunden.', ok: false }
+
+  const moving = sorted[idx]!
+  if (moving.completed) {
+    return { days, note: 'Erledigte Tage lassen sich nicht mehr verschieben.', ok: false }
+  }
+  if (dateIso < heute) {
+    return { days, note: 'Vergangene Tage lassen sich nicht mehr verschieben.', ok: false }
+  }
+
+  const neighborIdx = direction === 'vor' ? idx - 1 : idx + 1
+  if (neighborIdx < 0 || neighborIdx >= sorted.length) {
+    return {
+      days,
+      note: direction === 'vor' ? 'Kein früherer Tag in dieser Woche.' : 'Kein späterer Tag in dieser Woche.',
+      ok: false,
+    }
+  }
+
+  const neighbor = sorted[neighborIdx]!
+  if (neighbor.completed) {
+    return { days, note: 'Nachbar-Tag ist schon erledigt — Tausch nicht möglich.', ok: false }
+  }
+  if (neighbor.dateIso < heute && direction === 'vor') {
+    return { days, note: 'Kann nicht auf einen vergangenen Tag tauschen.', ok: false }
+  }
+
+  const [a, b] = swapSessionBodies(moving, neighbor)
+  sorted[idx] = a
+  sorted[neighborIdx] = b
+
+  let next = rebuildIds(sorted)
+  next = enforceKraftSpacing(next, heute)
+
+  const dirLabel = direction === 'vor' ? 'nach vorne' : 'nach hinten'
+  const kindHint =
+    moving.kind === 'ruhe'
+      ? 'Ruhetag'
+      : moving.kind === 'aktiv'
+        ? 'Aktiv-Tag'
+        : 'Einheit'
+
+  return {
+    days: next,
+    note: `Erledigt: ${kindHint} ${dirLabel} geschoben — Erholung und Kraft bleiben sinnvoll getrennt.`,
+    ok: true,
+  }
+}
+
 /**
  * Smart Rescheduling: verschiebt die Einheit von `dateIso` auf den nächsten Tag
  * und baut die restliche Woche um. Sicherheitsregel: nie zwei schwere
@@ -74,8 +160,8 @@ export function verschiebeAufMorgen(
   if (moving.completed) {
     return { days, note: 'Diese Einheit ist schon erledigt — nichts zu verschieben.', ok: false }
   }
-  if (moving.kind === 'ruhe') {
-    return { days, note: 'Ruhe braucht kein Verschieben. Genieß die Erholung.', ok: false }
+  if (moving.kind === 'ruhe' || moving.kind === 'aktiv') {
+    return verschiebeTag(days, dateIso, 'zurueck', heute)
   }
   if (dateIso < heute) {
     return { days, note: 'Vergangene Tage lassen sich nicht mehr verschieben.', ok: false }
@@ -84,7 +170,6 @@ export function verschiebeAufMorgen(
   const tomorrow = addDaysIso(dateIso, 1)
   const weekEnd = sorted[sorted.length - 1]?.dateIso
   if (weekEnd && tomorrow > weekEnd) {
-    // Einheit rutscht in die nächste Woche — als Notiz, Tag wird Ruhe
     sorted[idx] = makeRuhe(dateIso, 'Ruhetag (verschoben)')
     const rolled: DaySession = {
       ...moving,
@@ -102,29 +187,24 @@ export function verschiebeAufMorgen(
     }
   }
 
-  // Cascade: ab idx die „echten“ Einheiten (nicht Ruhe) einen Tag nach rechts schieben,
-  // freigewordene Slots mit Ruhe füllen, dann Kraft-Spacing erzwingen.
   const payload: { kind: SessionKind; session: DaySession }[] = []
   for (let i = idx; i < sorted.length; i++) {
     const d = sorted[i]!
     if (d.completed) continue
-    if (d.kind === 'ruhe' && i !== idx) continue
+    if ((d.kind === 'ruhe' || d.kind === 'aktiv') && i !== idx) continue
     payload.push({ kind: d.kind, session: { ...d } })
   }
 
-  // Ziel-Daten: ab tomorrow, Länge der Payload
   const targets: string[] = []
   for (let i = 0; i < payload.length; i++) {
     targets.push(addDaysIso(tomorrow, i))
   }
 
-  // Alles ab idx zunächst als Ruhe markieren (innerhalb der Woche)
   for (let i = idx; i < sorted.length; i++) {
     if (sorted[i]!.completed) continue
     sorted[i] = makeRuhe(sorted[i]!.dateIso)
   }
 
-  // Payload auf neue Daten legen; falls über Wochenende → anfügen
   const extras: DaySession[] = []
   for (let i = 0; i < payload.length; i++) {
     const target = targets[i]!
@@ -158,10 +238,39 @@ export function verschiebeAufMorgen(
   }
 }
 
-/**
- * Wenn zwei Krafttage benachbart sind: zweiten mit nächstem Nicht-Kraft tauschen
- * oder Ruhe dazwischen schieben.
- */
+/** Wenn du an einem Ruhe-/Aktiv-Tag doch Rad gefahren bist → Tag als Rennrad werten. */
+export function werteAlsRennrad(
+  days: DaySession[],
+  dateIso: string,
+): RescheduleResult {
+  const sorted = cloneDays(days)
+  const idx = sorted.findIndex((d) => d.dateIso === dateIso)
+  if (idx < 0) return { days, note: 'Tag nicht gefunden.', ok: false }
+  const d = sorted[idx]!
+  if (d.kind === 'rennrad') {
+    return { days, note: 'Ist bereits ein Radtag.', ok: false }
+  }
+  if (!d.stravaRides?.length) {
+    return { days, note: 'Keine Strava-Fahrt an diesem Tag gefunden.', ok: false }
+  }
+  const km = d.stravaRides.reduce((s, r) => s + r.distanceKm, 0)
+  sorted[idx] = {
+    ...d,
+    kind: 'rennrad',
+    title: 'Rennrad (Strava)',
+    subtitle: `Von Strava übernommen · ${km.toFixed(1)} km — Plan flexibel angepasst.`,
+    durationMin: d.stravaRides.reduce((s, r) => s + r.movingTimeMin, 0),
+    rennradFokus: km >= 70 ? 'longride' : km >= 40 ? 'tempo' : 'ausdauer',
+    exercises: undefined,
+    completed: true,
+  }
+  return {
+    days: rebuildIds(sorted),
+    note: `Stark! ${km.toFixed(1)} km aus Strava als Rad-Einheit gespeichert.`,
+    ok: true,
+  }
+}
+
 export function enforceKraftSpacing(days: DaySession[], heute: string): DaySession[] {
   let result = cloneDays(days).sort((a, b) => a.dateIso.localeCompare(b.dateIso))
   let guard = 0
@@ -178,9 +287,12 @@ export function enforceKraftSpacing(days: DaySession[], heute: string): DaySessi
       if (addDaysIso(a.dateIso, 1) !== b.dateIso) continue
       if (b.completed || b.dateIso < heute) continue
 
-      // Suche ab b+1 einen Slot zum Tauschen (Ruhe oder Rennrad, nicht completed)
       const swapIdx = sorted.findIndex(
-        (d, j) => j > i + 1 && !d.completed && d.dateIso >= heute && !istSchwereKraft(d.kind),
+        (d, j) =>
+          j > i + 1 &&
+          !d.completed &&
+          d.dateIso >= heute &&
+          !istSchwereKraft(d.kind),
       )
 
       if (swapIdx > 0) {
@@ -214,7 +326,6 @@ export function enforceKraftSpacing(days: DaySession[], heute: string): DaySessi
         break
       }
 
-      // Kein Tauschpartner: Kraft einen Tag weiter, aktuellen Slot → Ruhe
       const pushedDate = addDaysIso(b.dateIso, 1)
       sorted[i + 1] = makeRuhe(b.dateIso, 'Ruhetag (Kraft-Abstand)')
       const pushed: DaySession = {
@@ -224,11 +335,9 @@ export function enforceKraftSpacing(days: DaySession[], heute: string): DaySessi
       }
       const exist = sorted.findIndex((d) => d.dateIso === pushedDate)
       if (exist >= 0 && !sorted[exist]!.completed) {
-        // Tausche mit dem, was dort war
         const victim = sorted[exist]!
         sorted[exist] = pushed
         if (!istSchwereKraft(victim.kind)) {
-          // victim wandert weiter ans Ende
           sorted.push({ ...victim, dateIso: addDaysIso(pushedDate, 1) })
         }
       } else {

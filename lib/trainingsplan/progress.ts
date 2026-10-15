@@ -6,7 +6,7 @@ import { addDaysIso, daysBetween, heuteIsoLocal } from '@/lib/trainingsplan/date
 import type { DaySession, SessionKind, TrainingsStats } from '@/lib/trainingsplan/types'
 
 /** Geplante Einheiten/Woche (ohne reine Ruhe). */
-const WORKOUTS_PRO_WOCHE = 5 // 3× Rad + 2× Kraft
+const WORKOUTS_PRO_WOCHE = 6 // 3× Rad + 2× Kraft + 1× Aktiv
 const KRAFT_PRO_WOCHE = 2
 const RAD_KM_PRO_WOCHE_SCHAETZ = 120
 
@@ -69,6 +69,9 @@ export function berechneStats(
 }
 
 function schaetzeRadKm(d: DaySession): number {
+  if (d.stravaRides?.length) {
+    return d.stravaRides.reduce((s, r) => s + r.distanceKm, 0)
+  }
   if (d.rennradFokus === 'longride') return 80
   if (d.rennradFokus === 'tempo') return 45
   return 40
