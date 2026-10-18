@@ -1,5 +1,6 @@
 /**
- * GET /api/export-data?token=… — kompakter Live-Export der Haushaltsdaten.
+ * GET /api/export-data?token=… — Live-Export nur Portfolioanalyse.
+ * Optional: &ticker=ASML oder &isin=NL0010273215 für Fokus-Titel.
  * Auth: Query-Parameter `token` muss mit CHAT_API_SECRET übereinstimmen.
  */
 import { timingSafeEqual } from 'node:crypto'
@@ -8,7 +9,7 @@ import { ladeExportData } from '@/lib/export-data-server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 60
+export const maxDuration = 180
 
 function tokenOk(token: string | null): boolean {
   const secret = (process.env.CHAT_API_SECRET || '').trim()
@@ -24,13 +25,17 @@ function tokenOk(token: string | null): boolean {
 }
 
 export async function GET(req: Request) {
-  const token = new URL(req.url).searchParams.get('token')
+  const url = new URL(req.url)
+  const token = url.searchParams.get('token')
   if (!tokenOk(token)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    const data = await ladeExportData()
+    const data = await ladeExportData({
+      focusTicker: url.searchParams.get('ticker'),
+      focusIsin: url.searchParams.get('isin'),
+    })
     return NextResponse.json(data)
   } catch (e) {
     console.error('[export-data]', e)
