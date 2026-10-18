@@ -60,19 +60,6 @@ export async function POST(req: Request, ctx: Ctx) {
     return NextResponse.json({ error: 'Ungültiger JSON-Body.' }, { status: 400 })
   }
 
-  let description =
-    typeof body.description === 'string' ? normalisiereDrechselSprache(body.description) : undefined
-  const basis =
-    body.existingDescription != null
-      ? normalisiereDrechselSprache(body.existingDescription.trim())
-      : description
-  if (body.bereinigeIntros && basis) {
-    description = entferneGestapelteBeschreibungsIntros(basis).cleaned
-  } else if ((body.replaceIntro || body.prependIntro) && body.optimizedIntro?.trim() && basis != null) {
-    // Nie stapeln: alte Intro-Varianten runter, genau ein Intro setzen.
-    description = setzeBeschreibungIntro(basis, normalisiereDrechselSprache(body.optimizedIntro.trim()))
-  }
-
   const title =
     typeof body.title === 'string' ? normalisiereDrechselSprache(body.title.trim()) : undefined
   const tags = Array.isArray(body.tags)
@@ -109,39 +96,71 @@ export async function POST(req: Request, ctx: Ctx) {
     }
   }
 
-  // Soft-Report für die UI (blockiert nicht, außer harte Limits oben)
-  const regelReport =
-    title != null || tags != null || description != null
-      ? pruefeEtsySeoRegeln({
-          title: title ?? '',
-          tags: tags ?? [],
-          description: description ?? body.existingDescription ?? '',
-        })
-      : null
-
   try {
     const vorher = await ladeEtsyListingDetail(user.id, listingId)
       .then((r) => r.listing)
       .catch(() => null)
+    if (!vorher) {
+      return NextResponse.json({ error: 'Listing nicht geladen.' }, { status: 502 })
+    }
+
+    let description =
+      typeof body.description === 'string' ? normalisiereDrechselSprache(body.description) : undefined
+    const basis = normalisiereDrechselSprache(
+      (body.existingDescription ?? vorher.description ?? description ?? '').trim(),
+    )
+    let entfernt = 0
+    if (body.bereinigeIntros) {
+      const r = entferneGestapelteBeschreibungsIntros(basis)
+      description = r.cleaned
+      entfernt = r.entfernt
+      if (entfernt <= 0) {
+        return NextResponse.json({
+          ok: true,
+          listing: vorher,
+          unveraendert: true,
+          entfernt: 0,
+          message: 'Keine gestapelten Intros gefunden.',
+        })
+      }
+    } else if ((body.replaceIntro || body.prependIntro) && body.optimizedIntro?.trim()) {
+      // Nie stapeln: alte Intro-Varianten runter, genau ein Intro setzen.
+      description = setzeBeschreibungIntro(basis, normalisiereDrechselSprache(body.optimizedIntro.trim()))
+    }
+
+    // Soft-Report für die UI (blockiert nicht, außer harte Limits oben)
+    const regelReport =
+      title != null || tags != null || description != null
+        ? pruefeEtsySeoRegeln({
+            title: title ?? vorher.title,
+            tags: tags ?? vorher.tags,
+            description: description ?? vorher.description,
+          })
+        : null
+
     const listing = await updateEtsyListing(user.id, listingId, {
       title,
       description,
       tags,
     })
-    if (vorher) {
-      const before = { title: vorher.title, tags: vorher.tags, description: vorher.description }
-      const after = { title: title ?? vorher.title, tags: tags ?? vorher.tags, description: description ?? vorher.description }
-      await protokolliereEtsyAenderung({
-        ownerUserId: user.id,
-        listingId,
-        listingTitle: vorher.title,
-        quelle: 'manuell',
-        beschreibung: beschreibeAenderung(before, after),
-        before,
-        after,
-      })
+    const before = { title: vorher.title, tags: vorher.tags, description: vorher.description }
+    const after = {
+      title: title ?? vorher.title,
+      tags: tags ?? vorher.tags,
+      description: description ?? vorher.description,
     }
-    return NextResponse.json({ ok: true, listing, regelReport })
+    await protokolliereEtsyAenderung({
+      ownerUserId: user.id,
+      listingId,
+      listingTitle: vorher.title,
+      quelle: 'manuell',
+      beschreibung: body.bereinigeIntros
+        ? `Gestapelte Intros entfernt (${entfernt})`
+        : beschreibeAenderung(before, after),
+      before,
+      after,
+    })
+    return NextResponse.json({ ok: true, listing, regelReport, entfernt })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Update fehlgeschlagen'
     console.error('[etsy update]', msg)

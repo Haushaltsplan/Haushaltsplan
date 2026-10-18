@@ -1,6 +1,7 @@
 'use client'
 
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
+import { zaehleGestapelteIntros } from '@/lib/etsy/etsy-beschreibung-intro'
 import { baueEtsySeoDiff, type EtsySeoDiffZeile } from '@/lib/etsy/etsy-seo-diff'
 import type {
   EtsySeoAuditResult,
@@ -73,6 +74,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
   const [batchBusy, setBatchBusy] = useState(false)
   const [batchProgress, setBatchProgress] = useState('')
   const [tagsReparaturBusy, setTagsReparaturBusy] = useState(false)
+  const [introsBusy, setIntrosBusy] = useState(false)
   const [handwerkBusy, setHandwerkBusy] = useState(false)
   const [handgedrehtAnzahl, setHandgedrehtAnzahl] = useState(0)
 
@@ -400,6 +402,49 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     }
   }
 
+  async function bereinigeAlleIntros() {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        'Gestapelte Einleitungstexte in allen geladenen Listings entfernen?\n\nSchreibt nur die Beschreibung auf Etsy um — Titel und Tags bleiben. Dauert je Listing ein paar Sekunden.',
+      )
+    ) {
+      return
+    }
+    setIntrosBusy(true)
+    setBatchProgress('Entferne gestapelte Intros…')
+    try {
+      const res = await fetch('/api/etsy/listings/intros-bereinigen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: stateFilter }),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        bereinigt?: number
+        unveraendert?: number
+        fehlgeschlagen?: number
+        geprueft?: number
+      }
+      if (!res.ok) {
+        toast.error(j.error ?? 'Intros-Bereinigung fehlgeschlagen.')
+        return
+      }
+      toast.success(
+        `${j.bereinigt ?? 0} Beschreibung${(j.bereinigt ?? 0) === 1 ? '' : 'en'} bereinigt` +
+          (j.unveraendert ? ` · ${j.unveraendert} schon ok` : '') +
+          (j.fehlgeschlagen ? ` · ${j.fehlgeschlagen} Fehler` : ''),
+      )
+      void ladeListings()
+      if (selectedId) void starteAudit(selectedId, true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Intros-Bereinigung fehlgeschlagen')
+    } finally {
+      setIntrosBusy(false)
+      setBatchProgress('')
+    }
+  }
+
   async function repariereAlleTags() {
     const n = listings.filter(hatUnvollstaendigeTags).length
     if (!n) {
@@ -660,7 +705,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </select>
             <button
               type="button"
-              disabled={loadingList || batchBusy || tagsReparaturBusy || handwerkBusy}
+              disabled={loadingList || batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy}
               onClick={() => void ladeListings()}
               className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm"
             >
@@ -668,7 +713,15 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </button>
             <button
               type="button"
-              disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy}
+              onClick={() => void bereinigeAlleIntros()}
+              className="rounded-xl bg-rose-700 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-50"
+            >
+              {introsBusy ? 'Bereinige Intros…' : 'Gestapelte Intros entfernen'}
+            </button>
+            <button
+              type="button"
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy}
               onClick={() => void batchScan(false)}
               className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
             >
@@ -676,7 +729,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </button>
             <button
               type="button"
-              disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy}
               onClick={() => void batchScan(true)}
               className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm disabled:opacity-50"
             >
@@ -706,6 +759,14 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                   : `${scoreStats.tagsFehlen}× 13 Tags wiederherstellen`}
               </button>
             )}
+          </div>
+          <div className="rounded-xl border border-rose-500/50 bg-rose-500/15 px-3 py-3 text-sm text-rose-50">
+            <p className="font-semibold">Doppelte Einleitungstexte?</p>
+            <p className="mt-1 text-xs text-rose-100/90">
+              Wenn die Beschreibung mehrere ähnliche Intros hintereinander hat: oben auf{' '}
+              <strong>„Gestapelte Intros entfernen“</strong> klicken (rot). Bereinigt alle aktiven Listings auf
+              Etsy — ohne Titel/Tags anzufassen.
+            </p>
           </div>
           {handgedrehtAnzahl > 0 && (
             <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100">
@@ -1010,6 +1071,31 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                 </ul>
               )}
             </div>
+
+            {listing && zaehleGestapelteIntros(listing.description) >= 1 && (
+              <div className="rounded-xl border border-rose-500/60 bg-rose-500/20 p-3">
+                <p className="text-sm font-semibold text-rose-100">
+                  Diese Beschreibung hat gestapelte Einleitungstexte
+                </p>
+                <p className="mt-1 text-xs text-rose-100/85">
+                  Ein Klick entfernt die doppelten Intros auf Etsy und lässt den eigentlichen Text stehen.
+                </p>
+                <button
+                  type="button"
+                  disabled={busy || introsBusy}
+                  onClick={() => void pushUpdate('bereinige')}
+                  className={`mt-2 rounded-lg px-3 py-2 text-sm font-semibold ${
+                    confirmPush === 'bereinige'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-rose-600 text-white hover:bg-rose-500'
+                  }`}
+                >
+                  {confirmPush === 'bereinige'
+                    ? 'Nochmals klicken: jetzt auf Etsy speichern'
+                    : 'Gestapelte Intros jetzt entfernen'}
+                </button>
+              </div>
+            )}
 
             <div>
               <p className="text-xs font-medium text-[var(--app-text-muted)]">SEO-Issues</p>
