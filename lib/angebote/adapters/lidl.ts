@@ -34,9 +34,18 @@ type LidlOffer = {
   price?: string
   oldPrice?: string
   pricePerUnit?: string
-  period?: string
+  packaging?: string
+  imageUrl?: string
   image?: string
   category?: string
+  startValidityDate?: string
+  endValidityDate?: string
+  priceBox?: {
+    largePartNumeric?: number | null
+    smallPartNumeric?: number | null
+    largePartString?: string | null
+    smallPartString?: string | null
+  }
 }
 
 type LidlOffersResponse = {
@@ -76,20 +85,12 @@ async function findeStoreKey(plz: string): Promise<string> {
   return key
 }
 
-function parsePeriod(period?: string): { von: string | null; bis: string | null } {
-  if (!period) return { von: null, bis: null }
-  const m = period.match(/(\d{4}-\d{2}-\d{2}).*?(\d{4}-\d{2}-\d{2})/)
-  if (m) return { von: m[1]!, bis: m[2]! }
-  return { von: null, bis: null }
-}
-
 export const lidlAdapter: AngeboteAdapter = {
   haendler: 'lidl',
   istDirekt: true,
   async fetchAngebote(ctx: AdapterKontext) {
-    const storeKey = ctx.marktId && ctx.marktId !== plzPlaceholder(ctx.plz)
-      ? ctx.marktId
-      : await findeStoreKey(ctx.plz)
+    const storeKey =
+      ctx.marktId && ctx.marktId !== ctx.plz ? ctx.marktId : await findeStoreKey(ctx.plz)
     const data = await fetchJson<LidlOffersResponse>(
       `${OFFERS_BASE}v4/DE/${encodeURIComponent(storeKey)}/offers`,
       {
@@ -103,21 +104,28 @@ export const lidlAdapter: AngeboteAdapter = {
 
     const angebote = list
       .map((o, i): Angebot | null => {
-        const name = [o.brand, o.title].filter(Boolean).join(' - ').trim() || o.title || ''
-        const preis = parsePreisEur(o.price)
+        const name = (o.title || '').trim()
+        const marke = o.brand?.trim() || null
+        const preis =
+          typeof o.priceBox?.largePartNumeric === 'number'
+            ? o.priceBox.largePartNumeric
+            : parsePreisEur(o.priceBox?.largePartString ?? o.price)
         if (!name || preis == null) return null
-        const { von, bis } = parsePeriod(o.period)
+        const vorher =
+          typeof o.priceBox?.smallPartNumeric === 'number'
+            ? o.priceBox.smallPartNumeric
+            : parsePreisEur(o.priceBox?.smallPartString ?? o.oldPrice)
         return normalisiereAngebot({
           id: `lidl-${o.id ?? i}`,
           haendler: 'lidl',
           name,
-          marke: o.brand ?? null,
+          marke,
           preisEur: preis,
-          vorherigerPreisEur: parsePreisEur(o.oldPrice),
-          packungText: o.pricePerUnit ?? null,
-          gueltigVon: von,
-          gueltigBis: bis,
-          bildUrl: o.image ?? null,
+          vorherigerPreisEur: vorher,
+          packungText: o.packaging?.split('\n')[0]?.trim() || o.pricePerUnit || null,
+          gueltigVon: o.startValidityDate ?? null,
+          gueltigBis: o.endValidityDate ?? null,
+          bildUrl: o.imageUrl || o.image || null,
           kategorie: o.category ?? null,
           quelle: 'direkt',
         })
@@ -127,8 +135,4 @@ export const lidlAdapter: AngeboteAdapter = {
     if (!angebote.length) throw new Error('Lidl: Angebote ohne gültigen Preis')
     return { haendler: 'lidl', angebote, quelle: 'direkt' }
   },
-}
-
-function plzPlaceholder(plz: string) {
-  return plz
 }

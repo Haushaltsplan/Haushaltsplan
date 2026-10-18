@@ -47,7 +47,11 @@ export async function fuehreVergleichAus(
 
   if (!force) {
     const cached = await ladeSnapshot(plz, woche, ownerUserId)
-    if (cached && snapshotZuFrisch(cached.erstelltAm, 15)) {
+    const cacheOk =
+      cached &&
+      snapshotZuFrisch(cached.erstelltAm, 15) &&
+      cached.angebote.some((a) => Boolean(a.marke || a.bildUrl))
+    if (cacheOk && cached) {
       const gefiltert = filterUndSortiere(cached.angebote, {
         q: req.q,
         haendler: req.haendler,

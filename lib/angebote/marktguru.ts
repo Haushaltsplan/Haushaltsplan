@@ -47,22 +47,96 @@ async function ladeKeys(): Promise<MgKeys> {
   return keys
 }
 
+type MgBrand = { name?: string; uniqueName?: string } | string | null
+
 type MgOffer = {
   id?: number | string
-  product?: { name?: string; brand?: string | null }
+  brand?: MgBrand
+  product?: { name?: string; brand?: MgBrand; description?: string | null }
   price?: number | string
-  priceOld?: number | string | null
+  oldPrice?: number | string | null
   description?: string | null
+  referencePrice?: number | string | null
+  validityDates?: Array<{ from?: string; to?: string }>
   validFrom?: string | null
   validTo?: string | null
   unitPrice?: number | string | null
   unitType?: string | null
+  unit?: { shortName?: string; name?: string }
+  volume?: number | null
   advertisers?: Array<{ uniqueName?: string; name?: string }>
-  images?: { urls?: { medium?: string; small?: string } }
+  images?: {
+    count?: number
+    urls?: { medium?: string; small?: string; large?: string }
+  }
+  categories?: Array<{ name?: string }>
 }
 
 type MgSearchResponse = {
   results?: MgOffer[]
+}
+
+function markeAus(raw: MgBrand | undefined): string | null {
+  if (!raw) return null
+  if (typeof raw === 'string') {
+    const t = raw.trim()
+    return t && !/^this is no brand$/i.test(t) ? t : null
+  }
+  const t = raw.name?.trim() || raw.uniqueName?.trim() || ''
+  if (!t || /^this is no brand$/i.test(t)) return null
+  return t
+}
+
+export function marktguruBildUrl(offerId: string | number, size: 'small' | 'medium' | 'large' = 'medium') {
+  return `https://mg2de.b-cdn.net/api/v1/offers/${offerId}/images/default/0/${size}.jpg`
+}
+
+function mapOffer(o: MgOffer): Angebot | null {
+  const adv = o.advertisers?.[0]?.uniqueName?.toLowerCase() ?? ''
+  const haendler = RETAILER_MAP[adv]
+  if (!haendler) return null
+  const preis = parsePreisEur(o.price)
+  if (preis == null) return null
+
+  const name = o.product?.name?.trim() || o.description?.trim() || `Angebot ${o.id}`
+  const marke = markeAus(o.brand) || markeAus(o.product?.brand)
+  const packungText = o.description?.trim() || null
+  const unitShort = (o.unit?.shortName || o.unitType || '').toLowerCase()
+  let grundpreisEur: number | null = parsePreisEur(o.referencePrice ?? o.unitPrice)
+  let grundpreisEinheit: 'kg' | 'l' | 'st' | null = null
+  if (grundpreisEur != null) {
+    if (unitShort.includes('kg') || unitShort === 'g') grundpreisEinheit = 'kg'
+    else if (unitShort.includes('l') || unitShort.includes('ml')) grundpreisEinheit = 'l'
+    else grundpreisEinheit = 'st'
+  }
+
+  const offerId = o.id != null ? String(o.id) : null
+  const bildUrl =
+    o.images?.urls?.medium ||
+    o.images?.urls?.large ||
+    o.images?.urls?.small ||
+    (offerId && (o.images?.count ?? 0) > 0 ? marktguruBildUrl(offerId, 'medium') : null) ||
+    (offerId ? marktguruBildUrl(offerId, 'medium') : null)
+
+  const von = o.validityDates?.[0]?.from ?? o.validFrom ?? null
+  const bis = o.validityDates?.[0]?.to ?? o.validTo ?? null
+
+  return normalisiereAngebot({
+    id: `mg-${haendler}-${offerId ?? name}-${preis}`,
+    haendler,
+    name,
+    marke,
+    preisEur: preis,
+    vorherigerPreisEur: parsePreisEur(o.oldPrice),
+    packungText,
+    gueltigVon: von,
+    gueltigBis: bis,
+    bildUrl,
+    kategorie: o.categories?.[0]?.name ?? null,
+    quelle: 'marktguru',
+    grundpreisEur,
+    grundpreisEinheit,
+  })
 }
 
 export async function marktguruSuche(opts: {
@@ -95,47 +169,10 @@ export async function marktguruSuche(opts: {
   const out: Angebot[] = []
 
   for (const o of results) {
-    const adv = o.advertisers?.[0]?.uniqueName?.toLowerCase() ?? ''
-    const haendler = RETAILER_MAP[adv]
-    if (!haendler) continue
-    if (allowed && !allowed.has(haendler)) continue
-    const preis = parsePreisEur(o.price)
-    if (preis == null) continue
-    const name = o.product?.name?.trim() || o.description?.trim() || `Angebot ${o.id}`
-    const packungText = o.description?.trim() || null
-    let grundpreisEur: number | null = parsePreisEur(o.unitPrice)
-    let grundpreisEinheit: 'kg' | 'l' | 'st' | null = null
-    const ut = (o.unitType || '').toLowerCase()
-    if (grundpreisEur != null) {
-      if (ut.includes('kg') || ut.includes('g')) grundpreisEinheit = 'kg'
-      else if (ut.includes('l') || ut.includes('ml')) grundpreisEinheit = 'l'
-      else grundpreisEinheit = 'st'
-    }
-    const offerId = o.id != null ? String(o.id) : null
-    const bildUrl =
-      o.images?.urls?.medium ||
-      o.images?.urls?.small ||
-      (offerId
-        ? `https://mg2de.b-cdn.net/api/v1/offers/${offerId}/images/default/0/medium.jpg`
-        : null)
-    out.push(
-      normalisiereAngebot({
-        id: `mg-${haendler}-${offerId ?? out.length}`,
-        haendler,
-        name,
-        marke: o.product?.brand ?? null,
-        preisEur: preis,
-        vorherigerPreisEur: parsePreisEur(o.priceOld),
-        packungText,
-        gueltigVon: o.validFrom ?? null,
-        gueltigBis: o.validTo ?? null,
-        bildUrl,
-        kategorie: null,
-        quelle: 'marktguru',
-        grundpreisEur,
-        grundpreisEinheit,
-      }),
-    )
+    const mapped = mapOffer(o)
+    if (!mapped) continue
+    if (allowed && !allowed.has(mapped.haendler)) continue
+    out.push(mapped)
   }
   return out
 }
@@ -145,8 +182,7 @@ export async function marktguruRegionaleAngebote(
   plz: string,
   haendler: HaendlerId[],
 ): Promise<Angebot[]> {
-  // Mehrere Suchen mit gängigen Kategorien, damit der Bestand nicht nur „Milch“ ist.
-  const queries = ['', 'Fleisch', 'Milch', 'Gemüse', 'Getränke', 'Käse', 'Brot']
+  const queries = ['', 'Fleisch', 'Milch', 'Gemüse', 'Getränke', 'Käse', 'Brot', 'Butter', 'Joghurt']
   const seen = new Set<string>()
   const all: Angebot[] = []
   for (const q of queries) {
