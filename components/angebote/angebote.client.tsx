@@ -6,14 +6,19 @@ import toast from 'react-hot-toast'
 import { PageChrome, PageHero, pageContainerWideClass } from '@/components/page-shell'
 import {
   appCardClass,
-  appDataTableClass,
   appEmptyClass,
   appGhostBtnClass,
   appInputClass,
   appLoadingClass,
   appSecondaryBtnClass,
-  appTableFrameClass,
 } from '@/lib/app-ui'
+import {
+  berechneSummenProHaendler,
+  ladeListeAusStorage,
+  produktKey,
+  speichereListeInStorage,
+  type ListenEintrag,
+} from '@/lib/angebote/einkaufsliste'
 import {
   HAENDLER_LABELS,
   type Angebot,
@@ -67,6 +72,27 @@ function statusClass(s: QuellenStatus) {
   }
 }
 
+function ProduktBild({ src, alt }: { src: string | null; alt: string }) {
+  const [broken, setBroken] = useState(false)
+  if (!src || broken) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[var(--app-surface-muted)] text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
+        Kein Foto
+      </div>
+    )
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className="h-full w-full object-contain p-2"
+      loading="lazy"
+      onError={() => setBroken(true)}
+    />
+  )
+}
+
 export function AngeboteClient() {
   const [plz, setPlz] = useState('')
   const [q, setQ] = useState('')
@@ -75,6 +101,15 @@ export function AngeboteClient() {
   const [loading, setLoading] = useState(false)
   const [initial, setInitial] = useState(true)
   const [data, setData] = useState<VergleichResponse | null>(null)
+  const [liste, setListe] = useState<ListenEintrag[]>([])
+
+  useEffect(() => {
+    setListe(ladeListeAusStorage())
+  }, [])
+
+  useEffect(() => {
+    speichereListeInStorage(liste)
+  }, [liste])
 
   const ladenEinstellungen = useCallback(async () => {
     try {
@@ -146,19 +181,65 @@ export function AngeboteClient() {
     )
   }
 
-  const quellenProbleme = useMemo(
-    () => (data?.quellen ?? []).filter((q) => q.status === 'failed' || q.status === 'fallback'),
-    [data],
-  )
+  const hinzufuegen = (a: Angebot) => {
+    const key = produktKey(a)
+    setListe((prev) => {
+      const existing = prev.find((x) => x.key === key)
+      if (existing) {
+        toast.success('Menge erhöht')
+        return prev.map((x) => (x.key === key ? { ...x, menge: x.menge + 1 } : x))
+      }
+      toast.success('Zur Einkaufsliste')
+      return [
+        ...prev,
+        {
+          key,
+          name: a.name,
+          marke: a.marke,
+          bildUrl: a.bildUrl,
+          menge: 1,
+          angebotId: a.id,
+          haendlerUrsprung: a.haendler,
+          preisUrsprungEur: a.preisEur,
+        },
+      ]
+    })
+  }
 
-  const angebote: Angebot[] = data?.angebote ?? []
+  const setMenge = (key: string, menge: number) => {
+    setListe((prev) =>
+      prev
+        .map((x) => (x.key === key ? { ...x, menge: Math.max(0, menge) } : x))
+        .filter((x) => x.menge > 0),
+    )
+  }
+
+  const alleAngebote = data?.angebote ?? []
+  const summen = useMemo(
+    () => berechneSummenProHaendler(liste, alleAngebote, aktivHaendler),
+    [liste, alleAngebote, aktivHaendler],
+  )
+  const guenstigster = summen.find((s) => s.vollstaendig && s.summeEur != null) ?? summen[0]
+  const teuersterVoll = [...summen]
+    .reverse()
+    .find((s) => s.vollstaendig && s.summeEur != null)
+  const sparEur =
+    guenstigster?.vollstaendig &&
+    teuersterVoll?.vollstaendig &&
+    guenstigster.summeEur != null &&
+    teuersterVoll.summeEur != null
+      ? Math.round((teuersterVoll.summeEur - guenstigster.summeEur) * 100) / 100
+      : null
+
+  const angebote: Angebot[] = alleAngebote
+  const listenKeys = useMemo(() => new Set(liste.map((x) => x.key)), [liste])
 
   return (
     <PageChrome className={pageContainerWideClass}>
       <PageHero
         eyebrow="Haushalt"
         title="Supermarkt-Angebote"
-        description="Regionale Wochenangebote per PLZ vergleichen — Direktquellen zuerst, Marktguru als Fallback."
+        description="Angebote mit Marke und Foto vergleichen, Einkaufsliste bauen und sehen, wo der Warenkorb am günstigsten ist."
         actions={
           <div className="flex flex-wrap gap-2">
             <button
@@ -257,11 +338,6 @@ export function AngeboteClient() {
       {data && data.quellen.length > 0 && (
         <section className={`${appCardClass} space-y-2 p-4`}>
           <h2 className="text-sm font-semibold text-[var(--app-text)]">Quellen-Status</h2>
-          {quellenProbleme.length > 0 && (
-            <p className="text-xs text-amber-700 dark:text-amber-200">
-              Mindestens eine Quelle nutzt Fallback oder ist ausgefallen — Details per Hover.
-            </p>
-          )}
           <ul className="flex flex-wrap gap-2">
             {data.quellen.map((s) => (
               <li
@@ -277,6 +353,123 @@ export function AngeboteClient() {
         </section>
       )}
 
+      {/* Einkaufsliste */}
+      <section className={`${appCardClass} space-y-4 p-4 sm:p-5`}>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--app-text)]">Einkaufsliste</h2>
+            <p className="text-xs text-[var(--app-text-muted)]">
+              Produkte aus den Angeboten hinzufügen — unten siehst du die Warenkorb-Summe je Markt.
+            </p>
+          </div>
+          {liste.length > 0 && (
+            <button
+              type="button"
+              className={appGhostBtnClass}
+              onClick={() => {
+                setListe([])
+                toast.success('Liste geleert')
+              }}
+            >
+              Liste leeren
+            </button>
+          )}
+        </div>
+
+        {liste.length === 0 ? (
+          <div className={appEmptyClass}>Noch leer — bei einem Angebot „+ Liste“ tippen.</div>
+        ) : (
+          <ul className="space-y-2">
+            {liste.map((e) => (
+              <li
+                key={e.key}
+                className="flex items-center gap-3 rounded-[var(--app-radius-lg)] border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-2.5"
+              >
+                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[var(--app-border)] bg-white dark:bg-[var(--app-surface)]">
+                  <ProduktBild src={e.bildUrl} alt={e.name} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  {e.marke && (
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
+                      {e.marke}
+                    </div>
+                  )}
+                  <div className="truncate text-sm font-medium text-[var(--app-text)]">{e.name}</div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    className={appGhostBtnClass}
+                    aria-label="Weniger"
+                    onClick={() => setMenge(e.key, e.menge - 1)}
+                  >
+                    −
+                  </button>
+                  <span className="w-8 text-center text-sm font-semibold tabular-nums">{e.menge}</span>
+                  <button
+                    type="button"
+                    className={appGhostBtnClass}
+                    aria-label="Mehr"
+                    onClick={() => setMenge(e.key, e.menge + 1)}
+                  >
+                    +
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {liste.length > 0 && (
+          <div className="space-y-3 border-t border-[var(--app-border)] pt-4">
+            <h3 className="text-sm font-semibold text-[var(--app-text)]">
+              Warenkorb-Vergleich je Supermarkt
+            </h3>
+            {!data && (
+              <p className="text-xs text-amber-700 dark:text-amber-200">
+                Zuerst Angebote laden (PLZ + Vergleichen), damit Preise je Markt berechnet werden.
+              </p>
+            )}
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {summen.map((s) => {
+                const isBest =
+                  guenstigster?.haendler === s.haendler && s.vollstaendig && s.summeEur != null
+                return (
+                  <div
+                    key={s.haendler}
+                    className={[
+                      'rounded-[var(--app-radius-lg)] border p-3',
+                      isBest
+                        ? 'border-lime-500/60 bg-lime-500/10'
+                        : 'border-[var(--app-border)] bg-[var(--app-surface-muted)]',
+                    ].join(' ')}
+                  >
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-sm font-semibold text-[var(--app-text)]">{s.label}</span>
+                      <span className="text-base font-bold tabular-nums text-[var(--app-text)]">
+                        {euro(s.summeEur)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
+                      {s.treffer}/{s.gesamt} Produkte gefunden
+                      {s.vollstaendig ? '' : ' · unvollständig'}
+                      {isBest ? ' · günstigster Warenkorb' : ''}
+                    </p>
+                  </div>
+                )
+              })}
+            </div>
+            {sparEur != null && sparEur > 0 && guenstigster && (
+              <p className="rounded-lg border border-lime-500/40 bg-lime-500/10 px-3 py-2 text-sm text-lime-900 dark:text-lime-100">
+                Du sparst bis zu <strong>{euro(sparEur)}</strong>, wenn du bei{' '}
+                <strong>{guenstigster.label}</strong> einkaufst (gegenüber dem teuersten vollständigen
+                Warenkorb).
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+
       {loading && !data ? (
         <div className={appLoadingClass}>Angebote werden geladen…</div>
       ) : !data ? (
@@ -284,52 +477,74 @@ export function AngeboteClient() {
       ) : angebote.length === 0 ? (
         <div className={appEmptyClass}>Keine Treffer für die aktuelle Filterung.</div>
       ) : (
-        <div className={appTableFrameClass}>
-          <div className="app-table-scroll overflow-x-auto">
-            <table className={appDataTableClass}>
-              <thead>
-                <tr>
-                  <th>Produkt</th>
-                  <th>Händler</th>
-                  <th>Packung</th>
-                  <th className="text-right">Preis</th>
-                  <th className="text-right">Grundpreis</th>
-                  <th>Quelle</th>
-                </tr>
-              </thead>
-              <tbody>
-                {angebote.map((a) => (
-                  <tr key={a.id}>
-                    <td>
-                      <div className="font-medium text-[var(--app-text)]">{a.name}</div>
-                      {a.gueltigBis && (
-                        <div className="text-[11px] text-[var(--app-text-muted)]">
-                          bis {a.gueltigBis}
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold text-[var(--app-text)]">
+            Angebote ({angebote.length})
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {angebote.map((a) => {
+              const inListe = listenKeys.has(produktKey(a))
+              return (
+                <article
+                  key={a.id}
+                  className="flex gap-3 rounded-[var(--app-radius-lg)] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-sm"
+                >
+                  <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-[var(--app-border)] bg-white dark:bg-[var(--app-surface-muted)]">
+                    <ProduktBild src={a.bildUrl} alt={a.name} />
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-lime-700 dark:text-lime-300">
+                          {a.marke?.trim() || 'Ohne Marke'}
                         </div>
-                      )}
-                    </td>
-                    <td>{HAENDLER_LABELS[a.haendler] ?? a.haendler}</td>
-                    <td className="text-[var(--app-text-muted)]">{a.packungText || '—'}</td>
-                    <td className="text-right tabular-nums">
-                      {euro(a.preisEur)}
-                      {a.vorherigerPreisEur != null && (
-                        <div className="text-[11px] text-[var(--app-text-muted)] line-through">
-                          {euro(a.vorherigerPreisEur)}
+                        <h3 className="mt-0.5 line-clamp-2 text-sm font-semibold leading-snug text-[var(--app-text)]">
+                          {a.name}
+                        </h3>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <div className="text-base font-bold tabular-nums text-[var(--app-text)]">
+                          {euro(a.preisEur)}
                         </div>
+                        {a.vorherigerPreisEur != null && (
+                          <div className="text-[11px] text-[var(--app-text-muted)] line-through">
+                            {euro(a.vorherigerPreisEur)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-[var(--app-text-muted)]">
+                      <span>{HAENDLER_LABELS[a.haendler] ?? a.haendler}</span>
+                      {a.packungText && <span>· {a.packungText}</span>}
+                      {a.grundpreisEur != null && (
+                        <span>
+                          · {euro(a.grundpreisEur)}/{a.grundpreisEinheit}
+                        </span>
                       )}
-                    </td>
-                    <td className="text-right tabular-nums text-[var(--app-text-muted)]">
-                      {a.grundpreisEur != null
-                        ? `${euro(a.grundpreisEur)}/${a.grundpreisEinheit ?? ''}`
-                        : '—'}
-                    </td>
-                    <td className="text-xs text-[var(--app-text-muted)]">{a.quelle}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                    <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+                      <span className="text-[10px] uppercase tracking-wide text-[var(--app-text-muted)]">
+                        {a.quelle}
+                        {a.gueltigBis ? ` · bis ${a.gueltigBis}` : ''}
+                      </span>
+                      <button
+                        type="button"
+                        className={
+                          inListe
+                            ? 'rounded-lg border border-lime-500/50 bg-lime-500/15 px-2.5 py-1 text-xs font-semibold text-lime-800 dark:text-lime-200'
+                            : appGhostBtnClass
+                        }
+                        onClick={() => hinzufuegen(a)}
+                      >
+                        {inListe ? '+1 Liste' : '+ Liste'}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
           </div>
-        </div>
+        </section>
       )}
     </PageChrome>
   )

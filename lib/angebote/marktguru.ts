@@ -10,10 +10,15 @@ let keysCache: { keys: MgKeys; at: number } | null = null
 
 const RETAILER_MAP: Record<string, HaendlerId> = {
   rewe: 'rewe',
+  'rewe-center': 'rewe',
+  'rewe-to-go': 'rewe',
   'aldi-sued': 'aldi_sued',
   'aldi-nord': 'aldi_nord',
   aldi: 'aldi_sued',
   edeka: 'edeka',
+  'edeka-center': 'edeka',
+  'edeka-xpress': 'edeka',
+  nahkauf: 'edeka',
   lidl: 'lidl',
   penny: 'penny',
   'netto-marken-discount': 'netto',
@@ -106,9 +111,16 @@ export async function marktguruSuche(opts: {
       else if (ut.includes('l') || ut.includes('ml')) grundpreisEinheit = 'l'
       else grundpreisEinheit = 'st'
     }
+    const offerId = o.id != null ? String(o.id) : null
+    const bildUrl =
+      o.images?.urls?.medium ||
+      o.images?.urls?.small ||
+      (offerId
+        ? `https://mg2de.b-cdn.net/api/v1/offers/${offerId}/images/default/0/medium.jpg`
+        : null)
     out.push(
       normalisiereAngebot({
-        id: `mg-${haendler}-${o.id ?? out.length}`,
+        id: `mg-${haendler}-${offerId ?? out.length}`,
         haendler,
         name,
         marke: o.product?.brand ?? null,
@@ -117,7 +129,7 @@ export async function marktguruSuche(opts: {
         packungText,
         gueltigVon: o.validFrom ?? null,
         gueltigBis: o.validTo ?? null,
-        bildUrl: o.images?.urls?.medium || o.images?.urls?.small || null,
+        bildUrl,
         kategorie: null,
         quelle: 'marktguru',
         grundpreisEur,

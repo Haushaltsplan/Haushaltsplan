@@ -90,8 +90,8 @@ export async function fuehreVergleichAus(
         direktErfolg.add(adapter.haendler)
         quellen.push({
           haendler: adapter.haendler,
-          status: 'ok',
-          quelle: 'direkt',
+          status: res.quelle === 'marktguru' ? 'fallback' : 'ok',
+          quelle: res.quelle,
           anzahl: res.angebote.length,
           dauerMs: Date.now() - t0,
         })

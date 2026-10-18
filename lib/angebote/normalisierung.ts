@@ -121,9 +121,8 @@ export function normalisiereAngebot(teil: Omit<Angebot, 'grundpreisEur' | 'grund
     grundpreisEur = g.grundpreisEur
     grundpreisEinheit = g.grundpreisEinheit
   }
-  const name = marke && !teil.name.toLowerCase().startsWith(marke.toLowerCase())
-    ? `${marke} ${teil.name}`.trim()
-    : teil.name.trim()
+  // Name und Marke getrennt lassen — UI zeigt beide Felder.
+  const name = teil.name.trim()
 
   return {
     ...teil,

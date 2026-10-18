@@ -13,7 +13,7 @@ Privates Modul `/angebote`. Unoffizielle Clients gegen öffentlich erreichbare E
 
 | Händler | Adapter | Endpoint / Seite | Hinweise |
 |---------|---------|------------------|----------|
-| REWE | `adapters/rewe.ts` | `rewe.de/angebote/nationale-angebote/` | SSR/HTML + JSON-Blöcke; regionale Market-API oft mTLS |
+| REWE | `adapters/rewe.ts` | `shop.rewe.de/api/products` + Marktguru | HTML oft 403; Shop-API mit Market-ID, sonst Marktguru (`rewe` + `rewe-center`) |
 | ALDI Süd | `adapters/aldi.ts` | `api.aldi-sued.de/v3/product-search` (`Wochenangebote`) | Akamai kann 403 liefern (IP/Region) |
 | ALDI Nord | `adapters/aldi.ts` | `aldi-nord.de/angebote.html` → `__NEXT_DATA__` | Nur bei PLZ 0–3 aktiv |
 | EDEKA | `adapters/edeka.ts` | `edeka.de/eh/service/eh/offers?marketId=` | `marketId` aus Marktsuche oder `1` national |
