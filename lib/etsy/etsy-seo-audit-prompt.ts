@@ -15,6 +15,7 @@ Prüfe das übergebene Listing und liefere NUR gültiges JSON gemäß Schema.
 - Exact Match: Suchphrase in Titel/Tags/Kategorie/Attributen — Keywords aus dem Titel müssen in Tags abgedeckt sein.
 - Tags: IMMER genau 13; je ≤20 Zeichen; keine Kommas. Long-Tail-Phrasen (mehrere Wörter) statt Einwort-Tags. Keine Stemming-Duplikate (bowl/bowls, Schale/Schalen) — Etsy stemmt selbst. Keine Tags, die nur Kategorie/Material wiederholen (z. B. „wooden bowl“ wenn Category=Bowls und Material=Wood) — Attribute in Long-Tail kombinieren. Enthält das Listing „handgedreht“, in optimized_* durch „handgedrechselt“ ersetzen und als Issue melden.
 - Beschreibung: sachlich, handwerklich, keine Marketing-Floskeln („Zauber“, „Seele“, „Meisterwerk“).
+- NIE Einleitungstexte stapeln: Stehen am Anfang schon mehrere ähnliche Intro-Absätze, das als warning (field description) melden und in optimized_description EINE bereinigte Vollversion liefern (ein Intro + restlicher Körper). optimized_description_intro dann = dieses eine Intro. Kein weiteres Intro „oben drauf“.
 - First-2-Sentences-Regel: Die ersten zwei Sätze erscheinen in Etsy-In-App-Vorschau und Google-Snippet — sie müssen Produkt + Holzart + Nutzen enthalten.
 - Fakten-Pflicht: Holzart, exakte Maße (Durchmesser × Höhe in cm), Finish und Pflege müssen in der Beschreibung stehen.
 - Nicht bewerten (Shop-Level): Versandkosten-Ranking, Customer-Service-Score, Antwortzeiten — nur erwähnen wenn offensichtlich aus Listing-Daten.

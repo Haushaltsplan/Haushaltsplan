@@ -15,6 +15,7 @@ import {
   speichereEtsySeoAudit,
   speichereEtsySeoVorschlag,
 } from '@/lib/etsy/etsy-seo-audit-cache'
+import { setzeBeschreibungIntro } from '@/lib/etsy/etsy-beschreibung-intro'
 import { listingFingerprint } from '@/lib/etsy/etsy-seo-diff'
 import { ladeEtsyListingDetail } from '@/lib/etsy/etsy-listings-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -123,10 +124,7 @@ async function run(opts: { reaudit: boolean }) {
           const s = audit.suggestions
           const intro = s.optimized_description_intro.trim()
           const description =
-            s.optimized_description?.trim() ||
-            (listing.description.trim().startsWith(intro)
-              ? listing.description.trim()
-              : `${intro}\n\n${listing.description.trim()}`.trim())
+            s.optimized_description?.trim() || setzeBeschreibungIntro(listing.description, intro)
           const after = {
             title: s.optimized_title,
             tags: s.optimized_tags,

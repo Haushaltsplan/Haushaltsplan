@@ -1,4 +1,8 @@
 import {
+  entferneGestapelteBeschreibungsIntros,
+  setzeBeschreibungIntro,
+} from '@/lib/etsy/etsy-beschreibung-intro'
+import {
   normalisiereDrechselSprache,
   normalisiereDrechselTags,
 } from '@/lib/etsy/etsy-drechsel-sprache'
@@ -22,8 +26,15 @@ type Body = {
   title?: string
   description?: string
   tags?: string[]
-  /** Wenn true: Intro vor bestehende Beschreibung setzen */
+  /**
+   * @deprecated früher: Intro stapeln. Jetzt: Intro ersetzen (Stacks entfernen).
+   * Alias für replaceIntro — bleibt für alte Clients gültig.
+   */
   prependIntro?: boolean
+  /** Intro-Abschnitt ersetzen, ohne weitere Varianten oben draufzulegen */
+  replaceIntro?: boolean
+  /** Nur gestapelte Intros entfernen, kein neues Intro setzen */
+  bereinigeIntros?: boolean
   existingDescription?: string
   optimizedIntro?: string
 }
@@ -51,10 +62,15 @@ export async function POST(req: Request, ctx: Ctx) {
 
   let description =
     typeof body.description === 'string' ? normalisiereDrechselSprache(body.description) : undefined
-  if (body.prependIntro && body.optimizedIntro?.trim()) {
-    const intro = normalisiereDrechselSprache(body.optimizedIntro.trim())
-    const rest = normalisiereDrechselSprache((body.existingDescription || description || '').trim())
-    description = rest.startsWith(intro) ? rest : `${intro}\n\n${rest}`.trim()
+  const basis =
+    body.existingDescription != null
+      ? normalisiereDrechselSprache(body.existingDescription.trim())
+      : description
+  if (body.bereinigeIntros && basis) {
+    description = entferneGestapelteBeschreibungsIntros(basis).cleaned
+  } else if ((body.replaceIntro || body.prependIntro) && body.optimizedIntro?.trim() && basis != null) {
+    // Nie stapeln: alte Intro-Varianten runter, genau ein Intro setzen.
+    description = setzeBeschreibungIntro(basis, normalisiereDrechselSprache(body.optimizedIntro.trim()))
   }
 
   const title =

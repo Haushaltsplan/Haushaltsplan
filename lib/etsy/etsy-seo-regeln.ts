@@ -4,6 +4,7 @@
  * (siehe etsy_seo_guidelines_ruleset).
  */
 
+import { zaehleGestapelteIntros } from '@/lib/etsy/etsy-beschreibung-intro'
 import {
   enthaeltVeraltetesHandgedreht,
   normalisiereDrechselSprache,
@@ -537,6 +538,16 @@ export function pruefeEtsySeoRegeln(input: {
   let descMasseOk = true
   let descPflegeOk = true
   if (description) {
+    const gestapelt = zaehleGestapelteIntros(description)
+    if (gestapelt >= 1) {
+      issues.push({
+        severity: 'warning',
+        field: 'description',
+        message: `Gestapelte Einleitungstexte erkannt (${gestapelt + 1} Varianten). Bitte „Intros entfernen“ — nicht erneut Intro pushen.`,
+      })
+      scorePenalty += 10
+    }
+
     const materialWorte = (input.materials ?? []).flatMap((m) => woerter(m)).filter((w) => w.length >= 4)
     const hatHolz = (text: string) =>
       HOLZARTEN_RE.test(text) || materialWorte.some((w) => norm(text).includes(w))

@@ -91,7 +91,9 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
   const [editTags, setEditTags] = useState('')
   const [editIntro, setEditIntro] = useState('')
   const [showDiff, setShowDiff] = useState(true)
-  const [confirmPush, setConfirmPush] = useState<'title' | 'tags' | 'intro' | 'all' | null>(null)
+  const [confirmPush, setConfirmPush] = useState<
+    'title' | 'tags' | 'intro' | 'all' | 'bereinige' | null
+  >(null)
 
   const [hauptbegriffGespeichert, setHauptbegriffGespeichert] = useState<string | null>(null)
   const [hauptbegriffEingabe, setHauptbegriffEingabe] = useState('')
@@ -487,7 +489,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     }
   }
 
-  async function pushUpdate(kind: 'title' | 'tags' | 'intro' | 'all') {
+  async function pushUpdate(kind: 'title' | 'tags' | 'intro' | 'all' | 'bereinige') {
     if (!selectedId || !listing) return
     if (confirmPush !== kind) {
       setConfirmPush(kind)
@@ -502,15 +504,16 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
         .map((t) => t.trim())
         .filter(Boolean)
         .slice(0, ETSY_SEO_TAG_COUNT)
+      // „Alles“ = nur Titel + Tags. Beschreibung bleibt unangetastet (keine Intro-Stapel).
       const res = await fetch(`/api/etsy/listings/${selectedId}/update`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: kind === 'title' || kind === 'all' ? editTitle.trim() : undefined,
           tags: kind === 'tags' || kind === 'all' ? tags : undefined,
-          prependIntro: kind === 'intro' || kind === 'all',
-          optimizedIntro:
-            kind === 'intro' || kind === 'all' ? editIntro.trim() : undefined,
+          replaceIntro: kind === 'intro',
+          bereinigeIntros: kind === 'bereinige',
+          optimizedIntro: kind === 'intro' ? editIntro.trim() : undefined,
           existingDescription: listing.description,
         }),
       })
@@ -521,7 +524,11 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
       }
       if (j.listing) setListing(j.listing)
       setConfirmPush(null)
-      toast.success('Auf Etsy gespeichert.')
+      toast.success(
+        kind === 'bereinige'
+          ? 'Gestapelte Intros entfernt — Beschreibung bereinigt.'
+          : 'Auf Etsy gespeichert.',
+      )
       void ladeListings()
       void starteAudit(selectedId, true)
     } catch (e) {
@@ -860,22 +867,37 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
 
             <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-3">
               <p className="text-xs text-[var(--app-text-muted)]">
-                Nach Neu-Generierung: Diff prüfen, dann alles auf einmal pushen (Titel + Tags + GEO-Intro).
+                Nach Neu-Generierung: Diff prüfen. „Titel + Tags“ lässt die Beschreibung unangetastet — keine
+                neuen Intros oben drauf.
               </p>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void pushUpdate('all')}
-                className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-medium ${
-                  confirmPush === 'all'
-                    ? 'bg-amber-600 text-white'
-                    : 'bg-teal-800 text-white disabled:opacity-50'
-                }`}
-              >
-                {confirmPush === 'all'
-                  ? 'Jetzt Titel + Tags + Intro pushen'
-                  : 'Alles übernehmen (mit Diff-Check)'}
-              </button>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void pushUpdate('all')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                    confirmPush === 'all'
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-teal-800 text-white disabled:opacity-50'
+                  }`}
+                >
+                  {confirmPush === 'all' ? 'Jetzt Titel + Tags pushen' : 'Titel + Tags übernehmen'}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void pushUpdate('bereinige')}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                    confirmPush === 'bereinige'
+                      ? 'bg-amber-600 text-white'
+                      : 'border border-rose-500/50 text-rose-200 disabled:opacity-50'
+                  }`}
+                >
+                  {confirmPush === 'bereinige'
+                    ? 'Jetzt gestapelte Intros löschen'
+                    : 'Gestapelte Intros entfernen'}
+                </button>
+              </div>
             </div>
 
             {/* Hauptbegriff — steuert Titel-Frontload, Tag und Intro */}
@@ -1180,13 +1202,19 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </label>
 
             <label className="block text-sm">
-              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">GEO-Intro</span>
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
+                GEO-Intro (ersetzt den Anfang — stapelt nicht)
+              </span>
               <textarea
                 value={editIntro}
                 onChange={(e) => setEditIntro(e.target.value)}
                 rows={5}
                 className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm leading-relaxed"
               />
+              <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
+                Nur nutzen, wenn du den Einleitungstext bewusst neu schreiben willst. Bei gestapelten Intros
+                zuerst „Gestapelte Intros entfernen“.
+              </p>
               <button
                 type="button"
                 disabled={busy}
@@ -1198,8 +1226,8 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                 }`}
               >
                 {confirmPush === 'intro'
-                  ? 'Jetzt Intro vor Beschreibung setzen'
-                  : 'Intro übernehmen (mit Diff-Check)'}
+                  ? 'Jetzt Intro ersetzen (ohne Stapeln)'
+                  : 'Intro ersetzen (mit Diff-Check)'}
               </button>
             </label>
 

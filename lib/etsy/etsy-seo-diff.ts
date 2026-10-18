@@ -1,5 +1,6 @@
 /** Diff & Fingerprint für SEO-Audits. */
 
+import { setzeBeschreibungIntro } from '@/lib/etsy/etsy-beschreibung-intro'
 import type { EtsyShopListingDetail } from '@/lib/etsy/etsy-seo-audit-types'
 
 export function listingFingerprint(listing: Pick<EtsyShopListingDetail, 'title' | 'tags' | 'description'>): string {
@@ -35,7 +36,7 @@ export function baueEtsySeoDiff(opts: {
   const afterDesc =
     opts.after.description?.trim() ||
     (opts.after.descriptionIntro
-      ? `${opts.after.descriptionIntro.trim()}\n\n${opts.before.description}`.trim()
+      ? setzeBeschreibungIntro(opts.before.description, opts.after.descriptionIntro)
       : opts.before.description)
 
   return [
