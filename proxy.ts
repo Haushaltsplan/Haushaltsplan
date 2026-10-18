@@ -26,7 +26,7 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
 }
 
-/** OAuth-Callbacks, Pings & Vercel-Crons (Auth prüft die Route selbst via CRON_SECRET). */
+/** OAuth-Callbacks, Pings, Vercel-Crons & Token-Exports (Auth prüft die Route selbst). */
 function oeffentlicheApi(pathname: string): boolean {
   return (
     pathname === '/api/fitnessdaten/whoop/auth' ||
@@ -43,7 +43,8 @@ function oeffentlicheApi(pathname: string): boolean {
     pathname === '/api/etsy/tages-cron' ||
     pathname === '/api/etsy/wochen-cron' ||
     pathname === '/api/portfolio-analyse/nachkaeufe/cron-scan' ||
-    pathname === '/api/portfolio-analyse/quartals-auto-ki/cron'
+    pathname === '/api/portfolio-analyse/quartals-auto-ki/cron' ||
+    pathname === '/api/export-data'
   )
 }
 
