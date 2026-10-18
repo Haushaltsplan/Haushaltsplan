@@ -453,10 +453,11 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     if (
       typeof window !== 'undefined' &&
       !window.confirm(
-        'GEO-Einleitungen für alle Listings ohne Einleitung vorne automatisch setzen?\n\n' +
-          'Pro Listing: KI schreibt eine Einleitung über die Schale und setzt sie vor Prozess/Specs. ' +
+        'HOOK-Einleitungen für alle Listings setzen, denen eine richtige Einleitung fehlt?\n\n' +
+          'Wie beim Neu-Einstellen: 3–6 Sätze WAS/Holzart/FÜR WEN vor Prozess & Specs. ' +
+          'Kurze Geschenk-Sätze („Auch als Geschenk zu Holzhochzeit…“) zählen nicht als Einleitung. ' +
           'Abrundung am Ende, Titel und Tags bleiben.\n\n' +
-          'Max. ca. 12 Listings pro Lauf (KI) — Button ggf. mehrfach klicken. Dauert einige Minuten.',
+          'Max. ca. 12 Listings pro Lauf — Button ggf. mehrfach klicken.',
       )
     ) {
       return
@@ -824,11 +825,12 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             )}
           </div>
           <div className="rounded-xl border border-amber-500/50 bg-amber-500/15 px-3 py-3 text-sm text-amber-50">
-            <p className="font-semibold">Einleitung fehlt bei (fast) allen?</p>
+            <p className="font-semibold">Einleitung fehlt / nur Geschenk-Satz vorne?</p>
             <p className="mt-1 text-xs text-amber-100/90">
-              Oranger Button <strong>„Einleitungen für alle setzen“</strong>: KI schreibt pro Listing eine
-              GEO-Einleitung über die Schale und setzt sie vor Prozess/Specs. Abrundung am Ende bleibt. Max. ~12
-              pro Lauf — bei Bedarf erneut klicken.
+              Oranger Button <strong>„Einleitungen für alle setzen“</strong>: schreibt den HOOK wie beim
+              Neu-Listing (Produkt + Holzart + Nutzen, 3–6 Sätze) und setzt ihn vor Prozess/Specs. Reine
+              Anlass-Sätze werden nicht mehr als „schon vorhanden“ gewertet. Max. ~12 pro Lauf — erneut
+              klicken bis alle durch sind.
             </p>
           </div>
           {handgedrehtAnzahl > 0 && (

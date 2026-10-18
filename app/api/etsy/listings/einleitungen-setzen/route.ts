@@ -1,15 +1,14 @@
 /**
- * Shop-weit: fehlende GEO-Einleitungen per KI erzeugen und vor Prozess/Specs setzen.
- * Abrundung am Ende bleibt; Titel/Tags unverändert.
+ * Shop-weit: fehlende/schwache GEO-HOOK-Einleitungen wie beim Neu-Listing setzen.
+ * Abrundung am Ende / Specs / Prozess bleiben; Titel/Tags unverändert.
  */
 import {
   fehltProduktEinleitungVorne,
   setzeBeschreibungIntro,
 } from '@/lib/etsy/etsy-beschreibung-intro'
-import { ladeEtsyEigeneSignale } from '@/lib/etsy/etsy-cockpit-server'
+import { generiereGeoHookEinleitung } from '@/lib/etsy/etsy-geo-einleitung-generator'
 import { normalisiereDrechselSprache } from '@/lib/etsy/etsy-drechsel-sprache'
 import { ladeEtsyListingDetail, ladeEtsyShopListings, updateEtsyListing } from '@/lib/etsy/etsy-listings-server'
-import { auditiereEtsyListing } from '@/lib/etsy/etsy-seo-audit-engine'
 import { ladeEtsyHauptbegriff } from '@/lib/etsy/etsy-seo-audit-cache'
 import { protokolliereEtsyAenderung } from '@/lib/etsy/etsy-statistik-server'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
@@ -45,7 +44,6 @@ export async function POST(req: Request) {
 
   try {
     const { listings } = await ladeEtsyShopListings(user.id, { state, limit })
-    const eigeneSignale = await ladeEtsyEigeneSignale(user.id).catch(() => null)
 
     let gesetzt = 0
     let uebersprungen = 0
@@ -69,20 +67,7 @@ export async function POST(req: Request) {
           continue
         }
 
-        const audit = await auditiereEtsyListing(listing, {
-          hauptbegriff,
-          eigeneSignale,
-          marktLimits: { maxAutosuggest: 1, maxCompetitor: 0, budgetMs: 8_000 },
-        })
-        const intro = normalisiereDrechselSprache(
-          audit.suggestions.optimized_description_intro.trim(),
-        )
-        if (!intro || intro.length < 40) {
-          fehlgeschlagen++
-          fehler.push({ listingId: kurz.listingId, error: 'KI-Einleitung zu kurz/leer' })
-          continue
-        }
-
+        const intro = await generiereGeoHookEinleitung(listing, { hauptbegriff })
         const neu = setzeBeschreibungIntro(basis, intro)
         if (neu === basis) {
           uebersprungen++
@@ -95,7 +80,7 @@ export async function POST(req: Request) {
           listingId: kurz.listingId,
           listingTitle: listing.title,
           quelle: 'manuell',
-          beschreibung: 'GEO-Einleitung gesetzt (Batch)',
+          beschreibung: 'GEO-HOOK-Einleitung gesetzt (wie Neu-Listing)',
           before: { title: listing.title, tags: listing.tags, description: listing.description },
           after: { title: listing.title, tags: listing.tags, description: neu },
         })

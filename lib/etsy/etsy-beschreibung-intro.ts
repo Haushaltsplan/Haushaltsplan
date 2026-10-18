@@ -1,6 +1,6 @@
 /**
  * GEO-Intros dürfen die bestehende Etsy-Beschreibung nicht stapeln.
- * Entfernt nur ähnliche Doppel-Intros — behält Produkt-Einleitung + Handwerks-Absatz.
+ * Entfernt nur ähnliche Doppel-Intros — behält echte Einleitung + Handwerk + Abrundung.
  */
 
 /** Strukturierter Listing-Körper (Emoji-Sektionen, Maße, Pflege …) beginnt hier oft. */
@@ -9,10 +9,17 @@ const KOERPER_MARKER_RE =
 
 const PRODUKT_RE =
   /(schale|schüssel|schuessel|bowl|dose|behälter|behaelter|vase|teller|stab|skulptur|gefäß|gefaess)/i
-const HOLZ_RE =
-  /(eiche|esche|ahorn|walnuss|nussbaum|kirsch|birke|buche|linde|pflaume|zwetschg|apfel|birne|ulme|rüster|robinie|oliv|zirbe|lärche|kiefer|fichte|eibe|mooreiche|wurzelholz|holz)/i
+
+/** Echte Holzart — nicht „Holzhochzeit“ / „Holzgeschenk“. */
+const HOLZART_RE =
+  /(eichenholz|\bescheholz\b|ahorn|walnussholz|nussbaum|kirschholz|birke|buchenholz|\bbuche\b|\beiche\b|\besche\b|linde|pflaume|zwetschg|apfel|birne|ulme|rüster|robinie|olivenholz|zirbe|lärche|kiefer|fichte|eibe|mooreiche|wurzelholz|(?:aus|von)\s+holz\b)/i
+
 const PROZESS_RE =
   /(entstehungsprozess|vorgedreht|lufttrocknung|drehbank|feingeschliffen|rohling|trocknung|formgebung)/i
+
+/** Reiner Anlass-/Geschenk-Zusatz — zählt NICHT als GEO-Einleitung. */
+const NUR_ANLASS_RE =
+  /^(auch\s+)?als\s+geschenk\b|holzhochzeit|einzug|geburtstag|anlass|valentins|weihnachtsgeschenk|muttertag/i
 
 function normBlock(s: string): string {
   return s
@@ -46,16 +53,45 @@ function istKoerperBlock(block: string): boolean {
 }
 
 function istProzessBlock(block: string): boolean {
-  return PROZESS_RE.test(block) && !istProduktIntro(block)
+  return PROZESS_RE.test(block) && !istVolleGeoEinleitung(block)
 }
 
-/** Kurze/mittlere Produkt-Einleitung: WAS + Holzart (GEO-First-2). */
-function istProduktIntro(block: string): boolean {
+function istNurAnlassSatz(block: string): boolean {
   const t = block.trim()
-  if (t.length < 35 || t.length > 700) return false
+  if (t.length < 20) return false
+  if (t.length > 180 && PRODUKT_RE.test(t) && HOLZART_RE.test(t)) return false
+  return NUR_ANLASS_RE.test(t) && !HOLZART_RE.test(t.replace(/holzhochzeit|holzgeschenk/gi, ''))
+}
+
+const NUTZEN_RE =
+  /\b(für|als|eignet|obst|deko|esstisch|sideboard|küche|kueche|sammler|anrichte|wohnzimmer|nutzen|servier)/i
+
+/**
+ * Echte GEO-/HOOK-Einleitung wie beim Neu-Listing:
+ * Produkt + Holzart + Nutzen, ausreichend lang — nicht Anlass-Satz, nicht Abrundung.
+ */
+export function istVolleGeoEinleitung(block: string): boolean {
+  const t = block.trim()
+  if (t.length < 120 || t.length > 900) return false
   if (istKoerperBlock(t)) return false
-  if (PROZESS_RE.test(t) && !PRODUKT_RE.test(t)) return false
-  return PRODUKT_RE.test(t) && HOLZ_RE.test(t)
+  if (istNurAnlassSatz(t)) return false
+  if (PROZESS_RE.test(t) && t.length < 220) return false
+  if (!PRODUKT_RE.test(t) || !HOLZART_RE.test(t)) return false
+  // Kompakte Abrundung/Warenkorb (Maße+Finish, wenig Nutzen) ≠ HOOK
+  const kompaktAbrundung =
+    t.length <= 300 &&
+    /ø|durchmesser|\d+\s*[x×]\s*\d+/i.test(t) &&
+    /öl|oel|wachs|finish|versiegelt/i.test(t) &&
+    !NUTZEN_RE.test(t)
+  if (kompaktAbrundung) return false
+  if (!NUTZEN_RE.test(t) && t.length < 220) return false
+  const saetze = t.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 15)
+  return saetze.length >= 2
+}
+
+/** @deprecated Alias — nutze istVolleGeoEinleitung */
+function istProduktIntro(block: string): boolean {
+  return istVolleGeoEinleitung(block)
 }
 
 function istIntroBlock(block: string): boolean {
@@ -63,6 +99,7 @@ function istIntroBlock(block: string): boolean {
   if (t.length < 40 || t.length > 900) return false
   if (istKoerperBlock(t)) return false
   if (istProzessBlock(t)) return false
+  if (istNurAnlassSatz(t)) return false
   const zeilen = t.split(/\n/).filter(Boolean)
   if (zeilen.length > 8) return false
   return /[.!?]/.test(t)
@@ -71,12 +108,12 @@ function istIntroBlock(block: string): boolean {
 function produktIntroScore(block: string): number {
   let s = 0
   if (PRODUKT_RE.test(block)) s += 3
-  if (HOLZ_RE.test(block)) s += 3
+  if (HOLZART_RE.test(block)) s += 3
   if (/unikat|handgedrechselt|handgemacht|niederbayern/i.test(block)) s += 2
   if (/ø|durchmesser|\d+\s*cm/i.test(block)) s += 1
   if (PROZESS_RE.test(block)) s -= 4
-  // Kurze prägnante Intros bevorzugen gegenüber Roman
-  if (block.length >= 60 && block.length <= 320) s += 2
+  if (istNurAnlassSatz(block)) s -= 6
+  if (block.length >= 100 && block.length <= 450) s += 2
   if (block.length > 500) s -= 1
   return s
 }
@@ -93,8 +130,7 @@ export function beschreibungBloecke(description: string): string[] {
 
 /**
  * Entfernt nur ähnliche gestapelte SEO-Intros.
- * Behält: beste Produkt-Einleitung + Handwerks-/Prozess-Absatz + Körper.
- * Holt eine am Ende hängende Produkt-Kurzfassung nach vorne, falls vorne keine Einleitung steht.
+ * Behält: beste echte GEO-Einleitung + Handwerk + Körper + Abrundung.
  */
 export function entferneGestapelteBeschreibungsIntros(description: string): {
   cleaned: string
@@ -117,30 +153,27 @@ export function entferneGestapelteBeschreibungsIntros(description: string): {
     koerper = blocks.slice(koerperIdx)
   }
 
-  // 1) Ähnliche Intro-Duplikate im Vorspann kollabieren → bestes Produkt-Intro behalten
   const neuVorspann: string[] = []
   for (const block of vorspann) {
-    if (!istIntroBlock(block) && !istProduktIntro(block)) {
+    if (!istIntroBlock(block) && !istVolleGeoEinleitung(block)) {
       neuVorspann.push(block)
       continue
     }
     const dupIdx = neuVorspann.findIndex(
-      (b) => (istIntroBlock(b) || istProduktIntro(b)) && aehnlich(b, block),
+      (b) => (istIntroBlock(b) || istVolleGeoEinleitung(b)) && aehnlich(b, block),
     )
     if (dupIdx < 0) {
       neuVorspann.push(block)
       continue
     }
     entfernt++
-    // Besseres (produktnäheres) Intro behalten
     if (produktIntroScore(block) > produktIntroScore(neuVorspann[dupIdx]!)) {
       neuVorspann[dupIdx] = block
     }
   }
 
-  // 2) Mehrere Produkt-Intros → nur das beste behalten, Rest (Prozess etc.) lassen
   const produktIdxs = neuVorspann
-    .map((b, i) => (istProduktIntro(b) ? i : -1))
+    .map((b, i) => (istVolleGeoEinleitung(b) ? i : -1))
     .filter((i) => i >= 0)
   if (produktIdxs.length > 1) {
     let best = produktIdxs[0]!
@@ -159,8 +192,7 @@ export function entferneGestapelteBeschreibungsIntros(description: string): {
     neuVorspann.push(...filtered)
   }
 
-  // 3) Produkt-Intro (falls im Vorspann) vor den Prozess-Absatz ziehen — Abrundung am Ende nie anfassen
-  const prodI = neuVorspann.findIndex((b) => istProduktIntro(b))
+  const prodI = neuVorspann.findIndex((b) => istVolleGeoEinleitung(b))
   if (prodI > 0) {
     const [p] = neuVorspann.splice(prodI, 1)
     if (p) neuVorspann.unshift(p)
@@ -170,20 +202,20 @@ export function entferneGestapelteBeschreibungsIntros(description: string): {
   return { cleaned, entfernt }
 }
 
-/** Kurze Schlusszeile, die fälschlich vorne steht (nach fehlerhafter Bereinigung). */
-function istVermutlichAbrundungVorne(blocks: string[]): boolean {
-  if (blocks.length < 2) return false
+/** Kurze Schlusszeile / Anlass-Satz fälschlich vorne. */
+function istSchwacherVorspannVorne(blocks: string[]): boolean {
+  if (blocks.length < 1) return false
   const erst = blocks[0]!
-  if (!istProduktIntro(erst) || erst.length > 320) return false
-  // Danach Prozess oder Specs → das war keine echte GEO-Einleitung
-  return istProzessBlock(blocks[1]!) || istKoerperBlock(blocks[1]!)
+  if (istVolleGeoEinleitung(erst)) return false
+  if (istNurAnlassSatz(erst)) return true
+  if (istProduktIntro(erst) && erst.length <= 320 && blocks.length >= 2) {
+    return istProzessBlock(blocks[1]!) || istKoerperBlock(blocks[1]!)
+  }
+  return false
 }
 
 /**
- * Setzt die GEO-Einleitung vor Prozess + Specs — Abrundung bleibt am Ende.
- * - Prozess/Specs vorne → Intro davor
- * - Kurze Abrundung fälschlich vorne → Intro davor, Abrundung wieder ans Ende
- * - Echte (längere) Einleitung vorne → nur ersetzen
+ * Setzt die GEO-HOOK-Einleitung vor Prozess + Specs — Abrundung/Anlass am Ende bzw. behalten.
  */
 export function setzeBeschreibungIntro(description: string, intro: string): string {
   const introTrim = intro.trim()
@@ -194,26 +226,30 @@ export function setzeBeschreibungIntro(description: string, intro: string): stri
   const blocks = beschreibungBloecke(basis)
   if (blocks.length === 0) return introTrim
 
-  if (istVermutlichAbrundungVorne(blocks)) {
-    const abrundung = blocks[0]!
-    const mitte = blocks.slice(1)
-    const last = mitte[mitte.length - 1]
-    const schonAmEnde = last != null && aehnlich(last, abrundung)
-    const rest = mitte.join('\n\n').trim()
-    if (!rest) return schonAmEnde ? introTrim : `${introTrim}\n\n${abrundung}`
-    return schonAmEnde ? `${introTrim}\n\n${rest}` : `${introTrim}\n\n${rest}\n\n${abrundung}`
+  // Schwacher Vorspann (Anlass-Satz / kurze Abrundung): behalten, Intro davor
+  if (istSchwacherVorspannVorne(blocks) || istNurAnlassSatz(blocks[0]!)) {
+    const erst = blocks[0]!
+    const restBlocks = blocks.slice(1)
+    // Anlass-Satz eher hinter die neue Einleitung, vor Prozess — oder ans Ende wenn Abrundung-artig
+    if (istNurAnlassSatz(erst) || (erst.length <= 200 && PRODUKT_RE.test(erst))) {
+      const rest = restBlocks.join('\n\n').trim()
+      const last = restBlocks[restBlocks.length - 1]
+      const schonAmEnde = last != null && aehnlich(last, erst)
+      if (schonAmEnde) return rest ? `${introTrim}\n\n${rest}` : introTrim
+      // Kurze Abrundung mit Produkt+Maßen → ans Ende; reiner Anlass → nach Intro vor Prozess
+      if (/ø|durchmesser|\d+\s*cm|unikat|niederbayern/i.test(erst)) {
+        return rest ? `${introTrim}\n\n${rest}\n\n${erst}` : `${introTrim}\n\n${erst}`
+      }
+      return rest ? `${introTrim}\n\n${erst}\n\n${rest}` : `${introTrim}\n\n${erst}`
+    }
   }
 
-  // Echte Einleitung vorne ersetzen — Prozess und Abrundung bleiben
-  if (
-    !istProzessBlock(blocks[0]!) &&
-    !istKoerperBlock(blocks[0]!) &&
-    (istProduktIntro(blocks[0]!) || istIntroBlock(blocks[0]!))
-  ) {
+  // Echte volle Einleitung vorne ersetzen
+  if (istVolleGeoEinleitung(blocks[0]!)) {
     const rest = blocks.slice(1).join('\n\n').trim()
     return rest ? `${introTrim}\n\n${rest}` : introTrim
   }
-  // Prozess oder Specs vorne → echte Einleitung davor setzen
+
   return `${introTrim}\n\n${basis}`.trim()
 }
 
@@ -221,16 +257,13 @@ export function zaehleGestapelteIntros(description: string): number {
   return entferneGestapelteBeschreibungsIntros(description).entfernt
 }
 
-/** True wenn doppelte Intros entfernt werden sollten (nicht: Abrundung am Ende). */
 export function brauchtBeschreibungBereinigung(description: string): boolean {
   return entferneGestapelteBeschreibungsIntros(description).entfernt > 0
 }
 
-/** True wenn vorne keine richtige GEO-Einleitung steht. */
+/** True wenn vorne keine richtige HOOK-/GEO-Einleitung steht. */
 export function fehltProduktEinleitungVorne(description: string): boolean {
   const blocks = beschreibungBloecke(description)
   if (blocks.length === 0) return true
-  if (istVermutlichAbrundungVorne(blocks)) return true
-  if (istProduktIntro(blocks[0]!)) return false
-  return istProzessBlock(blocks[0]!) || istKoerperBlock(blocks[0]!)
+  return !istVolleGeoEinleitung(blocks[0]!)
 }
