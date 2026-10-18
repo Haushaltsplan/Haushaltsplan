@@ -2,6 +2,14 @@ export const NAV_LINK_DEFS = [
   { href: '/', label: 'Start', shortLabel: 'Start', emoji: '🏡', color: 'text-cyan-400', ring: 'focus-visible:ring-cyan-500/50' },
   { href: '/finanzen', label: 'Finanzen', shortLabel: 'Finanzen', emoji: '💰', color: 'text-emerald-400', ring: 'focus-visible:ring-emerald-500/50' },
   { href: '/speisekammer', label: 'Speisekammer', shortLabel: 'Küche', emoji: '🍳', color: 'text-sky-400', ring: 'focus-visible:ring-sky-500/50' },
+  {
+    href: '/angebote',
+    label: 'Angebote',
+    shortLabel: 'Angebote',
+    emoji: '🏷️',
+    color: 'text-lime-400',
+    ring: 'focus-visible:ring-lime-500/50',
+  },
   { href: '/kalender', label: 'Kalender', shortLabel: 'Kalender', emoji: '📅', color: 'text-teal-400', ring: 'focus-visible:ring-teal-500/50' },
   { href: '/rennrad', label: 'Rennrad', shortLabel: 'Rennrad', emoji: '🚴', color: 'text-rose-400', ring: 'focus-visible:ring-rose-500/50' },
   {
