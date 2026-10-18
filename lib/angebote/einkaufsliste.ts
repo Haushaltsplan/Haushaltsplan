@@ -1,20 +1,24 @@
+import {
+  cleanMarke,
+  findeGuenstigstesAngebot as matchGuenstigstes,
+} from '@/lib/angebote/produkt-match'
 import type { Angebot, HaendlerId } from '@/lib/angebote/types'
 import { HAENDLER_LABELS } from '@/lib/angebote/types'
 
-export const EINKAUFSLISTE_KEY = 'pa-angebote-einkaufsliste-v2'
+export { findeGuenstigstesAngebot, suchvarianten } from '@/lib/angebote/produkt-match'
+
+export const EINKAUFSLISTE_KEY = 'pa-angebote-einkaufsliste-v3'
 
 export type ListenEintrag = {
   key: string
-  /** Suchbegriff / Anzeigename in der Liste (z. B. „Butter“) */
   suchbegriff: string
   menge: number
-  /** Optional: aus Angebot übernommen */
   bildUrl: string | null
   typ: 'freitext' | 'angebot'
 }
 
 export function produktKey(a: Pick<Angebot, 'name' | 'marke'>): string {
-  const marke = (a.marke || '').trim().toLowerCase()
+  const marke = (cleanMarke(a.marke) || '').toLowerCase()
   const name = a.name.trim().toLowerCase().replace(/\s+/g, ' ')
   return `a:${marke}|${name}`
 }
@@ -23,7 +27,7 @@ export function suchKey(suchbegriff: string): string {
   return `q:${suchbegriff.trim().toLowerCase().replace(/\s+/g, ' ')}`
 }
 
-/** „2x Butter“, „2 Butter“, „Butter x2“, „Butter“ */
+/** „2x Butter“, „2 Butter“, „Butter x2“, „Butter“, auch „Butter, Milch, 2x Bananen“ einzeln */
 export function parseListenEingabe(raw: string): { menge: number; suchbegriff: string } | null {
   const t = raw.trim().replace(/\s+/g, ' ')
   if (!t) return null
@@ -42,62 +46,29 @@ export function parseListenEingabe(raw: string): { menge: number; suchbegriff: s
   return { menge: 1, suchbegriff: t }
 }
 
-function normalizeText(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/ä/g, 'ae')
-    .replace(/ö/g, 'oe')
-    .replace(/ü/g, 'ue')
-    .replace(/ß/g, 'ss')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+/** Mehrere Positionen: „Butter, 2x Milch, Bananen“ */
+export function parseMehrereEingaben(raw: string): Array<{ menge: number; suchbegriff: string }> {
+  const parts = raw
+    .split(/[,;\n]+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+  const out: Array<{ menge: number; suchbegriff: string }> = []
+  for (const p of parts) {
+    const parsed = parseListenEingabe(p)
+    if (parsed) out.push(parsed)
+  }
+  return out
 }
 
-function tokenize(text: string): string[] {
-  return normalizeText(text)
-    .split(/\s+/)
-    .filter((t) => t.length >= 2)
-}
-
-/** Volle Bezeichnung zum Finden im Markt. */
 export function volleBezeichnung(a: Angebot): string {
-  const teile = [a.marke?.trim(), a.name.trim()].filter(Boolean)
+  const marke = cleanMarke(a.marke)
+  const teile = [marke, a.name.trim()].filter(Boolean)
   let s = teile.join(' · ')
-  if (a.packungText?.trim()) s += ` (${a.packungText.trim()})`
+  if (a.packungText?.trim()) {
+    const pack = a.packungText.trim().replace(/\s+/g, ' ')
+    s += ` (${pack.length > 80 ? `${pack.slice(0, 77)}…` : pack})`
+  }
   return s
-}
-
-/**
- * Alle Treffer zu einem Suchbegriff bei einem Händler, günstigstes zuerst.
- * z. B. „Butter“ → alle Butter-Produkte, dann min(preis).
- */
-export function findeGuenstigstesAngebot(
-  suchbegriff: string,
-  angebote: Angebot[],
-  haendler: HaendlerId,
-): Angebot | null {
-  const terms = tokenize(suchbegriff)
-  if (!terms.length) return null
-  const kandidaten = angebote.filter((a) => a.haendler === haendler)
-  if (!kandidaten.length) return null
-
-  const treffer: Angebot[] = []
-  for (const a of kandidaten) {
-    const hay = normalizeText(`${a.marke ?? ''} ${a.name} ${a.kategorie ?? ''} ${a.packungText ?? ''}`)
-    const ok = terms.every((t) => hay.includes(t))
-    if (ok) treffer.push(a)
-  }
-  if (!treffer.length) {
-    // lockerer: mindestens ein Term trifft
-    for (const a of kandidaten) {
-      const hay = normalizeText(`${a.marke ?? ''} ${a.name} ${a.kategorie ?? ''}`)
-      if (terms.some((t) => hay.includes(t))) treffer.push(a)
-    }
-  }
-  if (!treffer.length) return null
-  treffer.sort((a, b) => a.preisEur - b.preisEur)
-  return treffer[0] ?? null
 }
 
 export function findeBestesAngebot(
@@ -105,7 +76,7 @@ export function findeBestesAngebot(
   angebote: Angebot[],
   haendler: HaendlerId,
 ): Angebot | null {
-  return findeGuenstigstesAngebot(eintrag.suchbegriff, angebote, haendler)
+  return matchGuenstigstes(eintrag.suchbegriff, angebote, haendler)
 }
 
 export type HaendlerSumme = {
@@ -147,12 +118,13 @@ export function berechneSummenProHaendler(
   const rows: HaendlerSumme[] = []
   for (const h of haendlerSet) {
     const positionen = liste.map((e) => {
-      const angebot = findeGuenstigstesAngebot(e.suchbegriff, angebote, h)
+      const angebot = matchGuenstigstes(e.suchbegriff, angebote, h)
+      const marke = angebot ? cleanMarke(angebot.marke) : null
       return {
         key: e.key,
         suchbegriff: e.suchbegriff,
         bezeichnung: angebot ? volleBezeichnung(angebot) : null,
-        marke: angebot?.marke ?? null,
+        marke,
         menge: e.menge,
         preisEur: angebot ? angebot.preisEur * e.menge : null,
         einzelpreisEur: angebot?.preisEur ?? null,
@@ -187,33 +159,31 @@ export function berechneSummenProHaendler(
 export function ladeListeAusStorage(): ListenEintrag[] {
   if (typeof window === 'undefined') return []
   try {
-    const raw = localStorage.getItem(EINKAUFSLISTE_KEY)
-    if (!raw) {
-      // Migration v1 → v2
-      const alt = localStorage.getItem('pa-angebote-einkaufsliste-v1')
-      if (!alt) return []
-      const parsed = JSON.parse(alt) as Array<{
-        key?: string
-        name?: string
-        marke?: string | null
-        bildUrl?: string | null
-        menge?: number
-      }>
-      if (!Array.isArray(parsed)) return []
+    for (const key of [EINKAUFSLISTE_KEY, 'pa-angebote-einkaufsliste-v2', 'pa-angebote-einkaufsliste-v1']) {
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      const parsed = JSON.parse(raw) as Array<Record<string, unknown>>
+      if (!Array.isArray(parsed)) continue
       return parsed
-        .filter((x) => x?.name)
-        .map((x) => ({
-          key: suchKey(x.name!),
-          suchbegriff: x.name!,
-          menge: Math.max(1, x.menge ?? 1),
-          bildUrl: x.bildUrl ?? null,
-          typ: 'freitext' as const,
-        }))
+        .map((x): ListenEintrag | null => {
+          const suchbegriff =
+            typeof x.suchbegriff === 'string'
+              ? x.suchbegriff
+              : typeof x.name === 'string'
+                ? x.name
+                : ''
+          if (!suchbegriff) return null
+          return {
+            key: typeof x.key === 'string' ? x.key : suchKey(suchbegriff),
+            suchbegriff,
+            menge: Math.max(1, Number(x.menge) || 1),
+            bildUrl: typeof x.bildUrl === 'string' ? x.bildUrl : null,
+            typ: x.typ === 'angebot' ? 'angebot' : 'freitext',
+          }
+        })
+        .filter((x): x is ListenEintrag => Boolean(x))
     }
-    const parsed = JSON.parse(raw) as ListenEintrag[]
-    return Array.isArray(parsed)
-      ? parsed.filter((x) => x && x.key && x.suchbegriff && x.menge > 0)
-      : []
+    return []
   } catch {
     return []
   }

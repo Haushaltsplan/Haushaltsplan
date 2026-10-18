@@ -2,6 +2,7 @@ import 'server-only'
 
 import { fetchJson, fetchText } from '@/lib/angebote/http'
 import { normalisiereAngebot, parsePreisEur } from '@/lib/angebote/normalisierung'
+import { cleanMarke } from '@/lib/angebote/produkt-match'
 import type { Angebot, HaendlerId } from '@/lib/angebote/types'
 
 type MgKeys = { apiKey: string; clientKey: string }
@@ -78,13 +79,8 @@ type MgSearchResponse = {
 
 function markeAus(raw: MgBrand | undefined): string | null {
   if (!raw) return null
-  if (typeof raw === 'string') {
-    const t = raw.trim()
-    return t && !/^this is no brand$/i.test(t) ? t : null
-  }
-  const t = raw.name?.trim() || raw.uniqueName?.trim() || ''
-  if (!t || /^this is no brand$/i.test(t)) return null
-  return t
+  if (typeof raw === 'string') return cleanMarke(raw)
+  return cleanMarke(raw.name?.trim() || raw.uniqueName?.trim() || null)
 }
 
 export function marktguruBildUrl(offerId: string | number, size: 'small' | 'medium' | 'large' = 'medium') {

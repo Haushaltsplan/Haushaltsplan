@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
+import { ProduktBild } from '@/components/angebote/produkt-bild'
 import { PageChrome, PageHero, pageContainerWideClass } from '@/components/page-shell'
 import {
   appCardClass,
@@ -15,13 +16,14 @@ import {
 import {
   berechneSummenProHaendler,
   ladeListeAusStorage,
-  parseListenEingabe,
+  parseMehrereEingaben,
   produktKey,
   speichereListeInStorage,
   suchKey,
   volleBezeichnung,
   type ListenEintrag,
 } from '@/lib/angebote/einkaufsliste'
+import { istEigenmarke } from '@/lib/angebote/produkt-match'
 import {
   HAENDLER_LABELS,
   type Angebot,
@@ -49,12 +51,6 @@ function euro(n: number | null | undefined) {
   return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 }
 
-function proxiedBild(url: string | null | undefined): string | null {
-  if (!url?.trim()) return null
-  if (url.startsWith('/api/angebote/bild')) return url
-  return `/api/angebote/bild?u=${encodeURIComponent(url)}`
-}
-
 function statusLabel(s: QuellenStatus) {
   switch (s.status) {
     case 'ok':
@@ -62,7 +58,7 @@ function statusLabel(s: QuellenStatus) {
     case 'fallback':
       return 'Marktguru'
     case 'skipped':
-      return 'Übersprungen'
+      return '—'
     default:
       return 'Fehler'
   }
@@ -79,29 +75,6 @@ function statusClass(s: QuellenStatus) {
     default:
       return 'border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-300'
   }
-}
-
-function ProduktBild({ src, alt }: { src: string | null; alt: string }) {
-  const [broken, setBroken] = useState(false)
-  const url = proxiedBild(src)
-  if (!url || broken) {
-    return (
-      <div className="flex h-full w-full items-center justify-center bg-[var(--app-surface-muted)] text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
-        Kein Foto
-      </div>
-    )
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={url}
-      alt={alt}
-      className="h-full w-full object-contain p-1.5"
-      loading="lazy"
-      referrerPolicy="no-referrer"
-      onError={() => setBroken(true)}
-    />
-  )
 }
 
 export function AngeboteClient() {
@@ -129,9 +102,7 @@ export function AngeboteClient() {
     try {
       const res = await fetch('/api/angebote/einstellungen')
       if (!res.ok) return
-      const json = (await res.json()) as {
-        einstellung?: { plz?: string } | null
-      }
+      const json = (await res.json()) as { einstellung?: { plz?: string } | null }
       if (json.einstellung?.plz) setPlz(json.einstellung.plz)
     } catch {
       /* ignore */
@@ -183,11 +154,7 @@ export function AngeboteClient() {
         }
         setData(json)
         if (force) setExtraAngebote([])
-        toast.success(
-          json.ausCache
-            ? `${json.angebote.length} Angebote aus Cache`
-            : `${json.angebote.length} Angebote geladen`,
-        )
+        toast.success(`${json.angebote.length} Angebote geladen`)
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Netzwerkfehler')
       } finally {
@@ -197,13 +164,15 @@ export function AngeboteClient() {
     [plz, q, aktivHaendler, sort],
   )
 
-  const sucheFuerListe = useCallback(
-    async (suchbegriff: string) => {
+  const sucheBatch = useCallback(
+    async (begriffe: string[]) => {
       const digits = plz.replace(/\D/g, '')
       if (digits.length !== 5) {
         toast.error('Zuerst eine gültige PLZ setzen.')
         return
       }
+      const unique = [...new Set(begriffe.map((b) => b.trim()).filter((b) => b.length >= 2))]
+      if (!unique.length) return
       setSucheLoading(true)
       try {
         const res = await fetch('/api/angebote/produktsuche', {
@@ -211,7 +180,7 @@ export function AngeboteClient() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             plz: digits,
-            q: suchbegriff,
+            queries: unique,
             haendler: aktivHaendler,
           }),
         })
@@ -230,7 +199,7 @@ export function AngeboteClient() {
           for (const a of json.angebote ?? []) map.set(a.id, a)
           return [...map.values()]
         })
-        toast.success(`${json.anzahlKandidaten ?? 0} Treffer für „${suchbegriff}“`)
+        toast.success(`${json.anzahlKandidaten ?? 0} Preis-Treffer für ${unique.length} Produkt(e)`)
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Suche fehlgeschlagen')
       } finally {
@@ -241,46 +210,51 @@ export function AngeboteClient() {
   )
 
   const freitextHinzufuegen = async () => {
-    const parsed = parseListenEingabe(freitext)
-    if (!parsed) {
-      toast.error('Bitte etwas eingeben, z. B. „2x Butter“.')
+    const parsed = parseMehrereEingaben(freitext)
+    if (!parsed.length) {
+      toast.error('z. B. „2x Butter, Bananen, Haribo“')
       return
     }
-    const key = suchKey(parsed.suchbegriff)
     setListe((prev) => {
-      const existing = prev.find((x) => x.key === key)
-      if (existing) {
-        return prev.map((x) =>
-          x.key === key ? { ...x, menge: x.menge + parsed.menge } : x,
-        )
+      const next = [...prev]
+      for (const p of parsed) {
+        const key = suchKey(p.suchbegriff)
+        const idx = next.findIndex((x) => x.key === key)
+        if (idx >= 0) {
+          next[idx] = { ...next[idx]!, menge: next[idx]!.menge + p.menge }
+        } else {
+          next.push({
+            key,
+            suchbegriff: p.suchbegriff,
+            menge: p.menge,
+            bildUrl: null,
+            typ: 'freitext',
+          })
+        }
       }
-      return [
-        ...prev,
-        {
-          key,
-          suchbegriff: parsed.suchbegriff,
-          menge: parsed.menge,
-          bildUrl: null,
-          typ: 'freitext',
-        },
-      ]
+      return next
     })
     setFreitext('')
-    await sucheFuerListe(parsed.suchbegriff)
+    await sucheBatch(parsed.map((p) => p.suchbegriff))
+  }
+
+  const listeNeuPreisen = async () => {
+    if (!liste.length) return
+    await sucheBatch(liste.map((e) => e.suchbegriff))
   }
 
   const hinzufuegenAusAngebot = async (a: Angebot) => {
-    const begriff = a.marke ? `${a.marke} ${a.name}` : a.name
+    const begriff = a.name
     const key = suchKey(begriff)
     setListe((prev) => {
       const existing = prev.find((x) => x.key === key || x.key === produktKey(a))
       if (existing) {
-        toast.success('Menge erhöht')
         return prev.map((x) =>
-          x.key === existing.key ? { ...x, menge: x.menge + 1, bildUrl: a.bildUrl ?? x.bildUrl } : x,
+          x.key === existing.key
+            ? { ...x, menge: x.menge + 1, bildUrl: a.bildUrl ?? x.bildUrl }
+            : x,
         )
       }
-      toast.success('Zur Einkaufsliste')
       return [
         ...prev,
         {
@@ -292,7 +266,8 @@ export function AngeboteClient() {
         },
       ]
     })
-    await sucheFuerListe(a.name)
+    toast.success('Zur Liste')
+    await sucheBatch([a.name, a.marke || ''].filter(Boolean))
   }
 
   const setMenge = (key: string, menge: number) => {
@@ -309,8 +284,8 @@ export function AngeboteClient() {
   )
   const guenstigster = summen.find((s) => s.vollstaendig && s.summeEur != null) ?? null
   const teuersterVoll = [...summen]
-    .reverse()
-    .find((s) => s.vollstaendig && s.summeEur != null)
+    .filter((s) => s.vollstaendig && s.summeEur != null)
+    .sort((a, b) => (b.summeEur ?? 0) - (a.summeEur ?? 0))[0]
   const sparEur =
     guenstigster?.summeEur != null &&
     teuersterVoll?.summeEur != null &&
@@ -318,15 +293,44 @@ export function AngeboteClient() {
       ? Math.round((teuersterVoll.summeEur - guenstigster.summeEur) * 100) / 100
       : null
 
-  const angebote: Angebot[] = data?.angebote ?? []
+  const angebote: Angebot[] = useMemo(() => {
+    let list = data?.angebote ?? []
+    if (q.trim()) {
+      const t = q.trim().toLowerCase()
+      list = list.filter(
+        (a) =>
+          a.name.toLowerCase().includes(t) ||
+          (a.marke && a.marke.toLowerCase().includes(t)) ||
+          (a.kategorie && a.kategorie.toLowerCase().includes(t)),
+      )
+    }
+    return list
+  }, [data, q])
+
   const listenKeys = useMemo(() => new Set(liste.map((x) => x.key)), [liste])
+
+  const einkaufszettelText = useMemo(() => {
+    if (!guenstigster?.vollstaendig) return ''
+    const lines = [
+      `Einkaufszettel — ${guenstigster.label} (${euro(guenstigster.summeEur)})`,
+      '',
+      ...guenstigster.positionen.map((p) =>
+        p.bezeichnung
+          ? `☐ ${p.menge}× ${p.bezeichnung} — ${euro(p.einzelpreisEur)}`
+          : `☐ ${p.menge}× ${p.suchbegriff} (nicht gefunden)`,
+      ),
+      '',
+      `Summe: ${euro(guenstigster.summeEur)}`,
+    ]
+    return lines.join('\n')
+  }, [guenstigster])
 
   return (
     <PageChrome className={pageContainerWideClass}>
       <PageHero
-        eyebrow="Haushalt"
-        title="Supermarkt-Angebote"
-        description="Marke, Foto und Preise vergleichen. Freitext in die Einkaufsliste — je Markt das günstigste passende Produkt."
+        eyebrow="Einkaufsassistent"
+        title="Sparen beim Wocheneinkauf"
+        description="Liste tippen → je Markt das günstigste passende Produkt (Eigenmarken bevorzugt) → sehen, wo du am meisten sparst."
         actions={
           <div className="flex flex-wrap gap-2">
             <button
@@ -335,133 +339,109 @@ export function AngeboteClient() {
               disabled={loading || initial}
               onClick={() => void vergleich(true)}
             >
-              {loading ? 'Lädt…' : 'Aktualisieren'}
-            </button>
-            <button
-              type="button"
-              className={appGhostBtnClass}
-              disabled={loading || initial}
-              onClick={() => void vergleich(false)}
-            >
-              Vergleichen
+              {loading ? 'Lädt…' : 'Angebote laden'}
             </button>
           </div>
         }
       />
 
-      <section className={`${appCardClass} space-y-4 p-4 sm:p-5`}>
-        <div className="grid gap-3 sm:grid-cols-[8rem_1fr_10rem]">
+      <section className={`${appCardClass} space-y-3 p-4 sm:p-5`}>
+        <div className="grid gap-3 sm:grid-cols-[9rem_1fr]">
           <label className="block space-y-1">
-            <span className="text-xs font-semibold text-[var(--app-text-muted)]">PLZ</span>
+            <span className="text-xs font-semibold text-[var(--app-text-muted)]">Deine PLZ</span>
             <input
               className={appInputClass}
               inputMode="numeric"
               maxLength={5}
-              placeholder="12345"
+              placeholder="80331"
               value={plz}
               onChange={(e) => setPlz(e.target.value.replace(/\D/g, '').slice(0, 5))}
             />
           </label>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold text-[var(--app-text-muted)]">
-              Angebote filtern
-            </span>
-            <input
-              className={appInputClass}
-              placeholder="z. B. Milch, Käse…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void vergleich(false)
-              }}
-            />
-          </label>
-          <label className="block space-y-1">
-            <span className="text-xs font-semibold text-[var(--app-text-muted)]">Sortierung</span>
-            <select
-              className={appInputClass}
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-            >
-              <option value="preis">Preis</option>
-              <option value="grundpreis">Grundpreis</option>
-              <option value="haendler">Händler</option>
-              <option value="name">Name</option>
-            </select>
-          </label>
+          <div className="space-y-1">
+            <span className="text-xs font-semibold text-[var(--app-text-muted)]">Märkte</span>
+            <div className="flex flex-wrap gap-1.5">
+              {SCAN_HAENDLER.map((h) => {
+                const on = aktivHaendler.includes(h)
+                return (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() =>
+                      setAktivHaendler((prev) =>
+                        prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h],
+                      )
+                    }
+                    className={
+                      on
+                        ? 'rounded-lg border border-lime-500/50 bg-lime-500/15 px-2.5 py-1 text-xs font-semibold text-lime-800 dark:text-lime-200'
+                        : 'rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--app-text-muted)]'
+                    }
+                  >
+                    {HAENDLER_LABELS[h]}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
         </div>
-
-        <div className="flex flex-wrap gap-2">
-          {SCAN_HAENDLER.map((h) => {
-            const on = aktivHaendler.includes(h)
-            return (
-              <button
-                key={h}
-                type="button"
-                onClick={() =>
-                  setAktivHaendler((prev) =>
-                    prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h],
-                  )
-                }
-                className={
-                  on
-                    ? 'rounded-lg border border-lime-500/50 bg-lime-500/15 px-2.5 py-1 text-xs font-semibold text-lime-800 dark:text-lime-200'
-                    : 'rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--app-text-muted)]'
-                }
-              >
-                {HAENDLER_LABELS[h]}
-              </button>
-            )
-          })}
-        </div>
+        {data && (
+          <div className="flex flex-wrap gap-1.5">
+            {data.quellen
+              .filter((s) => s.status !== 'skipped')
+              .map((s) => (
+                <span
+                  key={s.haendler}
+                  className={`rounded-md border px-2 py-0.5 text-[10px] ${statusClass(s)}`}
+                  title={s.fehler}
+                >
+                  {HAENDLER_LABELS[s.haendler]} {statusLabel(s)}
+                  {s.anzahl ? ` · ${s.anzahl}` : ''}
+                </span>
+              ))}
+          </div>
+        )}
       </section>
 
-      {data && data.quellen.length > 0 && (
-        <section className={`${appCardClass} space-y-2 p-4`}>
-          <h2 className="text-sm font-semibold text-[var(--app-text)]">Quellen-Status</h2>
-          <ul className="flex flex-wrap gap-2">
-            {data.quellen.map((s) => (
-              <li
-                key={s.haendler}
-                className={`rounded-md border px-2 py-1 text-xs ${statusClass(s)}`}
-                title={s.fehler || undefined}
-              >
-                {HAENDLER_LABELS[s.haendler] ?? s.haendler}: {statusLabel(s)}
-                {s.anzahl ? ` (${s.anzahl})` : ''}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Einkaufsliste */}
+      {/* Einkaufsliste — Hauptfokus */}
       <section className={`${appCardClass} space-y-4 p-4 sm:p-5`}>
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-[var(--app-text)]">Einkaufsliste</h2>
+            <h2 className="text-lg font-semibold text-[var(--app-text)]">1. Einkaufsliste</h2>
             <p className="text-xs text-[var(--app-text-muted)]">
-              Freitext möglich — z. B. „2x Butter“. Pro Markt wird das günstigste passende Produkt
-              mit vollem Namen gesucht.
+              Mehrere Produkte mit Komma — z. B. <em>2x Butter, Bananen, Haribo</em>
             </p>
           </div>
-          {liste.length > 0 && (
-            <button
-              type="button"
-              className={appGhostBtnClass}
-              onClick={() => {
-                setListe([])
-                toast.success('Liste geleert')
-              }}
-            >
-              Liste leeren
-            </button>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {liste.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  className={appSecondaryBtnClass}
+                  disabled={sucheLoading}
+                  onClick={() => void listeNeuPreisen()}
+                >
+                  {sucheLoading ? 'Sucht Preise…' : 'Alle Preise aktualisieren'}
+                </button>
+                <button
+                  type="button"
+                  className={appGhostBtnClass}
+                  onClick={() => {
+                    setListe([])
+                    toast.success('Liste geleert')
+                  }}
+                >
+                  Leeren
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             className={appInputClass}
-            placeholder="z. B. 2x Butter, Milch, Bananen…"
+            placeholder="2x Butter, Bananen, Haribo…"
             value={freitext}
             onChange={(e) => setFreitext(e.target.value)}
             onKeyDown={(e) => {
@@ -474,26 +454,21 @@ export function AngeboteClient() {
             disabled={sucheLoading || !freitext.trim()}
             onClick={() => void freitextHinzufuegen()}
           >
-            {sucheLoading ? 'Sucht…' : 'Hinzufügen'}
+            Hinzufügen
           </button>
         </div>
 
         {liste.length === 0 ? (
-          <div className={appEmptyClass}>Noch leer — Freitext eingeben oder „+ Liste“ bei einem Angebot.</div>
+          <div className={appEmptyClass}>
+            Noch nichts auf der Liste — tippe oben deine Produkte oder nutze „+ Liste“ bei einem
+            Angebot.
+          </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="divide-y divide-[var(--app-border)] rounded-[var(--app-radius-lg)] border border-[var(--app-border)]">
             {liste.map((e) => (
-              <li
-                key={e.key}
-                className="flex items-center gap-3 rounded-[var(--app-radius-lg)] border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-2.5"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-[var(--app-text)]">
-                    {e.menge}× {e.suchbegriff}
-                  </div>
-                  <div className="text-[11px] text-[var(--app-text-muted)]">
-                    Suche je Markt nach dem günstigsten Treffer
-                  </div>
+              <li key={e.key} className="flex items-center gap-3 px-3 py-2.5">
+                <div className="min-w-0 flex-1 text-sm font-semibold text-[var(--app-text)]">
+                  {e.suchbegriff}
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -503,7 +478,7 @@ export function AngeboteClient() {
                   >
                     −
                   </button>
-                  <span className="w-8 text-center text-sm font-semibold tabular-nums">{e.menge}</span>
+                  <span className="w-8 text-center text-sm font-bold tabular-nums">{e.menge}</span>
                   <button
                     type="button"
                     className={appGhostBtnClass}
@@ -511,116 +486,164 @@ export function AngeboteClient() {
                   >
                     +
                   </button>
-                  <button
-                    type="button"
-                    className={appGhostBtnClass}
-                    disabled={sucheLoading}
-                    onClick={() => void sucheFuerListe(e.suchbegriff)}
-                  >
-                    Neu suchen
-                  </button>
                 </div>
               </li>
             ))}
           </ul>
         )}
-
-        {liste.length > 0 && (
-          <div className="space-y-3 border-t border-[var(--app-border)] pt-4">
-            <h3 className="text-sm font-semibold text-[var(--app-text)]">
-              Warenkorb je Supermarkt (günstigstes Produkt)
-            </h3>
-            <div className="grid gap-3 lg:grid-cols-2">
-              {summen.map((s) => {
-                const isBest = guenstigster?.haendler === s.haendler && s.vollstaendig
-                return (
-                  <div
-                    key={s.haendler}
-                    className={[
-                      'rounded-[var(--app-radius-lg)] border p-3',
-                      isBest
-                        ? 'border-lime-500/60 bg-lime-500/10'
-                        : 'border-[var(--app-border)] bg-[var(--app-surface-muted)]',
-                    ].join(' ')}
-                  >
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-sm font-semibold text-[var(--app-text)]">
-                        {s.label}
-                        {isBest ? ' · günstigster' : ''}
-                      </span>
-                      <span className="text-lg font-bold tabular-nums text-[var(--app-text)]">
-                        {euro(s.summeEur)}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
-                      {s.treffer}/{s.gesamt} Positionen gefunden
-                      {!s.vollstaendig ? ' · unvollständig' : ''}
-                    </p>
-                    <ul className="mt-2 space-y-2">
-                      {s.positionen.map((p) => (
-                        <li key={p.key} className="flex gap-2 text-xs">
-                          <div className="h-12 w-12 shrink-0 overflow-hidden rounded-md border border-[var(--app-border)] bg-white dark:bg-[var(--app-surface)]">
-                            <ProduktBild src={p.bildUrl} alt={p.bezeichnung || p.suchbegriff} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="font-medium text-[var(--app-text)]">
-                              {p.menge}× {p.suchbegriff}
-                            </div>
-                            {p.bezeichnung ? (
-                              <>
-                                {p.marke && (
-                                  <div className="text-[10px] font-semibold uppercase tracking-wide text-lime-700 dark:text-lime-300">
-                                    {p.marke}
-                                  </div>
-                                )}
-                                <div className="text-[var(--app-text-muted)]">{p.bezeichnung}</div>
-                                <div className="tabular-nums text-[var(--app-text)]">
-                                  {euro(p.einzelpreisEur)} → {euro(p.preisEur)}
-                                </div>
-                              </>
-                            ) : (
-                              <div className="text-rose-600 dark:text-rose-300">
-                                Kein Treffer — „Neu suchen“ oder anderes Wort
-                              </div>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )
-              })}
-            </div>
-            {sparEur != null && sparEur > 0 && guenstigster && (
-              <p className="rounded-lg border border-lime-500/40 bg-lime-500/10 px-3 py-2 text-sm text-lime-900 dark:text-lime-100">
-                Du sparst bis zu <strong>{euro(sparEur)}</strong> bei{' '}
-                <strong>{guenstigster.label}</strong> gegenüber dem teuersten vollständigen
-                Warenkorb.
-              </p>
-            )}
-          </div>
-        )}
       </section>
 
-      {loading && !data ? (
-        <div className={appLoadingClass}>Angebote werden geladen…</div>
-      ) : !data ? (
-        <div className={appEmptyClass}>PLZ eingeben und „Aktualisieren“ starten.</div>
-      ) : angebote.length === 0 ? (
-        <div className={appEmptyClass}>Keine Treffer für die aktuelle Filterung.</div>
-      ) : (
-        <section className="space-y-3">
-          <h2 className="text-base font-semibold text-[var(--app-text)]">
-            Angebote ({angebote.length})
-          </h2>
+      {liste.length > 0 && (
+        <section className={`${appCardClass} space-y-4 p-4 sm:p-5`}>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--app-text)]">
+                2. Wo ist der Warenkorb am günstigsten?
+              </h2>
+              <p className="text-xs text-[var(--app-text-muted)]">
+                Pro Markt: korrektes Produkt (kein Buttermilch für Butter), günstigster Preis —
+                bei Gleichstand Markenprodukt vor Eigenmarke.
+              </p>
+            </div>
+            {guenstigster?.vollstaendig && einkaufszettelText && (
+              <button
+                type="button"
+                className={appGhostBtnClass}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(einkaufszettelText)
+                  toast.success(`Zettel für ${guenstigster.label} kopiert`)
+                }}
+              >
+                Zettel kopieren
+              </button>
+            )}
+          </div>
+
+          {sparEur != null && sparEur > 0 && guenstigster && (
+            <div className="rounded-[var(--app-radius-lg)] border border-lime-500/50 bg-lime-500/15 px-4 py-3 text-sm text-lime-950 dark:text-lime-50">
+              <strong>Spar-Tipp:</strong> Bei <strong>{guenstigster.label}</strong> zahlst du nur{' '}
+              <strong>{euro(guenstigster.summeEur)}</strong> — bis zu{' '}
+              <strong>{euro(sparEur)}</strong> weniger als beim teuersten vollständigen Warenkorb (
+              {teuersterVoll?.label}).
+            </div>
+          )}
+
+          <div className="grid gap-3 lg:grid-cols-2">
+            {summen.map((s) => {
+              const isBest = guenstigster?.haendler === s.haendler && s.vollstaendig
+              return (
+                <div
+                  key={s.haendler}
+                  className={[
+                    'rounded-[var(--app-radius-lg)] border p-3.5',
+                    isBest
+                      ? 'border-lime-500/70 bg-lime-500/10 ring-1 ring-lime-500/30'
+                      : 'border-[var(--app-border)] bg-[var(--app-surface-muted)]',
+                  ].join(' ')}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <div>
+                      <div className="text-base font-semibold text-[var(--app-text)]">
+                        {s.label}
+                        {isBest ? ' · Empfehlung' : ''}
+                      </div>
+                      <div className="text-[11px] text-[var(--app-text-muted)]">
+                        {s.treffer}/{s.gesamt} gefunden
+                        {!s.vollstaendig ? ' · unvollständig' : ''}
+                      </div>
+                    </div>
+                    <div className="text-xl font-bold tabular-nums text-[var(--app-text)]">
+                      {euro(s.summeEur)}
+                    </div>
+                  </div>
+                  <ul className="mt-3 space-y-2.5">
+                    {s.positionen.map((p) => (
+                      <li
+                        key={p.key}
+                        className="flex gap-2.5 rounded-lg border border-[var(--app-border)]/80 bg-[var(--app-surface)]/60 p-2"
+                      >
+                        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[var(--app-border)] bg-white dark:bg-[var(--app-surface)]">
+                          <ProduktBild src={p.bildUrl} alt={p.bezeichnung || p.suchbegriff} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[11px] text-[var(--app-text-muted)]">
+                            Gesucht: {p.menge}× {p.suchbegriff}
+                          </div>
+                          {p.bezeichnung ? (
+                            <>
+                              <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                                {p.marke && (
+                                  <span className="text-[11px] font-bold uppercase tracking-wide text-lime-700 dark:text-lime-300">
+                                    {p.marke}
+                                  </span>
+                                )}
+                                {p.angebot && istEigenmarke(p.angebot.marke, p.angebot.haendler) && (
+                                  <span className="rounded bg-lime-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-lime-800 dark:text-lime-200">
+                                    Eigenmarke
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-sm font-medium leading-snug text-[var(--app-text)]">
+                                {p.angebot?.name}
+                              </div>
+                              {p.angebot?.packungText && (
+                                <div className="text-[11px] text-[var(--app-text-muted)] line-clamp-2">
+                                  {p.angebot.packungText}
+                                </div>
+                              )}
+                              <div className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--app-text)]">
+                                {euro(p.einzelpreisEur)}
+                                {p.menge > 1 ? ` × ${p.menge} = ${euro(p.preisEur)}` : ''}
+                              </div>
+                            </>
+                          ) : (
+                            <div className="mt-1 text-xs text-rose-600 dark:text-rose-300">
+                              Diese Woche nicht im Angebot — „Alle Preise aktualisieren“ oder anderes
+                              Wort.
+                            </div>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+      )}
+
+      {/* Angebotskatalog */}
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--app-text)]">3. Wochenangebote stöbern</h2>
+            <p className="text-xs text-[var(--app-text-muted)]">Optional — Produkte direkt auf die Liste.</p>
+          </div>
+          <input
+            className={`${appInputClass} max-w-xs`}
+            placeholder="Filter…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+        </div>
+
+        {loading && !data ? (
+          <div className={appLoadingClass}>Angebote werden geladen…</div>
+        ) : !data ? (
+          <div className={appEmptyClass}>„Angebote laden“ starten — oder nur die Liste oben nutzen.</div>
+        ) : angebote.length === 0 ? (
+          <div className={appEmptyClass}>Keine Treffer für den Filter.</div>
+        ) : (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {angebote.map((a) => {
-              const key = suchKey(a.marke ? `${a.marke} ${a.name}` : a.name)
-              const inListe = listenKeys.has(key) || listenKeys.has(produktKey(a))
+              const key = suchKey(a.name)
+              const inListe = listenKeys.has(key)
+              const eigen = istEigenmarke(a.marke, a.haendler)
               return (
                 <article
                   key={a.id}
-                  className="flex gap-3 rounded-[var(--app-radius-lg)] border border-[var(--app-border)] bg-[var(--app-surface)] p-3 shadow-sm"
+                  className="flex gap-3 rounded-[var(--app-radius-lg)] border border-[var(--app-border)] bg-[var(--app-surface)] p-3"
                 >
                   <div className="h-28 w-28 shrink-0 overflow-hidden rounded-xl border border-[var(--app-border)] bg-white dark:bg-[var(--app-surface-muted)]">
                     <ProduktBild src={a.bildUrl} alt={volleBezeichnung(a)} />
@@ -628,56 +651,42 @@ export function AngeboteClient() {
                   <div className="flex min-w-0 flex-1 flex-col">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-lime-700 dark:text-lime-300">
-                          {a.marke?.trim() || 'Ohne Marke'}
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="text-[11px] font-bold uppercase tracking-wide text-lime-700 dark:text-lime-300">
+                            {a.marke?.trim() || 'Eigenmarke / lose'}
+                          </span>
+                          {eigen && (
+                            <span className="rounded bg-lime-500/20 px-1 py-0.5 text-[9px] font-semibold text-lime-800 dark:text-lime-200">
+                              sparsam
+                            </span>
+                          )}
                         </div>
-                        <h3 className="mt-0.5 line-clamp-2 text-sm font-semibold leading-snug text-[var(--app-text)]">
+                        <h3 className="mt-0.5 line-clamp-2 text-sm font-semibold text-[var(--app-text)]">
                           {a.name}
                         </h3>
                       </div>
-                      <div className="shrink-0 text-right">
-                        <div className="text-base font-bold tabular-nums text-[var(--app-text)]">
-                          {euro(a.preisEur)}
-                        </div>
-                        {a.vorherigerPreisEur != null && (
-                          <div className="text-[11px] text-[var(--app-text-muted)] line-through">
-                            {euro(a.vorherigerPreisEur)}
-                          </div>
-                        )}
+                      <div className="shrink-0 text-right text-base font-bold tabular-nums">
+                        {euro(a.preisEur)}
                       </div>
                     </div>
-                    <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-[var(--app-text-muted)]">
-                      <span>{HAENDLER_LABELS[a.haendler] ?? a.haendler}</span>
-                      {a.packungText && <span>· {a.packungText}</span>}
-                      {a.grundpreisEur != null && (
-                        <span>
-                          · {euro(a.grundpreisEur)}/{a.grundpreisEinheit}
-                        </span>
-                      )}
+                    <div className="mt-1 text-[11px] text-[var(--app-text-muted)]">
+                      {HAENDLER_LABELS[a.haendler]}
+                      {a.packungText ? ` · ${a.packungText}` : ''}
                     </div>
-                    <div className="mt-auto flex items-center justify-between gap-2 pt-2">
-                      <span className="text-[10px] uppercase tracking-wide text-[var(--app-text-muted)]">
-                        {a.quelle}
-                      </span>
-                      <button
-                        type="button"
-                        className={
-                          inListe
-                            ? 'rounded-lg border border-lime-500/50 bg-lime-500/15 px-2.5 py-1 text-xs font-semibold text-lime-800 dark:text-lime-200'
-                            : appGhostBtnClass
-                        }
-                        onClick={() => void hinzufuegenAusAngebot(a)}
-                      >
-                        {inListe ? '+1 Liste' : '+ Liste'}
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      className={`mt-auto self-end ${inListe ? 'rounded-lg border border-lime-500/50 bg-lime-500/15 px-2.5 py-1 text-xs font-semibold text-lime-800 dark:text-lime-200' : appGhostBtnClass}`}
+                      onClick={() => void hinzufuegenAusAngebot(a)}
+                    >
+                      {inListe ? '+1' : '+ Liste'}
+                    </button>
                   </div>
                 </article>
               )
             })}
           </div>
-        </section>
-      )}
+        )}
+      </section>
     </PageChrome>
   )
 }
