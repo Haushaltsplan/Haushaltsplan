@@ -1,6 +1,9 @@
 import {
+  angebotRabattProzent,
   cleanMarke,
   findeGuenstigstesAngebot as matchGuenstigstes,
+  istEigenmarke,
+  istImAngebot,
 } from '@/lib/angebote/produkt-match'
 import type { Angebot, HaendlerId } from '@/lib/angebote/types'
 import { HAENDLER_LABELS } from '@/lib/angebote/types'
@@ -16,6 +19,9 @@ export type ListenEintrag = {
   bildUrl: string | null
   typ: 'freitext' | 'angebot'
 }
+
+/** abgelehnt[listenKey][haendler] = Angebots-IDs die der Nutzer verworfen hat */
+export type AbgelehnteTreffer = Record<string, Partial<Record<HaendlerId, string[]>>>
 
 export function produktKey(a: Pick<Angebot, 'name' | 'marke'>): string {
   const marke = (cleanMarke(a.marke) || '').toLowerCase()
@@ -75,8 +81,25 @@ export function findeBestesAngebot(
   eintrag: ListenEintrag,
   angebote: Angebot[],
   haendler: HaendlerId,
+  excludeIds?: Iterable<string>,
 ): Angebot | null {
-  return matchGuenstigstes(eintrag.suchbegriff, angebote, haendler)
+  return matchGuenstigstes(eintrag.suchbegriff, angebote, haendler, { excludeIds })
+}
+
+export type HaendlerSummePosition = {
+  key: string
+  suchbegriff: string
+  bezeichnung: string | null
+  marke: string | null
+  menge: number
+  preisEur: number | null
+  einzelpreisEur: number | null
+  bildUrl: string | null
+  angebot: Angebot | null
+  imAngebot: boolean
+  rabattProzent: number | null
+  eigenmarke: boolean
+  hatAlternative: boolean
 }
 
 export type HaendlerSumme = {
@@ -86,23 +109,15 @@ export type HaendlerSumme = {
   treffer: number
   gesamt: number
   vollstaendig: boolean
-  positionen: Array<{
-    key: string
-    suchbegriff: string
-    bezeichnung: string | null
-    marke: string | null
-    menge: number
-    preisEur: number | null
-    einzelpreisEur: number | null
-    bildUrl: string | null
-    angebot: Angebot | null
-  }>
+  anzahlImAngebot: number
+  positionen: HaendlerSummePosition[]
 }
 
 export function berechneSummenProHaendler(
   liste: ListenEintrag[],
   angebote: Angebot[],
   haendlerFilter?: HaendlerId[],
+  abgelehnt?: AbgelehnteTreffer,
 ): HaendlerSumme[] {
   if (!liste.length) return []
 
@@ -118,8 +133,16 @@ export function berechneSummenProHaendler(
   const rows: HaendlerSumme[] = []
   for (const h of haendlerSet) {
     const positionen = liste.map((e) => {
-      const angebot = matchGuenstigstes(e.suchbegriff, angebote, h)
+      const excluded = abgelehnt?.[e.key]?.[h] ?? []
+      const angebot = matchGuenstigstes(e.suchbegriff, angebote, h, { excludeIds: excluded })
+      // Gibt es noch einen weiteren Kandidaten nach Ablehnung dieses Treffers?
+      const excludeNext = angebot ? [...excluded, angebot.id] : excluded
+      const alternative = angebot
+        ? matchGuenstigstes(e.suchbegriff, angebote, h, { excludeIds: excludeNext })
+        : null
       const marke = angebot ? cleanMarke(angebot.marke) : null
+      const eigen = angebot ? istEigenmarke(angebot.marke, angebot.haendler, angebot.name) : false
+      const imAngebot = angebot ? istImAngebot(angebot) : false
       return {
         key: e.key,
         suchbegriff: e.suchbegriff,
@@ -130,6 +153,10 @@ export function berechneSummenProHaendler(
         einzelpreisEur: angebot?.preisEur ?? null,
         bildUrl: angebot?.bildUrl ?? e.bildUrl,
         angebot,
+        imAngebot,
+        rabattProzent: angebot ? angebotRabattProzent(angebot) : null,
+        eigenmarke: eigen,
+        hatAlternative: Boolean(alternative),
       }
     })
     const treffer = positionen.filter((p) => p.preisEur != null).length
@@ -143,6 +170,7 @@ export function berechneSummenProHaendler(
       treffer,
       gesamt: liste.length,
       vollstaendig,
+      anzahlImAngebot: positionen.filter((p) => p.imAngebot).length,
       positionen,
     })
   }
@@ -154,6 +182,18 @@ export function berechneSummenProHaendler(
     if (a.vollstaendig !== b.vollstaendig) return a.vollstaendig ? -1 : 1
     return a.summeEur - b.summeEur
   })
+}
+
+/** Ob ein Listenpunkt bei mindestens einem Markt im Angebot gefunden wurde. */
+export function listenEintragHatAngebot(
+  eintrag: ListenEintrag,
+  angebote: Angebot[],
+  haendlerFilter?: HaendlerId[],
+): boolean {
+  const hs = haendlerFilter?.length
+    ? haendlerFilter
+    : [...new Set(angebote.map((a) => a.haendler))]
+  return hs.some((h) => Boolean(matchGuenstigstes(eintrag.suchbegriff, angebote, h)))
 }
 
 export function ladeListeAusStorage(): ListenEintrag[] {

@@ -16,11 +16,13 @@ import {
 import {
   berechneSummenProHaendler,
   ladeListeAusStorage,
+  listenEintragHatAngebot,
   parseMehrereEingaben,
   produktKey,
   speichereListeInStorage,
   suchKey,
   volleBezeichnung,
+  type AbgelehnteTreffer,
   type ListenEintrag,
 } from '@/lib/angebote/einkaufsliste'
 import { istEigenmarke } from '@/lib/angebote/produkt-match'
@@ -82,6 +84,8 @@ export function AngeboteClient() {
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<SortKey>('preis')
   const [aktivHaendler, setAktivHaendler] = useState<HaendlerId[]>([...SCAN_HAENDLER])
+  /** null = alle Märkte; gesetzt = nur Angebote dieses Markts (Katalog + Fokus Warenkorb) */
+  const [fokusHaendler, setFokusHaendler] = useState<HaendlerId | null>(null)
   const [loading, setLoading] = useState(false)
   const [initial, setInitial] = useState(true)
   const [sucheLoading, setSucheLoading] = useState(false)
@@ -89,6 +93,23 @@ export function AngeboteClient() {
   const [extraAngebote, setExtraAngebote] = useState<Angebot[]>([])
   const [liste, setListe] = useState<ListenEintrag[]>([])
   const [freitext, setFreitext] = useState('')
+  /** Abgelehnte Treffer → nächster Vorschlag pro Listenpunkt + Markt */
+  const [abgelehnt, setAbgelehnt] = useState<AbgelehnteTreffer>({})
+
+  const toggleFokusHaendler = (h: HaendlerId) => {
+    setFokusHaendler((prev) => (prev === h ? null : h))
+  }
+
+  const ablehnenTreffer = (listenKey: string, haendler: HaendlerId, angebotId: string) => {
+    setAbgelehnt((prev) => {
+      const byH = { ...(prev[listenKey] ?? {}) }
+      const ids = new Set(byH[haendler] ?? [])
+      ids.add(angebotId)
+      byH[haendler] = [...ids]
+      return { ...prev, [listenKey]: byH }
+    })
+    toast.success('Nächster Vorschlag')
+  }
 
   useEffect(() => {
     setListe(ladeListeAusStorage())
@@ -276,11 +297,19 @@ export function AngeboteClient() {
         .map((x) => (x.key === key ? { ...x, menge: Math.max(0, menge) } : x))
         .filter((x) => x.menge > 0),
     )
+    if (menge <= 0) {
+      setAbgelehnt((prev) => {
+        if (!(key in prev)) return prev
+        const next = { ...prev }
+        delete next[key]
+        return next
+      })
+    }
   }
 
   const summen = useMemo(
-    () => berechneSummenProHaendler(liste, alleAngebote, aktivHaendler),
-    [liste, alleAngebote, aktivHaendler],
+    () => berechneSummenProHaendler(liste, alleAngebote, aktivHaendler, abgelehnt),
+    [liste, alleAngebote, aktivHaendler, abgelehnt],
   )
   const guenstigster = summen.find((s) => s.vollstaendig && s.summeEur != null) ?? null
   const teuersterVoll = [...summen]
@@ -295,6 +324,7 @@ export function AngeboteClient() {
 
   const angebote: Angebot[] = useMemo(() => {
     let list = data?.angebote ?? []
+    if (fokusHaendler) list = list.filter((a) => a.haendler === fokusHaendler)
     if (q.trim()) {
       const t = q.trim().toLowerCase()
       list = list.filter(
@@ -305,7 +335,7 @@ export function AngeboteClient() {
       )
     }
     return list
-  }, [data, q])
+  }, [data, q, fokusHaendler])
 
   const listenKeys = useMemo(() => new Set(liste.map((x) => x.key)), [liste])
 
@@ -330,7 +360,7 @@ export function AngeboteClient() {
       <PageHero
         eyebrow="Einkaufsassistent"
         title="Sparen beim Wocheneinkauf"
-        description="Liste tippen → je Markt das günstigste passende Produkt (Eigenmarken bevorzugt) → sehen, wo du am meisten sparst."
+        description="Liste tippen → je Markt das passende Angebot (Eigenmarken zuerst) → falsche Treffer ablehnen → sehen, wo du sparst."
         actions={
           <div className="flex flex-wrap gap-2">
             <button
@@ -359,23 +389,53 @@ export function AngeboteClient() {
             />
           </label>
           <div className="space-y-1">
-            <span className="text-xs font-semibold text-[var(--app-text-muted)]">Märkte</span>
+            <span className="text-xs font-semibold text-[var(--app-text-muted)]">
+              Märkte {fokusHaendler ? `· nur ${HAENDLER_LABELS[fokusHaendler]}` : '· alle'}
+            </span>
             <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setFokusHaendler(null)}
+                className={
+                  fokusHaendler == null
+                    ? 'rounded-lg border border-lime-500/50 bg-lime-500/15 px-2.5 py-1 text-xs font-semibold text-lime-800 dark:text-lime-200'
+                    : 'rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--app-text-muted)]'
+                }
+              >
+                Alle
+              </button>
               {SCAN_HAENDLER.map((h) => {
-                const on = aktivHaendler.includes(h)
+                const imScan = aktivHaendler.includes(h)
+                const fokussiert = fokusHaendler === h
                 return (
                   <button
                     key={h}
                     type="button"
-                    onClick={() =>
+                    title={
+                      imScan
+                        ? 'Klick: nur diesen Markt anzeigen · Doppelklick: aus Scan nehmen'
+                        : 'Klick: wieder in Scan aufnehmen'
+                    }
+                    onClick={() => {
+                      if (!imScan) {
+                        setAktivHaendler((prev) => [...prev, h])
+                        setFokusHaendler(h)
+                        return
+                      }
+                      toggleFokusHaendler(h)
+                    }}
+                    onDoubleClick={() => {
                       setAktivHaendler((prev) =>
                         prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h],
                       )
-                    }
+                      if (fokusHaendler === h) setFokusHaendler(null)
+                    }}
                     className={
-                      on
-                        ? 'rounded-lg border border-lime-500/50 bg-lime-500/15 px-2.5 py-1 text-xs font-semibold text-lime-800 dark:text-lime-200'
-                        : 'rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--app-text-muted)]'
+                      fokussiert
+                        ? 'rounded-lg border border-sky-500/60 bg-sky-500/20 px-2.5 py-1 text-xs font-semibold text-sky-900 dark:text-sky-100'
+                        : imScan
+                          ? 'rounded-lg border border-lime-500/50 bg-lime-500/15 px-2.5 py-1 text-xs font-semibold text-lime-800 dark:text-lime-200'
+                          : 'rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--app-text-muted)]'
                     }
                   >
                     {HAENDLER_LABELS[h]}
@@ -383,22 +443,32 @@ export function AngeboteClient() {
                 )
               })}
             </div>
+            <p className="text-[11px] text-[var(--app-text-muted)]">
+              Markt anklicken → nur dessen Angebote. Doppelklick schaltet den Scan ein/aus.
+            </p>
           </div>
         </div>
         {data && (
           <div className="flex flex-wrap gap-1.5">
             {data.quellen
               .filter((s) => s.status !== 'skipped')
-              .map((s) => (
-                <span
-                  key={s.haendler}
-                  className={`rounded-md border px-2 py-0.5 text-[10px] ${statusClass(s)}`}
-                  title={s.fehler}
-                >
-                  {HAENDLER_LABELS[s.haendler]} {statusLabel(s)}
-                  {s.anzahl ? ` · ${s.anzahl}` : ''}
-                </span>
-              ))}
+              .map((s) => {
+                const fokussiert = fokusHaendler === s.haendler
+                return (
+                  <button
+                    key={s.haendler}
+                    type="button"
+                    onClick={() => toggleFokusHaendler(s.haendler)}
+                    className={`rounded-md border px-2 py-0.5 text-[10px] ${statusClass(s)} ${
+                      fokussiert ? 'ring-2 ring-sky-500/50' : ''
+                    }`}
+                    title={s.fehler || `Nur ${HAENDLER_LABELS[s.haendler]} anzeigen`}
+                  >
+                    {HAENDLER_LABELS[s.haendler]} {statusLabel(s)}
+                    {s.anzahl ? ` · ${s.anzahl}` : ''}
+                  </button>
+                )
+              })}
           </div>
         )}
       </section>
@@ -428,6 +498,7 @@ export function AngeboteClient() {
                   className={appGhostBtnClass}
                   onClick={() => {
                     setListe([])
+                    setAbgelehnt({})
                     toast.success('Liste geleert')
                   }}
                 >
@@ -465,30 +536,46 @@ export function AngeboteClient() {
           </div>
         ) : (
           <ul className="divide-y divide-[var(--app-border)] rounded-[var(--app-radius-lg)] border border-[var(--app-border)]">
-            {liste.map((e) => (
-              <li key={e.key} className="flex items-center gap-3 px-3 py-2.5">
-                <div className="min-w-0 flex-1 text-sm font-semibold text-[var(--app-text)]">
-                  {e.suchbegriff}
-                </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    className={appGhostBtnClass}
-                    onClick={() => setMenge(e.key, e.menge - 1)}
-                  >
-                    −
-                  </button>
-                  <span className="w-8 text-center text-sm font-bold tabular-nums">{e.menge}</span>
-                  <button
-                    type="button"
-                    className={appGhostBtnClass}
-                    onClick={() => setMenge(e.key, e.menge + 1)}
-                  >
-                    +
-                  </button>
-                </div>
-              </li>
-            ))}
+            {liste.map((e) => {
+              const imAngebot = listenEintragHatAngebot(e, alleAngebote, aktivHaendler)
+              return (
+                <li key={e.key} className="flex items-center gap-3 px-3 py-2.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-[var(--app-text)]">
+                        {e.suchbegriff}
+                      </span>
+                      {imAngebot ? (
+                        <span className="rounded bg-lime-500/20 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-lime-800 dark:text-lime-200">
+                          Im Angebot
+                        </span>
+                      ) : alleAngebote.length > 0 ? (
+                        <span className="rounded bg-[var(--app-surface-muted)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--app-text-muted)]">
+                          kein Treffer
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      className={appGhostBtnClass}
+                      onClick={() => setMenge(e.key, e.menge - 1)}
+                    >
+                      −
+                    </button>
+                    <span className="w-8 text-center text-sm font-bold tabular-nums">{e.menge}</span>
+                    <button
+                      type="button"
+                      className={appGhostBtnClass}
+                      onClick={() => setMenge(e.key, e.menge + 1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>
@@ -501,8 +588,8 @@ export function AngeboteClient() {
                 2. Wo ist der Warenkorb am günstigsten?
               </h2>
               <p className="text-xs text-[var(--app-text-muted)]">
-                Pro Markt: korrektes Produkt (kein Buttermilch für Butter), günstigster Preis —
-                bei Gleichstand Markenprodukt vor Eigenmarke.
+                Pro Markt: passendes Produkt (Gurke ≠ Essiggurke), Eigenmarken bevorzugt.
+                Falsch? „Passt nicht“ → nächster Vorschlag.
               </p>
             </div>
             {guenstigster?.vollstaendig && einkaufszettelText && (
@@ -531,43 +618,66 @@ export function AngeboteClient() {
           <div className="grid gap-3 lg:grid-cols-2">
             {summen.map((s) => {
               const isBest = guenstigster?.haendler === s.haendler && s.vollstaendig
+              const fokussiert = fokusHaendler === s.haendler
               return (
                 <div
                   key={s.haendler}
                   className={[
                     'rounded-[var(--app-radius-lg)] border p-3.5',
-                    isBest
-                      ? 'border-lime-500/70 bg-lime-500/10 ring-1 ring-lime-500/30'
-                      : 'border-[var(--app-border)] bg-[var(--app-surface-muted)]',
+                    fokussiert
+                      ? 'border-sky-500/70 bg-sky-500/10 ring-1 ring-sky-500/40'
+                      : isBest
+                        ? 'border-lime-500/70 bg-lime-500/10 ring-1 ring-lime-500/30'
+                        : 'border-[var(--app-border)] bg-[var(--app-surface-muted)]',
                   ].join(' ')}
                 >
-                  <div className="flex items-baseline justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleFokusHaendler(s.haendler)}
+                    className="flex w-full items-baseline justify-between gap-2 rounded-lg text-left transition hover:opacity-90"
+                    title={`Nur ${s.label}-Angebote im Katalog anzeigen`}
+                  >
                     <div>
                       <div className="text-base font-semibold text-[var(--app-text)]">
                         {s.label}
                         {isBest ? ' · Empfehlung' : ''}
+                        {fokussiert ? ' · gefiltert' : ''}
                       </div>
                       <div className="text-[11px] text-[var(--app-text-muted)]">
                         {s.treffer}/{s.gesamt} gefunden
                         {!s.vollstaendig ? ' · unvollständig' : ''}
+                        {' · Klick → Katalog filtern'}
                       </div>
                     </div>
                     <div className="text-xl font-bold tabular-nums text-[var(--app-text)]">
                       {euro(s.summeEur)}
                     </div>
-                  </div>
+                  </button>
                   <ul className="mt-3 space-y-2.5">
                     {s.positionen.map((p) => (
                       <li
                         key={p.key}
-                        className="flex gap-2.5 rounded-lg border border-[var(--app-border)]/80 bg-[var(--app-surface)]/60 p-2"
+                        className={[
+                          'flex gap-2.5 rounded-lg border p-2',
+                          p.imAngebot
+                            ? 'border-lime-500/50 bg-lime-500/10'
+                            : 'border-[var(--app-border)]/80 bg-[var(--app-surface)]/60',
+                        ].join(' ')}
                       >
                         <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[var(--app-border)] bg-white dark:bg-[var(--app-surface)]">
                           <ProduktBild src={p.bildUrl} alt={p.bezeichnung || p.suchbegriff} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="text-[11px] text-[var(--app-text-muted)]">
-                            Gesucht: {p.menge}× {p.suchbegriff}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] text-[var(--app-text-muted)]">
+                              Gesucht: {p.menge}× {p.suchbegriff}
+                            </span>
+                            {p.imAngebot && (
+                              <span className="rounded bg-lime-600/90 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                                Angebot
+                                {p.rabattProzent != null ? ` −${p.rabattProzent}%` : ''}
+                              </span>
+                            )}
                           </div>
                           {p.bezeichnung ? (
                             <>
@@ -577,8 +687,8 @@ export function AngeboteClient() {
                                     {p.marke}
                                   </span>
                                 )}
-                                {p.angebot && istEigenmarke(p.angebot.marke, p.angebot.haendler) && (
-                                  <span className="rounded bg-lime-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-lime-800 dark:text-lime-200">
+                                {p.eigenmarke && (
+                                  <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900 dark:text-amber-100">
                                     Eigenmarke
                                   </span>
                                 )}
@@ -591,15 +701,41 @@ export function AngeboteClient() {
                                   {p.angebot.packungText}
                                 </div>
                               )}
-                              <div className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--app-text)]">
-                                {euro(p.einzelpreisEur)}
-                                {p.menge > 1 ? ` × ${p.menge} = ${euro(p.preisEur)}` : ''}
+                              <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+                                <div className="text-sm font-semibold tabular-nums text-[var(--app-text)]">
+                                  {euro(p.einzelpreisEur)}
+                                  {p.menge > 1 ? ` × ${p.menge} = ${euro(p.preisEur)}` : ''}
+                                  {p.angebot?.vorherigerPreisEur != null &&
+                                  p.angebot.vorherigerPreisEur > (p.einzelpreisEur ?? 0) ? (
+                                    <span className="ml-1.5 text-[11px] font-normal text-[var(--app-text-muted)] line-through">
+                                      {euro(p.angebot.vorherigerPreisEur)}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {p.angebot && (
+                                  <button
+                                    type="button"
+                                    className="rounded border border-[var(--app-border)] px-2 py-0.5 text-[11px] font-semibold text-[var(--app-text-muted)] hover:border-rose-400 hover:text-rose-700 dark:hover:text-rose-300"
+                                    disabled={!p.hatAlternative}
+                                    title={
+                                      p.hatAlternative
+                                        ? 'Falscher Treffer — nächsten Vorschlag holen'
+                                        : 'Kein weiterer Treffer'
+                                    }
+                                    onClick={() =>
+                                      ablehnenTreffer(p.key, s.haendler, p.angebot!.id)
+                                    }
+                                  >
+                                    {p.hatAlternative ? 'Passt nicht' : 'Keine Alternative'}
+                                  </button>
+                                )}
                               </div>
                             </>
                           ) : (
                             <div className="mt-1 text-xs text-rose-600 dark:text-rose-300">
-                              Diese Woche nicht im Angebot — „Alle Preise aktualisieren“ oder anderes
-                              Wort.
+                              {(abgelehnt[p.key]?.[s.haendler]?.length ?? 0) > 0
+                                ? 'Keine weiteren Vorschläge — Suche anders formulieren.'
+                                : 'Diese Woche nicht im Angebot — „Alle Preise aktualisieren“ oder anderes Wort.'}
                             </div>
                           )}
                         </div>
@@ -618,14 +754,26 @@ export function AngeboteClient() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-[var(--app-text)]">3. Wochenangebote stöbern</h2>
-            <p className="text-xs text-[var(--app-text-muted)]">Optional — Produkte direkt auf die Liste.</p>
+            <p className="text-xs text-[var(--app-text-muted)]">
+              Optional — Produkte direkt auf die Liste.
+              {fokusHaendler
+                ? ` Angezeigt: nur ${HAENDLER_LABELS[fokusHaendler]}.`
+                : ' Markt oben anklicken, um zu filtern.'}
+            </p>
           </div>
-          <input
-            className={`${appInputClass} max-w-xs`}
-            placeholder="Filter…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            {fokusHaendler && (
+              <button type="button" className={appGhostBtnClass} onClick={() => setFokusHaendler(null)}>
+                Alle Märkte
+              </button>
+            )}
+            <input
+              className={`${appInputClass} max-w-xs`}
+              placeholder="Filter…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
         </div>
 
         {loading && !data ? (
@@ -639,7 +787,7 @@ export function AngeboteClient() {
             {angebote.map((a) => {
               const key = suchKey(a.name)
               const inListe = listenKeys.has(key)
-              const eigen = istEigenmarke(a.marke, a.haendler)
+              const eigen = istEigenmarke(a.marke, a.haendler, a.name)
               return (
                 <article
                   key={a.id}

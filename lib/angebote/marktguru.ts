@@ -173,30 +173,139 @@ export async function marktguruSuche(opts: {
   return out
 }
 
-/** Leere Query = breite regionale Angebote (Marktguru liefert dann Top-Angebote). */
+/**
+ * Marktguru-Harvest für Ketten.
+ * Leere Query liefert seit 2026 oft 0 Treffer → Kettenname + Kategorien.
+ */
+const MG_KETTEN_QUERIES: Partial<Record<HaendlerId, string[]>> = {
+  rewe: ['REWE', 'REWE Center'],
+  edeka: ['EDEKA'],
+  lidl: ['Lidl'],
+  penny: ['Penny'],
+  netto: ['Netto'],
+  kaufland: ['Kaufland'],
+  globus: ['Globus'],
+  marktkauf: ['Marktkauf'],
+  aldi_sued: ['ALDI', 'ALDI Süd'],
+  aldi_nord: ['ALDI', 'ALDI Nord'],
+}
+
+const MG_KATEGORIE_QUERIES = [
+  'Milch',
+  'Käse',
+  'Butter',
+  'Joghurt',
+  'Brot',
+  'Fleisch',
+  'Obst',
+  'Gemüse',
+  'Getränke',
+  'Kaffee',
+]
+
 export async function marktguruRegionaleAngebote(
   plz: string,
   haendler: HaendlerId[],
 ): Promise<Angebot[]> {
-  const queries = ['', 'Fleisch', 'Milch', 'Gemüse', 'Getränke', 'Käse', 'Brot', 'Butter', 'Joghurt']
+  const kettenQueries = [
+    ...new Set(haendler.flatMap((h) => MG_KETTEN_QUERIES[h] ?? [haendlerLabelFallback(h)])),
+  ]
+  const queries = [...kettenQueries, ...MG_KATEGORIE_QUERIES]
   const seen = new Set<string>()
   const all: Angebot[] = []
-  for (const q of queries) {
-    try {
-      const batch = await marktguruSuche({
-        query: q,
-        plz,
-        limit: 200,
-        allowed: haendler,
-      })
+
+  // Parallel in kleinen Batches, damit Serverless nicht serielle Minuten braucht.
+  const batchSize = 3
+  for (let i = 0; i < queries.length; i += batchSize) {
+    const slice = queries.slice(i, i + batchSize)
+    const batches = await Promise.all(
+      slice.map(async (q) => {
+        try {
+          return await marktguruSuche({
+            query: q,
+            plz,
+            limit: 200,
+            allowed: haendler,
+          })
+        } catch (e) {
+          console.warn(`[angebote:marktguru] Query "${q}":`, e)
+          return [] as Angebot[]
+        }
+      }),
+    )
+    for (const batch of batches) {
       for (const a of batch) {
         if (seen.has(a.id)) continue
         seen.add(a.id)
         all.push(a)
       }
-    } catch (e) {
-      console.warn(`[angebote:marktguru] Query "${q}":`, e)
     }
   }
+  return all
+}
+
+function haendlerLabelFallback(h: HaendlerId): string {
+  return h.replace(/_/g, ' ')
+}
+
+/** Gezielter Harvest für eine Kette (z. B. REWE), inkl. Offset-Seiten. */
+export async function marktguruFuerHaendler(
+  plz: string,
+  haendler: HaendlerId,
+  extraQueries: string[] = [],
+): Promise<Angebot[]> {
+  const ketten = MG_KETTEN_QUERIES[haendler] ?? [haendlerLabelFallback(haendler)]
+  const seen = new Set<string>()
+  const all: Angebot[] = []
+
+  const pushBatch = (batch: Angebot[]) => {
+    for (const a of batch) {
+      if (seen.has(a.id)) continue
+      seen.add(a.id)
+      all.push(a)
+    }
+  }
+
+  // 1) Kettenname — liefert bei REWE/EDEKA die Wochenangebote
+  for (const q of ketten) {
+    for (const offset of [0, 200, 400]) {
+      try {
+        const batch = await marktguruSuche({
+          query: q,
+          plz,
+          limit: 200,
+          offset,
+          allowed: [haendler],
+        })
+        pushBatch(batch)
+        if (batch.length < 80) break
+      } catch (e) {
+        console.warn(`[angebote:marktguru:${haendler}] "${q}"@${offset}:`, e)
+        break
+      }
+    }
+  }
+
+  // 2) Kategorien nur wenn noch dünn
+  if (all.length < 40) {
+    const rest = [...new Set([...extraQueries, ...MG_KATEGORIE_QUERIES.slice(0, 6)])]
+    const batches = await Promise.all(
+      rest.map(async (q) => {
+        try {
+          return await marktguruSuche({
+            query: q,
+            plz,
+            limit: 200,
+            allowed: [haendler],
+          })
+        } catch (e) {
+          console.warn(`[angebote:marktguru:${haendler}] "${q}":`, e)
+          return [] as Angebot[]
+        }
+      }),
+    )
+    for (const batch of batches) pushBatch(batch)
+  }
+
   return all
 }

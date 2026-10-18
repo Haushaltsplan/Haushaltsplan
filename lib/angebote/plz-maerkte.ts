@@ -58,35 +58,62 @@ type ReweMarket = {
   addressCity?: string
 }
 
-/** REWE-Märkte in der PLZ (öffentliche Market-Suche). */
+/**
+ * REWE-Märkte in der PLZ.
+ * Die öffentlichen Market-Search-Endpunkte liefern oft 403/404 —
+ * dann Platzhalter ohne Markt-ID (Angebote kommen über Marktguru).
+ */
 export async function reweMaerkteFuerPlz(plz: string): Promise<MarktInfo[]> {
-  try {
-    const url =
-      `https://shop.rewe.de/mobile/markets/markets-search?searchString=${encodeURIComponent(plz)}` +
-      `&page=0&pageSize=8`
-    const data = await fetchJson<{ markets?: ReweMarket[] } | ReweMarket[]>(url, {
-      label: 'rewe-maerkte',
-      timeoutMs: 12_000,
-    })
-    const list = Array.isArray(data) ? data : data?.markets ?? []
-    return list
-      .map((m): MarktInfo | null => {
-        const id = String(m.marketId ?? m.id ?? '').trim()
-        if (!id) return null
-        return {
-          haendler: 'rewe',
-          marktId: id,
-          name: m.name?.trim() || `REWE ${id}`,
-          plz: m.addressZipCode?.trim() || plz,
-          ort: m.addressCity?.trim() || null,
-          adresse: m.addressStreet?.trim() || null,
-        }
-      })
-      .filter((x): x is MarktInfo => Boolean(x))
-  } catch (e) {
-    console.warn('[angebote:rewe-maerkte]', e)
-    return []
+  const endpoints = [
+    `https://shop.rewe.de/api/markets/markets-search?searchString=${encodeURIComponent(plz)}&page=0&pageSize=8`,
+    `https://shop.rewe.de/mobile/markets/markets-search?searchString=${encodeURIComponent(plz)}&page=0&pageSize=8`,
+  ]
+  for (const url of endpoints) {
+    try {
+      const data = await fetchJson<{ markets?: ReweMarket[]; error?: string } | ReweMarket[]>(
+        url,
+        {
+          label: 'rewe-maerkte',
+          timeoutMs: 8_000,
+          retries: 0,
+          headers: {
+            Accept: 'application/json',
+            Referer: 'https://shop.rewe.de/',
+            Origin: 'https://shop.rewe.de',
+          },
+        },
+      )
+      if (data && !Array.isArray(data) && 'error' in data && data.error) continue
+      const list = Array.isArray(data) ? data : data?.markets ?? []
+      const mapped = list
+        .map((m): MarktInfo | null => {
+          const id = String(m.marketId ?? m.id ?? '').trim()
+          if (!id) return null
+          return {
+            haendler: 'rewe',
+            marktId: id,
+            name: m.name?.trim() || `REWE ${id}`,
+            plz: m.addressZipCode?.trim() || plz,
+            ort: m.addressCity?.trim() || null,
+            adresse: m.addressStreet?.trim() || null,
+          }
+        })
+        .filter((x): x is MarktInfo => Boolean(x))
+      if (mapped.length) return mapped
+    } catch (e) {
+      console.warn('[angebote:rewe-maerkte]', e)
+    }
   }
+  return [
+    {
+      haendler: 'rewe',
+      marktId: 'marktguru',
+      name: 'REWE (Wochenangebote)',
+      plz,
+      ort: null,
+      adresse: null,
+    },
+  ]
 }
 
 type EdekaMarket = {
