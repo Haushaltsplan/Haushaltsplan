@@ -132,7 +132,7 @@ export function EtsyHubClient() {
   const verbunden = Boolean(status?.connected)
 
   const tabs = [
-    ['seo', 'Meine Listings', 'Ranks & Optimierung', 'border-teal-500/60 bg-teal-500/10'],
+    ['seo', 'Meine Listings', 'Audit & Diff', 'border-teal-500/60 bg-teal-500/10'],
     ['cockpit', 'Cockpit', 'Heute zu tun', 'border-emerald-500/60 bg-emerald-500/10'],
     ['agent', 'Neues Listing', 'Fotos → Entwurf', 'border-amber-500/60 bg-amber-500/10'],
     ['keywords', 'Keywords', 'Was Käufer suchen', 'border-sky-500/60 bg-sky-500/10'],

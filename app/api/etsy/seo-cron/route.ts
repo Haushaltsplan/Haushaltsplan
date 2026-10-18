@@ -2,18 +2,14 @@
  * Wöchentlicher SEO-Cron (vercel.json: Mo 08:00 UTC).
  * GET/POST mit Authorization: Bearer CRON_SECRET
  *
- * 1) Shop-weites Rank-Tracking der Fokus-Keywords → etsy_seo_rank_cache + _historie
- * 2) Kandidaten = Ranking-Verluste ∪ Audit-Score < 70
- * 3) ?reaudit=1 → max. 5 Kandidaten frisch auditieren (Free-Gemini + Markt-Daten)
+ * 1) Kandidaten = Aufruf-Einbrüche ∪ Audit-Score < 70
+ * 2) ?reaudit=1 → max. 5 Kandidaten frisch auditieren (Free-Gemini + Markt-Daten)
  *    und als Vorschlag (Diff) in etsy_seo_vorschlag ablegen → UI: 1 Klick übernehmen
- *
- * Query: ?rank=0 überspringt Schritt 1.
  */
 import { ladeEtsyEigeneSignale, ladeEtsyViewsEinbrueche } from '@/lib/etsy/etsy-cockpit-server'
 import { auditiereEtsyListing } from '@/lib/etsy/etsy-seo-audit-engine'
 import {
   ladeEtsyHauptbegriff,
-  ladeEtsyRankVerluste,
   ladeEtsySeoSchwachstellen,
   ladeEtsySeoVorschlag,
   speichereEtsySeoAudit,
@@ -21,7 +17,6 @@ import {
 } from '@/lib/etsy/etsy-seo-audit-cache'
 import { listingFingerprint } from '@/lib/etsy/etsy-seo-diff'
 import { ladeEtsyListingDetail } from '@/lib/etsy/etsy-listings-server'
-import { trackeFokusRankMatrix } from '@/lib/etsy/etsy-rank-apify'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { NextResponse } from 'next/server'
 
@@ -44,7 +39,7 @@ function cronErlaubt(req: Request): boolean {
 
 type Kandidat = { listingId: number; grund: string; scoreVorher: number | null }
 
-async function run(opts: { reaudit: boolean; rank: boolean }) {
+async function run(opts: { reaudit: boolean }) {
   const start = Date.now()
   const zeitUebrig = () => Date.now() - start < ZEITBUDGET_MS
 
@@ -55,39 +50,20 @@ async function run(opts: { reaudit: boolean; rank: boolean }) {
 
   const report: Array<{
     ownerUserId: string
-    rank?: { keywords: number; listings: number; provider: string; error?: string }
-    verluste: number
     weak: Array<{ listingId: number; score: number; title: string }>
     kandidaten: Kandidat[]
     vorschlaege?: Array<{ listingId: number; score?: number; skipped?: string; error?: string }>
   }> = []
 
   for (const ownerUserId of userIds) {
-    const entry: (typeof report)[number] = { ownerUserId, verluste: 0, weak: [], kandidaten: [] }
+    const entry: (typeof report)[number] = { ownerUserId, weak: [], kandidaten: [] }
 
-    if (opts.rank && zeitUebrig()) {
-      try {
-        const lauf = await trackeFokusRankMatrix({ ownerUserId })
-        entry.rank = { keywords: lauf.keywords, listings: lauf.listings, provider: lauf.provider }
-      } catch (e) {
-        entry.rank = {
-          keywords: 0,
-          listings: 0,
-          provider: 'unavailable',
-          error: e instanceof Error ? e.message.slice(0, 160) : 'Rank-Tracking fehlgeschlagen',
-        }
-      }
-    }
-
-    const [verluste, weak, einbrueche] = await Promise.all([
-      ladeEtsyRankVerluste(ownerUserId),
+    const [weak, einbrueche] = await Promise.all([
       ladeEtsySeoSchwachstellen(ownerUserId, SCORE_SCHWELLE),
       ladeEtsyViewsEinbrueche(ownerUserId).catch(() => []),
     ])
-    entry.verluste = verluste.length
     entry.weak = weak.map((w) => ({ listingId: w.listingId, score: w.overallScore, title: w.listingTitle }))
 
-    // Aufruf-Einbruch + Ranking-Verluste zuerst (akuter), dann schwächster Score.
     const scoreMap = new Map(weak.map((w) => [w.listingId, w.overallScore]))
     const kandidaten = new Map<number, Kandidat>()
     for (const e of einbrueche) {
@@ -95,17 +71,6 @@ async function run(opts: { reaudit: boolean; rank: boolean }) {
         listingId: e.listingId,
         grund: `Aufrufe eingebrochen: ${e.vorher} → ${e.jetzt} pro Woche`,
         scoreVorher: scoreMap.get(e.listingId) ?? null,
-      })
-    }
-    for (const v of verluste) {
-      const alt = v.vorher.found ? `S.${v.vorher.page} #${v.vorher.position}` : 'nicht gefunden'
-      const neu = v.jetzt.found ? `S.${v.jetzt.page} #${v.jetzt.position}` : 'nicht gefunden'
-      const bisher = kandidaten.get(v.listingId)
-      const grund = `Ranking-Verlust „${v.keyword}“: ${alt} → ${neu}`
-      kandidaten.set(v.listingId, {
-        listingId: v.listingId,
-        grund: bisher ? `${bisher.grund}; ${grund}` : grund,
-        scoreVorher: scoreMap.get(v.listingId) ?? null,
       })
     }
     for (const w of weak) {
@@ -206,8 +171,8 @@ async function run(opts: { reaudit: boolean; rank: boolean }) {
 
     report.push(entry)
     console.info(
-      `[etsy-seo-cron] owner=${ownerUserId} rank=${entry.rank?.provider ?? 'skip'} verluste=${entry.verluste} ` +
-        `schwach=${entry.weak.length} vorschlaege=${entry.vorschlaege?.filter((v) => v.score != null && !v.skipped).length ?? 0}`,
+      `[etsy-seo-cron] owner=${ownerUserId} schwach=${entry.weak.length} ` +
+        `vorschlaege=${entry.vorschlaege?.filter((v) => v.score != null && !v.skipped).length ?? 0}`,
     )
   }
 
@@ -225,9 +190,7 @@ export async function GET(req: Request) {
   if (!cronErlaubt(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const sp = new URL(req.url).searchParams
   try {
-    return NextResponse.json(
-      await run({ reaudit: sp.get('reaudit') === '1', rank: sp.get('rank') !== '0' }),
-    )
+    return NextResponse.json(await run({ reaudit: sp.get('reaudit') === '1' }))
   } catch (e) {
     console.error('[etsy-seo-cron]', e)
     return NextResponse.json({ error: 'Cron fehlgeschlagen' }, { status: 500 })

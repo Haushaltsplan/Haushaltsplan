@@ -20,9 +20,6 @@ type Ctx = { params: Promise<{ id: string }> }
 
 type Body = {
   force?: boolean
-  /** Geschützte Optimierung: schwaches Keyword pushen ohne starke zu opfern */
-  zielKeyword?: string
-  schutzKeywords?: string[]
 }
 
 export async function POST(req: Request, ctx: Ctx) {
@@ -46,12 +43,6 @@ export async function POST(req: Request, ctx: Ctx) {
     /* force optional */
   }
 
-  const zielKeyword = body.zielKeyword?.trim() || null
-  const schutzKeywords = Array.isArray(body.schutzKeywords)
-    ? body.schutzKeywords.map(String).filter(Boolean)
-    : []
-  const geschuetzt = Boolean(zielKeyword)
-
   try {
     const [{ listing }, hauptbegriff] = await Promise.all([
       ladeEtsyListingDetail(user.id, listingId),
@@ -60,8 +51,7 @@ export async function POST(req: Request, ctx: Ctx) {
     const fingerprint = listingFingerprint(listing)
     const regels = pruefeListingRegeln({ ...listing, hauptbegriff })
 
-    // Geschützte Optimierung immer frisch — Cache würde Ziel/Schutz ignorieren.
-    if (!body.force && !geschuetzt) {
+    if (!body.force) {
       const cached = await ladeEtsySeoCacheFuerListing(user.id, listingId)
       if (cached && cached.fingerprint === fingerprint) {
         const historie = await ladeEtsySeoHistorie(user.id, listingId)
@@ -80,10 +70,8 @@ export async function POST(req: Request, ctx: Ctx) {
 
     const eigeneSignale = await ladeEtsyEigeneSignale(user.id).catch(() => null)
     const audit = await auditiereEtsyListing(listing, {
-      hauptbegriff: zielKeyword || hauptbegriff,
+      hauptbegriff,
       eigeneSignale,
-      zielKeyword,
-      schutzKeywords,
     })
     await speichereEtsySeoAudit({
       ownerUserId: user.id,
@@ -103,8 +91,6 @@ export async function POST(req: Request, ctx: Ctx) {
       fingerprint,
       regelReport: regels,
       historie,
-      zielKeyword,
-      schutzKeywords,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Audit fehlgeschlagen'

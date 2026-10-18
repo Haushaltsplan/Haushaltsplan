@@ -1,44 +1,51 @@
 'use client'
 
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
-import { EtsyInfoHint } from '@/components/etsy/etsy-info-hint'
-import { ETSY_SEO_INFO } from '@/lib/etsy/etsy-seo-info'
-import { ETSY_RANK_FOKUS_KEYWORDS } from '@/lib/etsy/etsy-rank-fokus'
-import { scoreFarbe } from '@/lib/etsy/etsy-seo-regeln'
-import { useCallback, useEffect, useState } from 'react'
+import { baueEtsySeoDiff, type EtsySeoDiffZeile } from '@/lib/etsy/etsy-seo-diff'
+import type {
+  EtsySeoAuditResult,
+  EtsyShopListingDetail,
+  EtsyShopListingKurz,
+} from '@/lib/etsy/etsy-seo-audit-types'
+import {
+  ETSY_SEO_TAG_COUNT,
+  ETSY_SEO_TAG_MAX,
+  ETSY_SEO_TITLE_FRONTLOAD,
+  ETSY_SEO_TITLE_IDEAL_MAX,
+  ETSY_SEO_TITLE_IDEAL_MIN,
+  ETSY_SEO_TITLE_MAX,
+  pruefeEtsySeoRegeln,
+  scoreFarbe,
+  type EtsySeoRegelReport,
+} from '@/lib/etsy/etsy-seo-regeln'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
-type RankZelle = {
-  keyword: string
-  label: string
-  page: number | null
-  position: number | null
-  found: boolean
-  note: string | null
-  checkedAt: string | null
-  belastbar?: boolean
+type ListingRow = EtsyShopListingKurz & {
+  cachedScore?: number | null
+  cachedAt?: string | null
 }
 
-type MatrixListing = {
+type HistoriePunkt = { id: string; overallScore: number; createdAt: string }
+
+type VorschlagInhalt = { title: string; tags: string[]; descriptionIntro: string; description?: string }
+
+type Vorschlag = {
   listingId: number
-  title: string
-  priceEur: number | null
-  views: number | null
-  url: string | null
-  cachedScore: number | null
-  ranks: RankZelle[]
-  schwachAnzahl: number
-  schwachstesKeyword: string | null
-  geprueft: boolean
+  grund: string
+  listingTitle: string
+  scoreVorher: number | null
+  before: VorschlagInhalt
+  after: VorschlagInhalt
+  audit: EtsySeoAuditResult | null
+  createdAt: string
 }
 
-function formatAufrufe(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return '—'
-  return new Intl.NumberFormat('de-DE').format(Math.round(n))
-}
+type ListFilter = 'alle' | 'schwach' | 'tags-fehlen'
 
 type Props = {
   verbunden: boolean
+  /** Vom Cockpit: Listing direkt öffnen (force = frischer KI-Check). nonce erzwingt Wiederholung. */
   fokus?: { listingId: number; force?: boolean; nonce: number } | null
 }
 
@@ -50,150 +57,478 @@ function scoreBadgeClass(score: number | null | undefined) {
   return 'bg-emerald-500/20 text-emerald-300'
 }
 
-function zelleStil(r: RankZelle): string {
-  if (!r.checkedAt || r.note === 'noch nicht geprüft' || r.belastbar === false) {
-    return 'bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] border-[var(--app-border)]'
-  }
-  if (!r.found || r.page == null) return 'bg-rose-500/20 text-rose-200 border-rose-500/30'
-  if (r.page >= 3) return 'bg-rose-500/20 text-rose-200 border-rose-500/30'
-  if (r.page === 2) return 'bg-amber-500/20 text-amber-100 border-amber-500/30'
-  return 'bg-emerald-500/20 text-emerald-100 border-emerald-500/30'
+function istSchwach(l: ListingRow): boolean {
+  return l.cachedScore == null || l.cachedScore < 80
 }
 
-function zelleText(r: RankZelle): string {
-  if (!r.checkedAt || r.note === 'noch nicht geprüft') return '—'
-  if (r.belastbar === false) return '—'
-  if (!r.found || r.page == null) return 'fehlt'
-  return `S.${r.page}`
-}
-
-function zelleSub(r: RankZelle): string {
-  if (r.belastbar === false) return 'n/a'
-  if (r.found && r.position != null) return `#${r.position}`
-  return ''
+function hatUnvollstaendigeTags(l: ListingRow): boolean {
+  return (l.tags?.length ?? 0) !== ETSY_SEO_TAG_COUNT
 }
 
 export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
-  const [listings, setListings] = useState<MatrixListing[]>([])
-  const [keywords, setKeywords] = useState<Array<{ keyword: string; label: string }>>([])
-  const [loading, setLoading] = useState(false)
-  const [rankBusy, setRankBusy] = useState(false)
-  const [optBusyId, setOptBusyId] = useState<number | null>(null)
-  const [providerHinweis, setProviderHinweis] = useState<string | null>(null)
-  const [apifyOk, setApifyOk] = useState<boolean | null>(null)
+  const [stateFilter, setStateFilter] = useState('active')
+  const [listFilter, setListFilter] = useState<ListFilter>('alle')
+  const [listings, setListings] = useState<ListingRow[]>([])
+  const [loadingList, setLoadingList] = useState(false)
+  const [batchBusy, setBatchBusy] = useState(false)
+  const [batchProgress, setBatchProgress] = useState('')
+  const [tagsReparaturBusy, setTagsReparaturBusy] = useState(false)
+  const [handwerkBusy, setHandwerkBusy] = useState(false)
+  const [handgedrehtAnzahl, setHandgedrehtAnzahl] = useState(0)
 
-  const ladeMatrix = useCallback(async () => {
-    if (!verbunden) return
-    setLoading(true)
-    try {
-      const res = await fetch('/api/etsy/listings/rank-matrix', { cache: 'no-store' })
-      const j = (await res.json()) as {
-        error?: string
-        listings?: MatrixListing[]
-        keywords?: Array<{ keyword: string; label: string }>
-        apifyKonfiguriert?: boolean
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [busyKind, setBusyKind] = useState<'audit' | 'optimize' | 'push' | null>(null)
+  const [fromCache, setFromCache] = useState(false)
+  const [auditedAt, setAuditedAt] = useState<string | null>(null)
+
+  const [listing, setListing] = useState<EtsyShopListingDetail | null>(null)
+  const [audit, setAudit] = useState<EtsySeoAuditResult | null>(null)
+  const [regelReport, setRegelReport] = useState<EtsySeoRegelReport | null>(null)
+  const [historie, setHistorie] = useState<HistoriePunkt[]>([])
+
+  const [editTitle, setEditTitle] = useState('')
+  const [editTags, setEditTags] = useState('')
+  const [editIntro, setEditIntro] = useState('')
+  const [showDiff, setShowDiff] = useState(true)
+  const [confirmPush, setConfirmPush] = useState<'title' | 'tags' | 'intro' | 'all' | null>(null)
+
+  const [hauptbegriffGespeichert, setHauptbegriffGespeichert] = useState<string | null>(null)
+  const [hauptbegriffEingabe, setHauptbegriffEingabe] = useState('')
+  const [hauptbegriffBusy, setHauptbegriffBusy] = useState(false)
+
+  const [vorschlaege, setVorschlaege] = useState<Vorschlag[]>([])
+  const [vorschlagOffen, setVorschlagOffen] = useState<number | null>(null)
+  const [vorschlagBusy, setVorschlagBusy] = useState<number | null>(null)
+
+  const sichtbareListings = useMemo(() => {
+    if (listFilter === 'schwach') return listings.filter(istSchwach)
+    if (listFilter === 'tags-fehlen') return listings.filter(hatUnvollstaendigeTags)
+    return listings
+  }, [listings, listFilter])
+
+  const liveRegeln = useMemo(() => {
+    if (!editTitle && !editTags) return null
+    return pruefeEtsySeoRegeln({
+      title: editTitle,
+      tags: editTags.split(',').map((t) => t.trim()).filter(Boolean),
+      description: editIntro || listing?.description || '',
+      materials: listing?.materials,
+      taxonomyId: listing?.taxonomyId,
+      hauptbegriff: hauptbegriffGespeichert,
+    })
+  }, [
+    editTitle,
+    editTags,
+    editIntro,
+    listing?.description,
+    listing?.materials,
+    listing?.taxonomyId,
+    hauptbegriffGespeichert,
+  ])
+
+  const scoreStats = useMemo(() => {
+    let rot = 0
+    let gelb = 0
+    let gruen = 0
+    let ohne = 0
+    let sum = 0
+    let n = 0
+    let tagsFehlen = 0
+    for (const l of listings) {
+      if (hatUnvollstaendigeTags(l)) tagsFehlen++
+      if (l.cachedScore == null) {
+        ohne++
+        continue
       }
+      n++
+      sum += l.cachedScore
+      const f = scoreFarbe(l.cachedScore)
+      if (f === 'rot') rot++
+      else if (f === 'gelb') gelb++
+      else gruen++
+    }
+    return { rot, gelb, gruen, ohne, tagsFehlen, avg: n ? Math.round(sum / n) : null }
+  }, [listings])
+
+  const diffZeilen: EtsySeoDiffZeile[] = useMemo(() => {
+    if (!listing) return []
+    return baueEtsySeoDiff({
+      before: {
+        title: listing.title,
+        tags: listing.tags,
+        description: listing.description,
+      },
+      after: {
+        title: editTitle,
+        tags: editTags.split(',').map((t) => t.trim()).filter(Boolean),
+        descriptionIntro: editIntro,
+      },
+    })
+  }, [listing, editTitle, editTags, editIntro])
+
+  const ladeHandgedrehtStand = useCallback(async () => {
+    if (!verbunden) return
+    try {
+      const res = await fetch('/api/etsy/listings/handwerk-sprache', { cache: 'no-store' })
+      const j = (await res.json()) as { betroffen?: number }
+      if (res.ok) setHandgedrehtAnzahl(j.betroffen ?? 0)
+    } catch {
+      /* optional */
+    }
+  }, [verbunden])
+
+  const ladeListings = useCallback(async () => {
+    if (!verbunden) return
+    setLoadingList(true)
+    try {
+      const res = await fetch(`/api/etsy/listings?state=${encodeURIComponent(stateFilter)}&limit=100`, {
+        cache: 'no-store',
+      })
+      const j = (await res.json()) as { error?: string; listings?: ListingRow[] }
       if (!res.ok) {
         toast.error(j.error ?? 'Listings laden fehlgeschlagen.')
         return
       }
-      setListings(j.listings ?? [])
-      setKeywords(
-        j.keywords ??
-          ETSY_RANK_FOKUS_KEYWORDS.map((k) => ({ keyword: k, label: k })),
-      )
-      setApifyOk(j.apifyKonfiguriert ?? null)
-      if (j.apifyKonfiguriert === false) {
-        setProviderHinweis(
-          'APIFY_API_TOKEN fehlt — ohne Apify keine echten Ranks. Token in .env.local und Vercel setzen (Free reicht alle 1–2 Wochen).',
-        )
-      }
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Fehler')
+      const rows = j.listings ?? []
+      setListings(rows)
+      // Schnellschätzung aus Titel/Tags; genauer Stand inkl. Beschreibung nachgeladen
+      const lokal = rows.filter(
+        (l) =>
+          /handgedreht/i.test(l.title) || (l.tags ?? []).some((t) => /handgedreht/i.test(t)),
+      ).length
+      setHandgedrehtAnzahl((prev) => Math.max(prev, lokal))
+      void ladeHandgedrehtStand()
+    } catch {
+      toast.error('Listings laden fehlgeschlagen.')
     } finally {
-      setLoading(false)
+      setLoadingList(false)
+    }
+  }, [verbunden, stateFilter, ladeHandgedrehtStand])
+
+  useEffect(() => {
+    void ladeListings()
+  }, [ladeListings])
+
+  const ladeVorschlaege = useCallback(async () => {
+    if (!verbunden) return
+    try {
+      const res = await fetch('/api/etsy/vorschlaege', { cache: 'no-store' })
+      const j = (await res.json()) as { vorschlaege?: Vorschlag[] }
+      if (res.ok) setVorschlaege(j.vorschlaege ?? [])
+    } catch {
+      /* Vorschläge optional */
     }
   }, [verbunden])
 
   useEffect(() => {
-    void ladeMatrix()
-  }, [ladeMatrix])
+    void ladeVorschlaege()
+  }, [ladeVorschlaege])
 
+  const fokusNonce = fokus?.nonce
   useEffect(() => {
-    if (!fokus?.listingId) return
-    const el = document.getElementById(`listing-row-${fokus.listingId}`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [fokus])
+    if (!verbunden || !fokus?.listingId) return
+    void starteAudit(fokus.listingId, Boolean(fokus.force))
+    // Nur bei neuem Cockpit-Sprung (nonce) auslösen, nicht bei jedem Re-Render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fokusNonce, verbunden])
 
-  async function ranksAktualisieren() {
-    setRankBusy(true)
-    setProviderHinweis(null)
+  async function vorschlagAktion(listingId: number, aktion: 'uebernehmen' | 'verwerfen') {
+    setVorschlagBusy(listingId)
     try {
-      const res = await fetch('/api/etsy/listings/rank-matrix', { method: 'POST' })
-      const j = (await res.json()) as {
-        error?: string
-        listings?: MatrixListing[]
-        keywords?: Array<{ keyword: string; label: string }>
-        apifyKonfiguriert?: boolean
-        lauf?: {
-          provider?: string
-          listings?: number
-          belastbar?: boolean
-          sampleMin?: number
-          sampleAvg?: number
-        }
-      }
+      const res = await fetch(`/api/etsy/vorschlaege/${listingId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aktion }),
+      })
+      const j = (await res.json()) as { error?: string }
       if (!res.ok) {
-        if (j.apifyKonfiguriert === false) setApifyOk(false)
-        setProviderHinweis(j.error ?? 'Rank-Messung fehlgeschlagen.')
-        toast.error(j.error ?? 'Rank-Messung fehlgeschlagen.')
+        toast.error(j.error ?? 'Aktion fehlgeschlagen.')
+        if (res.status === 409) void ladeVorschlaege()
         return
       }
-      setListings(j.listings ?? [])
-      if (j.keywords) setKeywords(j.keywords)
-      setApifyOk(true)
-      const avg = j.lauf?.sampleAvg
-      const min = j.lauf?.sampleMin
-      setProviderHinweis(
-        j.lauf?.provider === 'apify'
-          ? `Messung: Apify · ok (Ø ${avg ?? '—'} Treffer/Keyword, min. ${min ?? '—'}). Alle 1–2 Wochen reicht.`
-          : `Messung: ${j.lauf?.provider ?? 'unbekannt'}`,
-      )
-      toast.success(`Ranks aktualisiert · ${j.lauf?.listings ?? 0} Listings · Apify`)
+      toast.success(aktion === 'uebernehmen' ? 'Auf Etsy übernommen.' : 'Vorschlag verworfen.')
+      setVorschlaege((prev) => prev.filter((v) => v.listingId !== listingId))
+      if (aktion === 'uebernehmen') void ladeListings()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
-      setRankBusy(false)
+      setVorschlagBusy(null)
     }
   }
 
-  async function rankingOptimieren(listingId: number, zielKeyword?: string | null) {
-    setOptBusyId(listingId)
+  function applyAuditPayload(j: {
+    listing: EtsyShopListingDetail
+    audit: EtsySeoAuditResult
+    fromCache?: boolean
+    auditedAt?: string
+    regelReport?: EtsySeoRegelReport
+    historie?: HistoriePunkt[]
+  }) {
+    setListing(j.listing)
+    setAudit(j.audit)
+    setFromCache(Boolean(j.fromCache))
+    setAuditedAt(j.auditedAt ?? null)
+    setRegelReport(j.regelReport ?? null)
+    setHistorie(j.historie ?? [])
+    setEditTitle(j.audit.suggestions.optimized_title)
+    setEditTags(j.audit.suggestions.optimized_tags.join(', '))
+    setEditIntro(j.audit.suggestions.optimized_description_intro)
+    setConfirmPush(null)
+    setShowDiff(true)
+    void ladeHauptbegriff(j.listing.listingId)
+  }
+
+  async function ladeHauptbegriff(listingId: number) {
+    setHauptbegriffGespeichert(null)
+    setHauptbegriffEingabe('')
     try {
-      const res = await fetch(`/api/etsy/listings/${listingId}/ranking-optimieren`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(zielKeyword ? { zielKeyword } : {}),
-      })
-      const j = (await res.json()) as {
-        error?: string
-        zielKeyword?: string
-        pushed?: boolean
+      const res = await fetch(`/api/etsy/listings/${listingId}/hauptbegriff`, { cache: 'no-store' })
+      const j = (await res.json()) as { hauptbegriff?: string | null }
+      if (res.ok && j.hauptbegriff) {
+        setHauptbegriffGespeichert(j.hauptbegriff)
+        setHauptbegriffEingabe(j.hauptbegriff)
       }
+    } catch {
+      /* Hauptbegriff optional */
+    }
+  }
+
+  async function speichereHauptbegriff(wert: string | null) {
+    if (!listing) return
+    setHauptbegriffBusy(true)
+    try {
+      const res = await fetch(`/api/etsy/listings/${listing.listingId}/hauptbegriff`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hauptbegriff: wert }),
+      })
+      const j = (await res.json()) as { hauptbegriff?: string | null; error?: string }
       if (!res.ok) {
-        toast.error(j.error ?? 'Optimierung fehlgeschlagen.')
+        toast.error(j.error ?? 'Speichern fehlgeschlagen.')
         return
       }
-      toast.success(
-        j.zielKeyword
-          ? `Live auf Etsy: „${j.zielKeyword}“ gestärkt, die anderen 4 geschützt.`
-          : 'Listing auf Etsy aktualisiert.',
-      )
-      void ladeMatrix()
+      setHauptbegriffGespeichert(j.hauptbegriff ?? null)
+      setHauptbegriffEingabe(j.hauptbegriff ?? '')
+      toast.success(j.hauptbegriff ? 'Hauptbegriff gespeichert — wird ab jetzt getrackt.' : 'Wieder automatisch.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
-      setOptBusyId(null)
+      setHauptbegriffBusy(false)
+    }
+  }
+
+  async function starteAudit(listingId: number, force = false) {
+    setSelectedId(listingId)
+    setBusy(true)
+    setBusyKind(force ? 'optimize' : 'audit')
+    try {
+      const res = await fetch(`/api/etsy/listings/${listingId}/audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force }),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        listing?: EtsyShopListingDetail
+        audit?: EtsySeoAuditResult
+        fromCache?: boolean
+        auditedAt?: string
+        regelReport?: EtsySeoRegelReport
+        historie?: HistoriePunkt[]
+      }
+      if (!res.ok || !j.audit || !j.listing) {
+        toast.error(j.error ?? 'Audit fehlgeschlagen.')
+        return
+      }
+      applyAuditPayload({
+        listing: j.listing,
+        audit: j.audit,
+        fromCache: j.fromCache,
+        auditedAt: j.auditedAt,
+        regelReport: j.regelReport,
+        historie: j.historie,
+      })
+      toast.success(
+        force
+          ? `Neu optimiert · Score ${j.audit.overall_score}/100 — Diff prüfen & pushen`
+          : j.fromCache
+            ? `Cache · Score ${j.audit.overall_score}/100`
+            : `Frisch · Score ${j.audit.overall_score}/100`,
+      )
+      void ladeListings()
+      // Detail-Panel in den Viewport scrollen
+      requestAnimationFrame(() => {
+        document.getElementById('seo-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler')
+    } finally {
+      setBusy(false)
+      setBusyKind(null)
+    }
+  }
+
+  async function batchScan(force = false) {
+    setBatchBusy(true)
+    setBatchProgress('Batch-Audit läuft (max. 15, parallel 2)…')
+    try {
+      const res = await fetch('/api/etsy/listings/batch-audit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: stateFilter, limit: 15, force }),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        results?: Array<{ listingId: number; overallScore: number; error?: string; fromCache?: boolean }>
+      }
+      if (!res.ok) {
+        toast.error(j.error ?? 'Batch fehlgeschlagen.')
+        return
+      }
+      const ok = (j.results ?? []).filter((r) => !r.error)
+      const fail = (j.results ?? []).filter((r) => r.error)
+      toast.success(`Batch fertig: ${ok.length} ok${fail.length ? `, ${fail.length} Fehler` : ''}`)
+      void ladeListings()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Batch-Fehler')
+    } finally {
+      setBatchBusy(false)
+      setBatchProgress('')
+    }
+  }
+
+  async function repariereAlleTags() {
+    const n = listings.filter(hatUnvollstaendigeTags).length
+    if (!n) {
+      toast.success('Alle geladenen Listings haben 13 Tags.')
+      return
+    }
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `${n} Listing${n === 1 ? '' : 's'} auf Etsy auf ${ETSY_SEO_TAG_COUNT} Tags setzen?\n\nVorhandene Tags bleiben; fehlende kommen aus dem Änderungs-Log oder aus Titel/Holzart.`,
+      )
+    ) {
+      return
+    }
+    setTagsReparaturBusy(true)
+    setBatchProgress('Stelle 13 Tags je Listing wieder her…')
+    try {
+      const res = await fetch('/api/etsy/listings/tags-reparieren', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        repariert?: number
+        fehlgeschlagen?: number
+        betroffen?: number
+      }
+      if (!res.ok) {
+        toast.error(j.error ?? 'Tags-Reparatur fehlgeschlagen.')
+        return
+      }
+      toast.success(
+        `${j.repariert ?? 0} von ${j.betroffen ?? n} Listings mit ${ETSY_SEO_TAG_COUNT} Tags auf Etsy` +
+          (j.fehlgeschlagen ? ` · ${j.fehlgeschlagen} fehlgeschlagen` : ''),
+      )
+      void ladeListings()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Tags-Reparatur fehlgeschlagen')
+    } finally {
+      setTagsReparaturBusy(false)
+      setBatchProgress('')
+    }
+  }
+
+  async function schreibeHandwerkSpracheUm() {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `„handgedreht“ → „handgedrechselt“ auf Etsy umschreiben?\n\nPrüft alle ${stateFilter === 'active' ? 'aktiven' : ''} Listings (Titel, Beschreibung, Tags) und schreibt nur geänderte Felder. Dauert je Listing ein paar Sekunden.`,
+      )
+    ) {
+      return
+    }
+    setHandwerkBusy(true)
+    setBatchProgress('Schreibe Handwerk-Sprache um (handgedreht → handgedrechselt)…')
+    try {
+      const res = await fetch('/api/etsy/listings/handwerk-sprache', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: stateFilter }),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        umgeschrieben?: number
+        fehlgeschlagen?: number
+        betroffen?: number
+        geprueft?: number
+        unveraendert?: number
+      }
+      if (!res.ok) {
+        toast.error(j.error ?? 'Umschreibung fehlgeschlagen.')
+        return
+      }
+      toast.success(
+        `${j.umgeschrieben ?? 0} Listing${(j.umgeschrieben ?? 0) === 1 ? '' : 's'} umgeschrieben` +
+          (j.unveraendert ? ` · ${j.unveraendert} schon ok` : '') +
+          (j.fehlgeschlagen ? ` · ${j.fehlgeschlagen} Fehler` : ''),
+      )
+      setHandgedrehtAnzahl(0)
+      void ladeListings()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Umschreibung fehlgeschlagen')
+    } finally {
+      setHandwerkBusy(false)
+      setBatchProgress('')
+    }
+  }
+
+  async function pushUpdate(kind: 'title' | 'tags' | 'intro' | 'all') {
+    if (!selectedId || !listing) return
+    if (confirmPush !== kind) {
+      setConfirmPush(kind)
+      toast('Diff prüfen — nochmals klicken zum Bestätigen.', { icon: '👀' })
+      return
+    }
+    setBusy(true)
+    setBusyKind('push')
+    try {
+      const tags = editTags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .slice(0, ETSY_SEO_TAG_COUNT)
+      const res = await fetch(`/api/etsy/listings/${selectedId}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: kind === 'title' || kind === 'all' ? editTitle.trim() : undefined,
+          tags: kind === 'tags' || kind === 'all' ? tags : undefined,
+          prependIntro: kind === 'intro' || kind === 'all',
+          optimizedIntro:
+            kind === 'intro' || kind === 'all' ? editIntro.trim() : undefined,
+          existingDescription: listing.description,
+        }),
+      })
+      const j = (await res.json()) as { error?: string; listing?: EtsyShopListingDetail }
+      if (!res.ok) {
+        toast.error(j.error ?? 'Update fehlgeschlagen.')
+        return
+      }
+      if (j.listing) setListing(j.listing)
+      setConfirmPush(null)
+      toast.success('Auf Etsy gespeichert.')
+      void ladeListings()
+      void starteAudit(selectedId, true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler')
+    } finally {
+      setBusy(false)
+      setBusyKind(null)
     }
   }
 
@@ -202,192 +537,693 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
       <PageSection titleId="seo-need-connect" title="Meine Listings">
         <PageSectionPanel density="compact">
           <p className="text-sm text-[var(--app-text-muted)]">
-            Zuerst den Etsy-Shop verbinden — danach siehst du Ranks unter den fünf Schalen-Suchbegriffen.
+            Zuerst den Etsy-Shop verbinden — danach Batch-Audit, Diff prüfen und gezielt auf Etsy speichern.
           </p>
         </PageSectionPanel>
       </PageSection>
     )
   }
 
-  const kwHeaders = keywords.length
-    ? keywords
-    : ETSY_RANK_FOKUS_KEYWORDS.map((k) => ({ keyword: k, label: k }))
-
   return (
-    <PageSection
-      titleId="seo-overview"
-      title={
-        <span className="inline-flex items-center gap-2">
-          Meine Listings · Rank-Matrix
-          <EtsyInfoHint info={ETSY_SEO_INFO.uebersicht} label="Erklärung: Rank-Matrix" />
-        </span>
-      }
-    >
-      <PageSectionPanel density="compact" className="space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 max-w-xl space-y-1">
-            <p className="text-sm text-[var(--app-text-muted)]">
-              Fünf Kernbegriffe — echte Ranks nur über Apify (Free, alle 1–2 Wochen). Farbe = Seite. „Ranking
-              optimieren“ speichert direkt auf Etsy und schützt die anderen Begriffe.
+    <>
+      {vorschlaege.length > 0 && (
+        <PageSection titleId="seo-vorschlaege" title={`Vorbereitete Vorschläge · ${vorschlaege.length}`}>
+          <PageSectionPanel density="compact" className="space-y-2">
+            <p className="text-xs text-[var(--app-text-muted)]">
+              Vom Wochen-Cron erstellt (Aufruf-Einbruch oder Score &lt; 70). Diff prüfen, dann mit einem Klick
+              auf Etsy übernehmen. Wurde das Listing inzwischen auf Etsy geändert, wird der Vorschlag als veraltet
+              markiert statt die Änderung zu überschreiben.
             </p>
-            <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--app-text-muted)]">
-              <span className="inline-flex items-center gap-1">
-                Kernbegriffe
-                <EtsyInfoHint info={ETSY_SEO_INFO.keywordsFuenf} label="Erklärung: Kernbegriffe" />
-              </span>
-              <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-emerald-200">S.1 gut</span>
-              <span className="rounded-md bg-amber-500/15 px-1.5 py-0.5 text-amber-200">S.2 ok</span>
-              <span className="rounded-md bg-rose-500/15 px-1.5 py-0.5 text-rose-200">≥S.3 / fehlt</span>
-              <span className="rounded-md bg-[var(--app-surface-muted)] px-1.5 py-0.5">— = noch nicht gemessen</span>
-            </div>
-            {apifyOk === false && (
-              <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100">
-                <strong>APIFY_API_TOKEN</strong> fehlt. In <code className="text-amber-50">.env.local</code> und
-                Vercel → Settings → Environment Variables eintragen. Actor:{' '}
-                <code className="text-amber-50">omkar-cloud/etsy-scraper</code> (einmal „Try for free“ auf Apify).
-              </p>
-            )}
-            {providerHinweis && (
-              <p
-                className={`text-[11px] ${
-                  apifyOk === false || providerHinweis.includes('fehl')
-                    ? 'text-amber-200/90'
-                    : 'text-emerald-200/90'
-                }`}
-              >
-                {providerHinweis}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
+            <ul className="divide-y divide-[var(--app-border)]">
+              {vorschlaege.map((v) => {
+                const offen = vorschlagOffen === v.listingId
+                const diff = baueEtsySeoDiff({
+                  before: {
+                    title: v.before.title,
+                    tags: v.before.tags,
+                    description: v.before.description ?? '',
+                  },
+                  after: { title: v.after.title, tags: v.after.tags, description: v.after.description },
+                })
+                return (
+                  <li key={v.listingId} className="space-y-2 py-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[var(--app-text)]">{v.listingTitle}</p>
+                        <p className="text-xs text-[var(--app-text-muted)]">
+                          #{v.listingId} · {v.grund}
+                          {v.audit ? ` · Audit ${v.audit.overall_score}/100` : ''}
+                          {v.audit?.geo_insights.ai_search_score != null
+                            ? ` · KI-Suche ${v.audit.geo_insights.ai_search_score}`
+                            : ''}
+                          {' · '}
+                          {new Date(v.createdAt).toLocaleDateString('de-DE')}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setVorschlagOffen(offen ? null : v.listingId)}
+                          className="rounded-lg border border-[var(--app-border)] px-2.5 py-1.5 text-xs"
+                        >
+                          {offen ? 'Diff zu' : 'Diff'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={vorschlagBusy != null}
+                          onClick={() => void vorschlagAktion(v.listingId, 'uebernehmen')}
+                          className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-50"
+                        >
+                          {vorschlagBusy === v.listingId ? '…' : 'Übernehmen'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={vorschlagBusy != null}
+                          onClick={() => void vorschlagAktion(v.listingId, 'verwerfen')}
+                          className="rounded-lg border border-[var(--app-border)] px-2.5 py-1.5 text-xs text-[var(--app-text-muted)] disabled:opacity-50"
+                        >
+                          Verwerfen
+                        </button>
+                      </div>
+                    </div>
+                    {offen && (
+                      <div className="space-y-2">
+                        {diff
+                          .filter((d) => d.changed)
+                          .map((d) => (
+                            <div
+                              key={d.field}
+                              className="grid gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-xs sm:grid-cols-2"
+                            >
+                              <div>
+                                <p className="text-[var(--app-text-muted)]">{d.label} · aktuell</p>
+                                <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-[var(--app-text-muted)]">
+                                  {d.before || '—'}
+                                </pre>
+                              </div>
+                              <div>
+                                <p className="text-[var(--app-text-muted)]">Vorschlag</p>
+                                <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-[var(--app-text)]">
+                                  {d.after || '—'}
+                                </pre>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </PageSectionPanel>
+        </PageSection>
+      )}
+
+      <PageSection titleId="seo-overview" title="Meine Listings">
+        <PageSectionPanel density="compact" className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={stateFilter}
+              onChange={(e) => setStateFilter(e.target.value)}
+              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm"
+            >
+              <option value="active">Aktiv</option>
+              <option value="draft">Entwürfe</option>
+              <option value="inactive">Inaktiv</option>
+            </select>
             <button
               type="button"
-              disabled={rankBusy || loading || optBusyId != null}
-              onClick={() => void ranksAktualisieren()}
-              className="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
+              disabled={loadingList || batchBusy || tagsReparaturBusy || handwerkBusy}
+              onClick={() => void ladeListings()}
+              className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm"
             >
-              {rankBusy ? 'Misst via Apify (1–3 Min)…' : 'Ranks aktualisieren'}
+              {loadingList ? 'Lädt…' : 'Aktualisieren'}
             </button>
-            <EtsyInfoHint info={ETSY_SEO_INFO.ranksAktualisieren} label="Erklärung: Ranks aktualisieren" />
+            <button
+              type="button"
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
+              onClick={() => void batchScan(false)}
+              className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
+            >
+              {batchBusy ? 'Scan…' : 'Alle scannen (Cache)'}
+            </button>
+            <button
+              type="button"
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
+              onClick={() => void batchScan(true)}
+              className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm disabled:opacity-50"
+            >
+              Force-Rescan
+            </button>
+            {(handgedrehtAnzahl > 0 || handwerkBusy) && (
+              <button
+                type="button"
+                disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
+                onClick={() => void schreibeHandwerkSpracheUm()}
+                className="rounded-xl bg-amber-700 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
+              >
+                {handwerkBusy
+                  ? 'Schreibe um…'
+                  : `${handgedrehtAnzahl}× handgedreht → handgedrechselt`}
+              </button>
+            )}
+            {scoreStats.tagsFehlen > 0 && (
+              <button
+                type="button"
+                disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
+                onClick={() => void repariereAlleTags()}
+                className="rounded-xl bg-rose-700 px-3 py-2 text-sm font-medium text-white hover:bg-rose-600 disabled:opacity-50"
+              >
+                {tagsReparaturBusy
+                  ? 'Stelle Tags her…'
+                  : `${scoreStats.tagsFehlen}× 13 Tags wiederherstellen`}
+              </button>
+            )}
           </div>
-        </div>
+          {handgedrehtAnzahl > 0 && (
+            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100">
+              <p className="font-medium">
+                {handgedrehtAnzahl} Listing{handgedrehtAnzahl === 1 ? '' : 's'} nutzen noch „handgedreht“.
+              </p>
+              <p className="mt-1 text-xs text-amber-200/90">
+                Ein Klick ersetzt auf Etsy in Titel, Beschreibung und Tags durch „handgedrechselt“ (Tags: z. B.
+                „gedrechselte schale“). Kein KI-Lauf nötig.
+              </p>
+            </div>
+          )}
+          {scoreStats.tagsFehlen > 0 && (
+            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2.5 text-sm text-rose-100">
+              <p className="font-medium">
+                {scoreStats.tagsFehlen} Listing{scoreStats.tagsFehlen === 1 ? '' : 's'} haben weniger als{' '}
+                {ETSY_SEO_TAG_COUNT} Tags.
+              </p>
+              <p className="mt-1 text-xs text-rose-200/90">
+                Ursache: Tag-Updates haben die Liste überschrieben statt alle 13 zu setzen. Ein Klick stellt die
+                Tags aus dem Änderungs-Log wieder her und füllt auf 13 passende Long-Tail-Tags auf.
+              </p>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                ['alle', 'Alle'],
+                ['tags-fehlen', `Tags fehlen (${scoreStats.tagsFehlen})`],
+                ['schwach', 'Schwach (Score)'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setListFilter(id)}
+                className={`rounded-lg px-2.5 py-1 text-xs ${
+                  listFilter === id
+                    ? 'bg-teal-700 text-white'
+                    : 'border border-[var(--app-border)] text-[var(--app-text-muted)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {batchProgress && <p className="text-xs text-[var(--app-text-muted)]">{batchProgress}</p>}
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className={`rounded-md px-2 py-0.5 font-semibold ${scoreBadgeClass(scoreStats.avg)}`}>
+              Ø {scoreStats.avg != null ? scoreStats.avg : '—'}
+            </span>
+            <span className="rounded-md bg-rose-500/15 px-2 py-0.5 text-rose-300">
+              Rot {scoreStats.rot}
+            </span>
+            <span className="rounded-md bg-amber-500/15 px-2 py-0.5 text-amber-300">
+              Gelb {scoreStats.gelb}
+            </span>
+            <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-emerald-300">
+              Grün {scoreStats.gruen}
+            </span>
+            {scoreStats.tagsFehlen > 0 && (
+              <span className="rounded-md bg-rose-500/20 px-2 py-0.5 text-rose-200">
+                Tags unvollständig {scoreStats.tagsFehlen}
+              </span>
+            )}
+            {scoreStats.ohne > 0 && (
+              <span className="rounded-md bg-[var(--app-surface-muted)] px-2 py-0.5 text-[var(--app-text-muted)]">
+                Ohne Audit {scoreStats.ohne}
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-[var(--app-text-muted)]">
+            Aktive Listings · Stift = auditieren/optimieren · Diff prüfen · dann auf Etsy speichern.
+          </p>
 
-        {loading && listings.length === 0 ? (
-          <p className="text-sm text-[var(--app-text-muted)]">Listings werden geladen…</p>
-        ) : listings.length === 0 ? (
-          <p className="text-sm text-[var(--app-text-muted)]">Keine aktiven Listings.</p>
-        ) : (
-          <div className="-mx-1 overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-left">
-              <thead>
-                <tr className="border-b border-[var(--app-border)] text-[11px] text-[var(--app-text-muted)]">
-                  <th className="sticky left-0 z-10 bg-[var(--app-surface)] py-2 pr-3 font-medium">
-                    <span className="inline-flex items-center gap-1.5">
-                      Listing
-                      <EtsyInfoHint info={ETSY_SEO_INFO.score} label="Erklärung: Score" />
+          {sichtbareListings.length === 0 ? (
+            <p className="text-sm text-[var(--app-text-muted)]">
+              {listings.length === 0
+                ? 'Keine Listings in diesem Status.'
+                : 'Keine Treffer in diesem Filter.'}
+            </p>
+          ) : (
+            <ul className="divide-y divide-[var(--app-border)]">
+              {sichtbareListings.map((l) => (
+                <li
+                  key={l.listingId}
+                  className={`flex flex-wrap items-center justify-between gap-2 py-2 ${
+                    selectedId === l.listingId ? 'bg-teal-500/5' : hatUnvollstaendigeTags(l) ? 'bg-rose-500/5' : ''
+                  }`}
+                >
+                  <div className="min-w-0 flex items-start gap-2">
+                    <span
+                      className={`mt-0.5 shrink-0 rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(l.cachedScore)}`}
+                    >
+                      {l.cachedScore != null ? l.cachedScore : '—'}
                     </span>
-                  </th>
-                  {kwHeaders.map((k) => (
-                    <th key={k.keyword} className="px-1 py-2 text-center font-medium">
-                      <span className="inline-flex flex-col items-center gap-0.5">
-                        <span className="max-w-[5.5rem] leading-tight">{k.label}</span>
-                        <EtsyInfoHint info={ETSY_SEO_INFO.rankZelle} label={`Erklärung: ${k.label}`} />
-                      </span>
-                    </th>
-                  ))}
-                  <th className="py-2 pl-2 text-right font-medium">
-                    <span className="inline-flex items-center justify-end gap-1.5">
-                      Aktion
-                      <EtsyInfoHint
-                        info={ETSY_SEO_INFO.rankingOptimieren}
-                        label="Erklärung: Ranking optimieren"
-                      />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-[var(--app-text)]">{l.title}</p>
+                      <p className="text-xs text-[var(--app-text-muted)]">
+                        #{l.listingId}
+                        {l.priceEur != null ? ` · ${l.priceEur} €` : ''}
+                        {l.cachedAt
+                          ? ` · Audit ${new Date(l.cachedAt).toLocaleDateString('de-DE')}`
+                          : ' · noch kein Audit'}
+                        {` · ${(l.tags?.length ?? 0)}/${ETSY_SEO_TAG_COUNT} Tags`}
+                        {hatUnvollstaendigeTags(l) ? ' · unvollständig' : ''}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 gap-1.5">
+                    <button
+                      type="button"
+                      disabled={busy || batchBusy || tagsReparaturBusy}
+                      title="Bearbeiten / Keywords & Text neu optimieren"
+                      onClick={() => void starteAudit(l.listingId, istSchwach(l))}
+                      className="rounded-xl border border-[var(--app-border)] px-2.5 py-1.5 text-sm hover:bg-[var(--app-surface-muted)] disabled:opacity-50"
+                      aria-label="Bearbeiten"
+                    >
+                      {busy && selectedId === l.listingId ? '…' : '✎'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || batchBusy || tagsReparaturBusy}
+                      onClick={() => void starteAudit(l.listingId, false)}
+                      className="rounded-xl bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
+                    >
+                      Öffnen
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </PageSectionPanel>
+      </PageSection>
+
+      {audit && listing && (
+        <PageSection titleId="seo-detail" title={`Detail · Score ${audit.overall_score}/100`}>
+          <PageSectionPanel density="compact" className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--app-text-muted)]">
+              <span className={`rounded-md px-2 py-0.5 font-semibold ${scoreBadgeClass(audit.overall_score)}`}>
+                {audit.overall_score}
+              </span>
+              {fromCache ? <span>aus Cache</span> : <span>frisch analysiert</span>}
+              {auditedAt && <span>· {new Date(auditedAt).toLocaleString('de-DE')}</span>}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => selectedId && void starteAudit(selectedId, true)}
+                className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              >
+                {busyKind === 'optimize'
+                  ? 'Generiert…'
+                  : 'Keywords & Beschreibung neu generieren'}
+              </button>
+            </div>
+
+            {audit.summary && <p className="text-sm text-[var(--app-text-muted)]">{audit.summary}</p>}
+
+            <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-3">
+              <p className="text-xs text-[var(--app-text-muted)]">
+                Nach Neu-Generierung: Diff prüfen, dann alles auf einmal pushen (Titel + Tags + GEO-Intro).
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void pushUpdate('all')}
+                className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  confirmPush === 'all'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-teal-800 text-white disabled:opacity-50'
+                }`}
+              >
+                {confirmPush === 'all'
+                  ? 'Jetzt Titel + Tags + Intro pushen'
+                  : 'Alles übernehmen (mit Diff-Check)'}
+              </button>
+            </div>
+
+            {/* Hauptbegriff — steuert Titel-Frontload, Tag und Intro */}
+            {(() => {
+              const r = liveRegeln || regelReport
+              const hb = r?.hauptbegriff
+              return (
+                <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-3">
+                  <p className="text-xs font-medium text-[var(--app-text)]">
+                    Hauptbegriff{' '}
+                    <span className="font-normal text-[var(--app-text-muted)]">
+                      — die eine Suche, für die dieses Stück gefunden werden soll
                     </span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {listings.map((l) => (
-                  <tr
-                    id={`listing-row-${l.listingId}`}
-                    key={l.listingId}
-                    className="border-b border-[var(--app-border)]/70 align-middle"
-                  >
-                    <td className="sticky left-0 z-10 bg-[var(--app-surface)] py-2.5 pr-3">
-                      <div className="flex min-w-[12rem] max-w-[18rem] items-start gap-2">
-                        <span
-                          className={`mt-0.5 shrink-0 rounded-md px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${scoreBadgeClass(l.cachedScore)}`}
-                        >
-                          {l.cachedScore != null ? l.cachedScore : '—'}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-[var(--app-text)]" title={l.title}>
-                            {l.title}
-                          </p>
-                          <p className="mt-0.5 text-[11px] tabular-nums text-[var(--app-text)]">
-                            <span className="font-semibold">{formatAufrufe(l.views)}</span>
-                            <span className="text-[var(--app-text-muted)]"> Aufrufe</span>
-                            {l.priceEur != null ? (
-                              <span className="text-[var(--app-text-muted)]"> · {l.priceEur} €</span>
-                            ) : null}
-                          </p>
-                          <p className="text-[10px] text-[var(--app-text-muted)]">
-                            {(l.views ?? 0) >= 80
-                              ? 'viele Aufrufe — Umschreiben oft unnötig'
-                              : l.schwachAnzahl > 0
-                                ? `${l.schwachAnzahl} Keywords schwach`
-                                : l.geprueft
-                                  ? 'Ranks stabil'
-                                  : 'noch nicht gemessen'}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    {l.ranks.map((r) => (
-                      <td key={r.keyword} className="px-1 py-2 text-center">
-                        <div
-                          className={`mx-auto inline-flex min-w-[3.25rem] flex-col items-center rounded-lg border px-1.5 py-1 ${zelleStil(r)}`}
-                          title={r.note || r.label}
-                        >
-                          <span className="text-xs font-semibold tabular-nums">{zelleText(r)}</span>
-                          {zelleSub(r) ? (
-                            <span className="text-[10px] opacity-80">{zelleSub(r)}</span>
-                          ) : null}
-                        </div>
-                      </td>
-                    ))}
-                    <td className="py-2 pl-2 text-right">
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <input
+                      value={hauptbegriffEingabe}
+                      onChange={(e) => setHauptbegriffEingabe(e.target.value)}
+                      placeholder={hb?.hauptbegriff ? `automatisch: ${hb.hauptbegriff}` : 'z. B. obstschale buche'}
+                      className="min-w-0 flex-1 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1.5 text-sm text-[var(--app-text)]"
+                    />
+                    <button
+                      type="button"
+                      disabled={hauptbegriffBusy || !hauptbegriffEingabe.trim()}
+                      onClick={() => void speichereHauptbegriff(hauptbegriffEingabe)}
+                      className="rounded-lg bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50"
+                    >
+                      Festlegen
+                    </button>
+                    {hauptbegriffGespeichert && (
                       <button
                         type="button"
-                        disabled={rankBusy || optBusyId != null}
-                        onClick={() => void rankingOptimieren(l.listingId, l.schwachstesKeyword)}
-                        title={
-                          (l.views ?? 0) >= 80
-                            ? 'Viele Aufrufe: nur ändern, wenn du bewusst SEO nachschärfen willst'
-                            : undefined
-                        }
-                        className={`rounded-xl border px-3 py-1.5 text-xs font-medium disabled:opacity-50 ${
-                          (l.views ?? 0) >= 80
-                            ? 'border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] hover:bg-[var(--app-surface)]'
-                            : 'border-teal-500/40 bg-teal-600/20 text-teal-100 hover:bg-teal-600/35'
-                        }`}
+                        disabled={hauptbegriffBusy}
+                        onClick={() => void speichereHauptbegriff(null)}
+                        className="rounded-lg border border-[var(--app-border)] px-2.5 py-1.5 text-xs text-[var(--app-text-muted)]"
                       >
-                        {optBusyId === l.listingId ? 'Optimiert & speichert…' : 'Ranking optimieren'}
+                        Automatisch
                       </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                    )}
+                  </div>
+                  {hb?.hauptbegriff && (
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                      {(
+                        [
+                          ['Vorne im Titel', hb.titelVorne],
+                          ['Als Tag', hb.imTag],
+                          ['In den ersten 2 Sätzen', hb.imEinstieg],
+                        ] as const
+                      ).map(([label, ok]) => (
+                        <span
+                          key={label}
+                          className={`rounded-md px-2 py-0.5 ${ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}`}
+                        >
+                          {ok ? '✓' : '✗'} {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
-        <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">
-          Sortiert nach Aufrufen. Ranks nur nach erfolgreichem Apify-Lauf (Free-Credits, 1–2 Wochen reichen).
-          „Ranking optimieren“ pusht live auf Etsy und schützt die anderen Kernbegriffe — bei vielen Aufrufen oft
-          unnötig.
-        </p>
-      </PageSectionPanel>
-    </PageSection>
+            {/* Regel-Checks live */}
+            <div className="rounded-xl border border-[var(--app-border)] p-3">
+              <p className="text-xs font-medium text-[var(--app-text-muted)]">
+                Checkliste (Titel ideal {ETSY_SEO_TITLE_IDEAL_MIN}–{ETSY_SEO_TITLE_IDEAL_MAX} Zeichen, Wichtiges
+                in den ersten {ETSY_SEO_TITLE_FRONTLOAD}, {ETSY_SEO_TAG_COUNT} Tags je ≤{ETSY_SEO_TAG_MAX} Zeichen)
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                {(liveRegeln || regelReport) &&
+                  (
+                    [
+                      ['Titel ≤140 Zeichen', (liveRegeln || regelReport)!.titleOk],
+                      ['Wichtiges vorne', (liveRegeln || regelReport)!.titleFrontloadOk],
+                      ['Titellänge ideal', (liveRegeln || regelReport)!.titleLengthIdeal],
+                      ['Hauptbegriff überall', (liveRegeln || regelReport)!.hauptbegriffOk],
+                      ['Keine Füllwörter vorne', (liveRegeln || regelReport)!.titleStopwordOk],
+                      ['13 Tags', (liveRegeln || regelReport)!.tagsCountOk],
+                      ['Tags ≤20 Zeichen', (liveRegeln || regelReport)!.tagsLengthOk],
+                      ['Präzise Suchphrasen', (liveRegeln || regelReport)!.tagsLongtailOk],
+                      [
+                        `Tag-Mix ${(liveRegeln || regelReport)!.tagsPraezise} präzise / ${(liveRegeln || regelReport)!.tagsBreit} breit`,
+                        (liveRegeln || regelReport)!.tagMixOk,
+                      ],
+                      ['Keine Wortdoppelungen', (liveRegeln || regelReport)!.tagsStemOk],
+                      ['Nicht doppelt zur Kategorie', (liveRegeln || regelReport)!.tagsAttrOk],
+                      ['Tags auf Deutsch', (liveRegeln || regelReport)!.tagsSpracheOk],
+                      ['Beschreibung', (liveRegeln || regelReport)!.descriptionOk],
+                      ['Starker Einstieg', (liveRegeln || regelReport)!.descFirst2Ok],
+                      ['Holzart', (liveRegeln || regelReport)!.descHolzartOk],
+                      ['Maße', (liveRegeln || regelReport)!.descMasseOk],
+                      ['Pflege', (liveRegeln || regelReport)!.descPflegeOk],
+                    ] as const
+                  ).map(([label, ok]) => (
+                    <span
+                      key={String(label)}
+                      className={`rounded-md px-2 py-0.5 ${ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}`}
+                    >
+                      {ok ? '✓' : '✗'} {label}
+                    </span>
+                  ))}
+              </div>
+              {(liveRegeln?.issues.length ?? 0) > 0 && (
+                <ul className="mt-2 space-y-0.5 text-xs text-[var(--app-text-muted)]">
+                  {liveRegeln!.issues.slice(0, 6).map((i, idx) => (
+                    <li key={`${i.message}-${idx}`}>
+                      [{i.severity}] {i.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-[var(--app-text-muted)]">SEO-Issues</p>
+              {audit.seo_issues.length === 0 ? (
+                <p className="text-sm text-[var(--app-text)]">Keine kritischen Issues.</p>
+              ) : (
+                <ul className="mt-1 space-y-1 text-sm">
+                  {audit.seo_issues.map((i, idx) => (
+                    <li key={`${i.field}-${idx}`}>
+                      <span
+                        className={
+                          i.severity === 'error'
+                            ? 'text-rose-400'
+                            : i.severity === 'warning'
+                              ? 'text-amber-400'
+                              : 'text-[var(--app-text-muted)]'
+                        }
+                      >
+                        [{i.severity}]
+                      </span>{' '}
+                      <span className="text-[var(--app-text-muted)]">{i.field}:</span> {i.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-[var(--app-border)] p-3 text-sm">
+              <p className="text-xs font-medium text-[var(--app-text-muted)]">GEO</p>
+              <p className="mt-1">
+                Zielgruppe: <strong>{audit.geo_insights.target_audience_clarity}</strong>
+                {audit.geo_insights.what_clarity ? ` · WAS: ${audit.geo_insights.what_clarity}` : ''}
+                {audit.geo_insights.occasion_clarity
+                  ? ` · Anlass: ${audit.geo_insights.occasion_clarity}`
+                  : ''}
+              </p>
+              {audit.geo_insights.missing_contexts.length > 0 && (
+                <ul className="mt-1 list-disc pl-5 text-[var(--app-text-muted)]">
+                  {audit.geo_insights.missing_contexts.map((c) => (
+                    <li key={c}>{c}</li>
+                  ))}
+                </ul>
+              )}
+              {audit.geo_insights.ai_search_score != null && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs">
+                    KI-Suche (Gemini/ChatGPT/Perplexity):{' '}
+                    <span
+                      className={`rounded-md px-2 py-0.5 font-semibold tabular-nums ${scoreBadgeClass(audit.geo_insights.ai_search_score)}`}
+                    >
+                      {audit.geo_insights.ai_search_score}
+                    </span>
+                  </p>
+                  {(audit.geo_insights.intent_queries_covered?.length ?? 0) > 0 && (
+                    <p className="text-xs text-emerald-300/90">
+                      ✓ {audit.geo_insights.intent_queries_covered!.join(' · ')}
+                    </p>
+                  )}
+                  {(audit.geo_insights.intent_queries_missing?.length ?? 0) > 0 && (
+                    <p className="text-xs text-amber-300/90">
+                      ✗ {audit.geo_insights.intent_queries_missing!.join(' · ')}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {audit.markt && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+                <p className="font-medium text-[var(--app-text-muted)]">
+                  Markt-Abgleich · {audit.markt.abdeckung.abgedeckt.length}/
+                  {audit.markt.abdeckung.abgedeckt.length + audit.markt.abdeckung.fehlend.length} reale
+                  Suchphrasen abgedeckt
+                  {audit.markt.preisMedianEur != null ? ` · Konkurrenz-Median ${audit.markt.preisMedianEur} €` : ''}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {audit.markt.abdeckung.abgedeckt.map((k) => (
+                    <span key={k} className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300">
+                      ✓ {k}
+                    </span>
+                  ))}
+                  {audit.markt.abdeckung.fehlend.map((k) => (
+                    <span key={k} className="rounded border border-dashed border-amber-500/50 px-1.5 py-0.5 text-amber-200">
+                      {k}
+                    </span>
+                  ))}
+                </div>
+                {audit.markt.degradiert && audit.markt.hinweise.length > 0 && (
+                  <p className="mt-1 text-[10px] text-[var(--app-text-muted)]">{audit.markt.hinweise.join(' ')}</p>
+                )}
+              </div>
+            )}
+
+            {/* Diff */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowDiff((v) => !v)}
+                className="text-xs font-medium text-[var(--app-text-muted)] underline-offset-2 hover:underline"
+              >
+                {showDiff ? 'Diff ausblenden' : 'Diff anzeigen'} (alt → neu)
+              </button>
+              {showDiff && (
+                <div className="mt-2 space-y-3">
+                  {diffZeilen.map((d) => (
+                    <div
+                      key={d.field}
+                      className={`rounded-xl border p-3 text-xs ${
+                        d.changed
+                          ? 'border-amber-500/40 bg-amber-500/5'
+                          : 'border-[var(--app-border)] opacity-70'
+                      }`}
+                    >
+                      <p className="font-medium text-[var(--app-text)]">
+                        {d.label} {d.changed ? '· geändert' : '· unverändert'}
+                      </p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        <div>
+                          <p className="text-[var(--app-text-muted)]">Aktuell</p>
+                          <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-[var(--app-text-muted)]">
+                            {d.before || '—'}
+                          </pre>
+                        </div>
+                        <div>
+                          <p className="text-[var(--app-text-muted)]">Vorschlag</p>
+                          <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-[var(--app-text)]">
+                            {d.after || '—'}
+                          </pre>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
+                Titel ({editTitle.length}/{ETSY_SEO_TITLE_MAX})
+              </span>
+              <input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                maxLength={ETSY_SEO_TITLE_MAX}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void pushUpdate('title')}
+                className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  confirmPush === 'title'
+                    ? 'bg-amber-600 text-white'
+                    : 'border border-[var(--app-border)]'
+                }`}
+              >
+                {confirmPush === 'title' ? 'Jetzt Titel pushen' : 'Titel übernehmen (mit Diff-Check)'}
+              </button>
+            </label>
+
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
+                Tags (
+                {
+                  editTags
+                    .split(',')
+                    .map((t) => t.trim())
+                    .filter(Boolean).length
+                }
+                /{ETSY_SEO_TAG_COUNT})
+              </span>
+              <textarea
+                value={editTags}
+                onChange={(e) => setEditTags(e.target.value)}
+                rows={2}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void pushUpdate('tags')}
+                className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  confirmPush === 'tags'
+                    ? 'bg-amber-600 text-white'
+                    : 'border border-[var(--app-border)]'
+                }`}
+              >
+                {confirmPush === 'tags' ? 'Jetzt Tags pushen' : 'Tags übernehmen (mit Diff-Check)'}
+              </button>
+            </label>
+
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">GEO-Intro</span>
+              <textarea
+                value={editIntro}
+                onChange={(e) => setEditIntro(e.target.value)}
+                rows={5}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm leading-relaxed"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void pushUpdate('intro')}
+                className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  confirmPush === 'intro'
+                    ? 'bg-amber-600 text-white'
+                    : 'border border-[var(--app-border)]'
+                }`}
+              >
+                {confirmPush === 'intro'
+                  ? 'Jetzt Intro vor Beschreibung setzen'
+                  : 'Intro übernehmen (mit Diff-Check)'}
+              </button>
+            </label>
+
+            {/* Score-Historie */}
+            {historie.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-[var(--app-text-muted)]">Score-Verlauf</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {[...historie].reverse().map((h) => (
+                    <span
+                      key={h.id}
+                      title={new Date(h.createdAt).toLocaleString('de-DE')}
+                      className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(h.overallScore)}`}
+                    >
+                      {h.overallScore}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </PageSectionPanel>
+        </PageSection>
+      )}
+    </>
   )
 }

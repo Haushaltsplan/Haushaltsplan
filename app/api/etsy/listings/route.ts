@@ -1,4 +1,4 @@
-import { ladeEtsyRankMap, ladeEtsySeoCacheMap } from '@/lib/etsy/etsy-seo-audit-cache'
+import { ladeEtsySeoCacheMap } from '@/lib/etsy/etsy-seo-audit-cache'
 import { ladeEtsyShopListings } from '@/lib/etsy/etsy-listings-server'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 import { NextResponse } from 'next/server'
@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** Listings inkl. Cache-Scores + Rank-Kurzinfo für die Übersicht. */
+/** Listings inkl. Cache-Scores für die SEO-Übersicht. */
 export async function GET(req: Request) {
   const sb = createSupabaseFuerRequest(req)
   if (!sb) return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
@@ -20,37 +20,22 @@ export async function GET(req: Request) {
   const limit = Number(url.searchParams.get('limit') || 100)
 
   try {
-    const [{ shopId, listings }, cacheMap, rankMap] = await Promise.all([
+    const [{ shopId, listings }, cacheMap] = await Promise.all([
       ladeEtsyShopListings(user.id, { state, limit }),
       ladeEtsySeoCacheMap(user.id),
-      ladeEtsyRankMap(user.id),
     ])
 
     const enriched = listings.map((l) => {
       const c = cacheMap.get(l.listingId)
-      const r = rankMap.get(l.listingId)
       return {
         ...l,
         cachedScore: c?.overallScore ?? null,
         cachedAt: c?.auditedAt ?? null,
         cachedFingerprint: c?.fingerprint ?? null,
-        rankPage: r?.bestPage ?? null,
-        rankPosition: r?.bestPosition ?? null,
-        rankKeyword: r?.keyword ?? null,
-        rankCheckedAt: r?.checkedAt ?? null,
-        rankHasWeak: r?.hasWeak ?? false,
-        rankWeakKeyword: r?.weakKeyword ?? null,
       }
     })
 
     enriched.sort((a, b) => {
-      // Schwache Keywords zuerst, dann hohe Seite, dann niedriger Score
-      const wa = a.rankHasWeak ? 1 : 0
-      const wb = b.rankHasWeak ? 1 : 0
-      if (wa !== wb) return wb - wa
-      const ra = a.rankPage ?? 99
-      const rb = b.rankPage ?? 99
-      if (ra !== rb) return rb - ra
       const sa = a.cachedScore ?? 999
       const sb_ = b.cachedScore ?? 999
       return sa - sb_

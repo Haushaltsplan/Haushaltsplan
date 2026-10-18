@@ -290,7 +290,7 @@ export function EtsyCockpit({ verbunden, statusLaedt, onOeffnen }: Props) {
         <div className="space-y-2 px-4 py-3 sm:px-5 sm:py-4">
           {daten && offene.length === 0 ? (
             <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
-              Alles erledigt. Das Cockpit prüft jeden Morgen neu — Aufrufe, Rankings, Saison und Konkurrenz.
+              Alles erledigt. Das Cockpit prüft jeden Morgen neu — Aufrufe, SEO-Score, Saison und Konkurrenz.
             </p>
           ) : null}
           {sichtbar.map((a) => (
@@ -355,7 +355,7 @@ export function EtsyCockpit({ verbunden, statusLaedt, onOeffnen }: Props) {
 
       <p className="px-1 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
         Läuft automatisch: jeden Morgen um 6 Uhr Aufrufe, Favoriten, Verkäufe und Konkurrenz messen · montags
-        KI-Vorschläge für Listings mit Einbruch, Ranking-Verlust oder schwachem Score vorbereiten. Gemerkte
+        KI-Vorschläge für Listings mit Aufruf-Einbruch oder schwachem Score vorbereiten. Gemerkte
         Keywords und die Tags der Top-Drechsler fließen automatisch in jeden KI-Check und jedes neue Listing ein.
       </p>
     </div>

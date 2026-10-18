@@ -1,5 +1,5 @@
 /**
- * Etsy-Cockpit: lädt alle Quellen (Listings, Messung, Verkäufe, Audit, Ranking,
+ * Etsy-Cockpit: lädt alle Quellen (Listings, Messung, Verkäufe, Audit,
  * Merkliste, Konkurrenz), baut daraus Aufgaben + KPIs + Wirkung und führt Aktionen aus.
  */
 
@@ -34,7 +34,6 @@ import { ladeEtsyListingDetail, ladeEtsyShopListings, updateEtsyListing } from '
 import { ETSY_SEO_TAG_COUNT, haerteEtsyListingFuerScore } from '@/lib/etsy/etsy-seo-regeln'
 import {
   ladeEtsyHauptbegriffe,
-  ladeEtsyRankVerluste,
   ladeEtsySeoCacheMap,
   ladeEtsySeoVorschlaege,
 } from '@/lib/etsy/etsy-seo-audit-cache'
@@ -118,7 +117,6 @@ export async function baueEtsyCockpit(ownerUserId: string, sbUser: SupabaseClien
     stat,
     scoreMap,
     vorschlaege,
-    rankVerluste,
     hauptbegriffe,
     merkRes,
     verkaufRes,
@@ -129,7 +127,6 @@ export async function baueEtsyCockpit(ownerUserId: string, sbUser: SupabaseClien
     ladeStatistik(ownerUserId, ab),
     ladeEtsySeoCacheMap(ownerUserId).catch(() => new Map()),
     ladeEtsySeoVorschlaege(ownerUserId, 'offen').catch(() => []),
-    ladeEtsyRankVerluste(ownerUserId).catch(() => []),
     ladeEtsyHauptbegriffe(ownerUserId).catch(() => new Map<number, string>()),
     admin
       .from('etsy_keyword_merkliste')
@@ -257,7 +254,7 @@ export async function baueEtsyCockpit(ownerUserId: string, sbUser: SupabaseClien
       before: { title: v.before?.title ?? '', tags: v.before?.tags ?? [] },
       after: { title: v.after?.title ?? '', tags: v.after?.tags ?? [] },
     })),
-    rankVerluste,
+    rankVerluste: [],
     hauptbegriffe,
     merkliste,
     konkurrenzTags,

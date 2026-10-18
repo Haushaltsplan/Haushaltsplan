@@ -685,7 +685,7 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
             <EtsyInfoHint
               info={{
                 was: 'Automatischer Scan: aus deinen Listings Suchfelder ableiten und mit Etsy/Google/Amazon abgleichen — so siehst du, welche Käuferphrasen bei dir fehlen.',
-                wie: '„Scan starten“ klicken, Tabelle lesen, starke Phrasen merken. Die Rank-Matrix unter „Meine Listings“ nutzt weiterhin die fünf festen Schalen-Begriffe.',
+                wie: '„Scan starten“ klicken, Tabelle lesen, starke Phrasen merken. Gute Treffer als Hauptbegriff oder Tag in „Meine Listings“ einbauen.',
                 gut: 'Chancen mit hoher Nachfrage und Status „fehlt“ oder „selten“ zuerst merken und später in Tags einbauen.',
                 achtung:
                   'Scan kann Minuten dauern und hängt von erreichbaren Suggest-APIs ab. Ergebnisse sind Signale, keine offiziellen Etsy-Suchvolumen.',

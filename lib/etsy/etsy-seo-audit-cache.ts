@@ -176,7 +176,7 @@ export async function speichereEtsyRankErgebnisse(opts: {
   if (hist.error) console.warn('[etsy-rank] historie:', hist.error.message)
 }
 
-/** Bisher getrackte Keywords je Listing = Fokus-Keywords für den Cron. */
+/** Bisher getrackte Keywords je Listing (Legacy Rank-Cache, ungenutzt). */
 export async function ladeEtsyFokusKeywords(ownerUserId: string): Promise<Map<number, string[]>> {
   const { data, error } = await createSupabaseAdmin()
     .from('etsy_seo_rank_cache')
