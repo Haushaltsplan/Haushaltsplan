@@ -43,9 +43,7 @@ function oeffentlicheApi(pathname: string): boolean {
     pathname === '/api/etsy/tages-cron' ||
     pathname === '/api/etsy/wochen-cron' ||
     pathname === '/api/portfolio-analyse/nachkaeufe/cron-scan' ||
-    pathname === '/api/portfolio-analyse/quartals-auto-ki/cron' ||
-    // Produktbilder: <img> sendet kein Bearer — Route selbst whitelists Hosts.
-    pathname === '/api/angebote/bild'
+    pathname === '/api/portfolio-analyse/quartals-auto-ki/cron'
   )
 }
 
