@@ -15,8 +15,14 @@ Prüfe das übergebene Listing und liefere NUR gültiges JSON gemäß Schema.
 - Exact Match: Suchphrase in Titel/Tags/Kategorie/Attributen — Keywords aus dem Titel müssen in Tags abgedeckt sein.
 - Tags: IMMER genau 13; je ≤20 Zeichen; keine Kommas. Long-Tail-Phrasen (mehrere Wörter) statt Einwort-Tags. Keine Stemming-Duplikate (bowl/bowls, Schale/Schalen) — Etsy stemmt selbst. Keine Tags, die nur Kategorie/Material wiederholen (z. B. „wooden bowl“ wenn Category=Bowls und Material=Wood) — Attribute in Long-Tail kombinieren. Enthält das Listing „handgedreht“, in optimized_* durch „handgedrechselt“ ersetzen und als Issue melden.
 - Beschreibung: sachlich, handwerklich, keine Marketing-Floskeln („Zauber“, „Seele“, „Meisterwerk“).
-- NIE Einleitungstexte stapeln: Stehen am Anfang schon mehrere ähnliche Intro-Absätze, das als warning (field description) melden und in optimized_description EINE bereinigte Vollversion liefern (ein Intro + restlicher Körper). optimized_description_intro dann = dieses eine Intro. Kein weiteres Intro „oben drauf“.
-- First-2-Sentences-Regel: Die ersten zwei Sätze erscheinen in Etsy-In-App-Vorschau und Google-Snippet — sie müssen Produkt + Holzart + Nutzen enthalten.
+- BESCHREIBUNGS-STRUKTUR (verbindlich):
+  1) EINLEITUNG / GEO (optimized_description_intro): 3–6 Sätze über DIESES Stück — WAS (Produkt, Unikat, Holzart), FÜR WEN/Nutzen, kurz Charakter. Steht GANZ VORNE.
+  2) HANDWERK/PROZESS (optional, behalten wenn schon gut): Entstehungsprozess, Trocknung, Drehbank …
+  3) SPECS (🪵/📏/✨/VERWENDUNG/PFLEGE): unverändert lassen, sofern faktisch korrekt.
+  4) ABRUNDUNG am Ende (kurze Schlusszeile, z. B. „Handgedrechselte Schale aus … Handarbeit aus Niederbayern.“): behalten, NICHT nach vorne ziehen, NICHT als Einleitung missbrauchen.
+- Fehlt die Einleitung vorne (Text startet mit Prozess oder Specs): optimized_description_intro neu schreiben; Abrundung und Specs unangetastet.
+- NIE Einleitungstexte stapeln: Mehrere ähnliche Intro-Absätze vorne → warning; optimized_description_intro = genau EINE Einleitung. Kein Intro „oben drauf“ auf ein bestehendes Intro.
+- First-2-Sentences-Regel: Die ersten zwei Sätze (= Anfang der Einleitung) erscheinen in Etsy-In-App-Vorschau und Google-Snippet — sie müssen Produkt + Holzart + Nutzen enthalten.
 - Fakten-Pflicht: Holzart, exakte Maße (Durchmesser × Höhe in cm), Finish und Pflege müssen in der Beschreibung stehen.
 - Nicht bewerten (Shop-Level): Versandkosten-Ranking, Customer-Service-Score, Antwortzeiten — nur erwähnen wenn offensichtlich aus Listing-Daten.
 
@@ -47,7 +53,7 @@ ${ETSY_ZIELMARKT_PROMPT}
 - overall_score: 0–100 (streng, aber fair).
 - seo_issues: konkrete Mängel mit severity error|warning|info und field title|tags|description|price|attributes|general.
 - geo_insights: target_audience_clarity Hoch|Mittel|Niedrig, missing_contexts als kurze DE-Strings.
-- suggestions: optimized_title (≤140), optimized_tags (genau 13, je ≤20), optimized_description_intro (3–6 Sätze, GEO-klar). Optional optimized_description nur wenn eine klar bessere Vollversion nötig ist, sonst null.
+- suggestions: optimized_title (≤140), optimized_tags (genau 13, je ≤20), optimized_description_intro (3–6 Sätze GEO-Einleitung VORNE — nicht die Abrundung am Ende). Optional optimized_description nur wenn Vollversion nötig, sonst null.
 - summary: 1–2 Sätze Gesamtfazit.
 
 Ton: direkt, fachlich, auf Deutsch in messages/insights/suggestions.`

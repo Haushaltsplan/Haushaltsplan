@@ -42,7 +42,7 @@ export async function POST(req: Request) {
         const { listing } = await ladeEtsyListingDetail(user.id, kurz.listingId)
         const basis = normalisiereDrechselSprache(listing.description.trim())
         const { cleaned, entfernt } = entferneGestapelteBeschreibungsIntros(basis)
-        if (entfernt <= 0 || cleaned === basis) {
+        if (cleaned === basis) {
           unveraendert++
           continue
         }

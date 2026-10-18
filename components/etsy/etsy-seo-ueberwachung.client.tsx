@@ -1,7 +1,10 @@
 'use client'
 
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
-import { zaehleGestapelteIntros } from '@/lib/etsy/etsy-beschreibung-intro'
+import {
+  brauchtBeschreibungBereinigung,
+  fehltProduktEinleitungVorne,
+} from '@/lib/etsy/etsy-beschreibung-intro'
 import { baueEtsySeoDiff, type EtsySeoDiffZeile } from '@/lib/etsy/etsy-seo-diff'
 import type {
   EtsySeoAuditResult,
@@ -75,6 +78,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
   const [batchProgress, setBatchProgress] = useState('')
   const [tagsReparaturBusy, setTagsReparaturBusy] = useState(false)
   const [introsBusy, setIntrosBusy] = useState(false)
+  const [einleitungenBusy, setEinleitungenBusy] = useState(false)
   const [handwerkBusy, setHandwerkBusy] = useState(false)
   const [handgedrehtAnzahl, setHandgedrehtAnzahl] = useState(0)
 
@@ -445,6 +449,55 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     }
   }
 
+  async function setzeAlleEinleitungen() {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        'GEO-Einleitungen für alle Listings ohne Einleitung vorne automatisch setzen?\n\n' +
+          'Pro Listing: KI schreibt eine Einleitung über die Schale und setzt sie vor Prozess/Specs. ' +
+          'Abrundung am Ende, Titel und Tags bleiben.\n\n' +
+          'Max. ca. 12 Listings pro Lauf (KI) — Button ggf. mehrfach klicken. Dauert einige Minuten.',
+      )
+    ) {
+      return
+    }
+    setEinleitungenBusy(true)
+    setBatchProgress('Setze GEO-Einleitungen (KI, bitte warten)…')
+    try {
+      const res = await fetch('/api/etsy/listings/einleitungen-setzen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ state: stateFilter }),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        gesetzt?: number
+        uebersprungen?: number
+        fehlgeschlagen?: number
+        geprueft?: number
+        hinweis?: string
+      }
+      if (!res.ok) {
+        toast.error(j.error ?? 'Einleitungen setzen fehlgeschlagen.')
+        return
+      }
+      toast.success(
+        `${j.gesetzt ?? 0} Einleitung${(j.gesetzt ?? 0) === 1 ? '' : 'en'} gesetzt` +
+          (j.uebersprungen ? ` · ${j.uebersprungen} schon ok` : '') +
+          (j.fehlgeschlagen ? ` · ${j.fehlgeschlagen} Fehler` : ''),
+        { duration: 6000 },
+      )
+      if (j.hinweis) toast(j.hinweis, { icon: '⏳', duration: 8000 })
+      void ladeListings()
+      if (selectedId) void starteAudit(selectedId, true)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Einleitungen setzen fehlgeschlagen')
+    } finally {
+      setEinleitungenBusy(false)
+      setBatchProgress('')
+    }
+  }
+
   async function repariereAlleTags() {
     const n = listings.filter(hatUnvollstaendigeTags).length
     if (!n) {
@@ -705,7 +758,9 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </select>
             <button
               type="button"
-              disabled={loadingList || batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy}
+              disabled={
+                loadingList || batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy || einleitungenBusy
+              }
               onClick={() => void ladeListings()}
               className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm"
             >
@@ -713,15 +768,23 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </button>
             <button
               type="button"
-              disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy}
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy || einleitungenBusy}
+              onClick={() => void setzeAlleEinleitungen()}
+              className="rounded-xl bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50"
+            >
+              {einleitungenBusy ? 'Setze Einleitungen (KI)…' : 'Einleitungen für alle setzen'}
+            </button>
+            <button
+              type="button"
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy || einleitungenBusy}
               onClick={() => void bereinigeAlleIntros()}
-              className="rounded-xl bg-rose-700 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-50"
+              className="rounded-xl border border-rose-500/50 px-3 py-2 text-sm font-medium text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
             >
               {introsBusy ? 'Bereinige Intros…' : 'Gestapelte Intros entfernen'}
             </button>
             <button
               type="button"
-              disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy}
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy || einleitungenBusy}
               onClick={() => void batchScan(false)}
               className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
             >
@@ -729,7 +792,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </button>
             <button
               type="button"
-              disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy}
+              disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy || einleitungenBusy}
               onClick={() => void batchScan(true)}
               className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm disabled:opacity-50"
             >
@@ -738,7 +801,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             {(handgedrehtAnzahl > 0 || handwerkBusy) && (
               <button
                 type="button"
-                disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
+                disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy || einleitungenBusy}
                 onClick={() => void schreibeHandwerkSpracheUm()}
                 className="rounded-xl bg-amber-700 px-3 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-50"
               >
@@ -750,7 +813,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             {scoreStats.tagsFehlen > 0 && (
               <button
                 type="button"
-                disabled={batchBusy || tagsReparaturBusy || handwerkBusy}
+                disabled={batchBusy || tagsReparaturBusy || handwerkBusy || introsBusy || einleitungenBusy}
                 onClick={() => void repariereAlleTags()}
                 className="rounded-xl bg-rose-700 px-3 py-2 text-sm font-medium text-white hover:bg-rose-600 disabled:opacity-50"
               >
@@ -760,12 +823,12 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
               </button>
             )}
           </div>
-          <div className="rounded-xl border border-rose-500/50 bg-rose-500/15 px-3 py-3 text-sm text-rose-50">
-            <p className="font-semibold">Doppelte Einleitungstexte?</p>
-            <p className="mt-1 text-xs text-rose-100/90">
-              Wenn die Beschreibung mehrere ähnliche Intros hintereinander hat: oben auf{' '}
-              <strong>„Gestapelte Intros entfernen“</strong> klicken (rot). Bereinigt alle aktiven Listings auf
-              Etsy — ohne Titel/Tags anzufassen.
+          <div className="rounded-xl border border-amber-500/50 bg-amber-500/15 px-3 py-3 text-sm text-amber-50">
+            <p className="font-semibold">Einleitung fehlt bei (fast) allen?</p>
+            <p className="mt-1 text-xs text-amber-100/90">
+              Oranger Button <strong>„Einleitungen für alle setzen“</strong>: KI schreibt pro Listing eine
+              GEO-Einleitung über die Schale und setzt sie vor Prozess/Specs. Abrundung am Ende bleibt. Max. ~12
+              pro Lauf — bei Bedarf erneut klicken.
             </p>
           </div>
           {handgedrehtAnzahl > 0 && (
@@ -1072,13 +1135,31 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
               )}
             </div>
 
-            {listing && zaehleGestapelteIntros(listing.description) >= 1 && (
-              <div className="rounded-xl border border-rose-500/60 bg-rose-500/20 p-3">
-                <p className="text-sm font-semibold text-rose-100">
-                  Diese Beschreibung hat gestapelte Einleitungstexte
+            {listing && fehltProduktEinleitungVorne(listing.description) && (
+              <div className="rounded-xl border border-amber-500/50 bg-amber-500/15 p-3">
+                <p className="text-sm font-semibold text-amber-100">
+                  GEO-Einleitung vorne fehlt
                 </p>
+                <p className="mt-1 text-xs text-amber-100/85">
+                  Der Text startet mit Handwerk/Specs — die Abrundung am Ende ist ok. Bitte „Keywords &
+                  Beschreibung neu generieren“, GEO-Intro prüfen, dann <strong>„Intro ersetzen“</strong> (einmal,
+                  ohne Stapeln).
+                </p>
+                <button
+                  type="button"
+                  disabled={busy || introsBusy}
+                  onClick={() => selectedId && void starteAudit(selectedId, true)}
+                  className="mt-2 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white hover:bg-amber-500"
+                >
+                  {busyKind === 'optimize' ? 'Generiert…' : 'Einleitung jetzt neu generieren'}
+                </button>
+              </div>
+            )}
+            {listing && brauchtBeschreibungBereinigung(listing.description) && (
+              <div className="rounded-xl border border-rose-500/60 bg-rose-500/20 p-3">
+                <p className="text-sm font-semibold text-rose-100">Gestapelte Einleitungen vorne</p>
                 <p className="mt-1 text-xs text-rose-100/85">
-                  Ein Klick entfernt die doppelten Intros auf Etsy und lässt den eigentlichen Text stehen.
+                  Doppelte Intro-Absätze entfernen. Abrundung am Ende und Specs bleiben.
                 </p>
                 <button
                   type="button"

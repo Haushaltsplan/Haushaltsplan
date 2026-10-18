@@ -33,6 +33,12 @@
     "app/api/etsy/listings/batch-audit/route.ts": {
       "maxDuration": 300
     },
+    "app/api/etsy/listings/einleitungen-setzen/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/etsy/listings/intros-bereinigen/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/etsy/seo-cron/route.ts": {
       "maxDuration": 300
     },

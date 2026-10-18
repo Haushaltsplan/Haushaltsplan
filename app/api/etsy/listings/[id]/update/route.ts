@@ -114,7 +114,7 @@ export async function POST(req: Request, ctx: Ctx) {
       const r = entferneGestapelteBeschreibungsIntros(basis)
       description = r.cleaned
       entfernt = r.entfernt
-      if (entfernt <= 0) {
+      if (r.cleaned === basis) {
         return NextResponse.json({
           ok: true,
           listing: vorher,
