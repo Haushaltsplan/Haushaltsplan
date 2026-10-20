@@ -12,6 +12,7 @@ import type { FundamentaldatenPaket, MantraAmpel } from '@/lib/portfolio-analyse
 import { generiereMoatKiClient, ladeMoatKiClient } from '@/lib/portfolio-analyse/moat-ki-client'
 import {
   MOAT_KAUF_MIN_SCORE,
+  MOAT_TIEF_SCORE,
   type MoatKiBewertung,
 } from '@/lib/portfolio-analyse/moat-ki-types'
 
@@ -301,8 +302,8 @@ function MoatKiPanel({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-violet-200">KI-Moat · Geschäftsmodell & Unzerstörbarkeit</p>
           <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
-            Free-Tier Gemini, skeptisch kalibriert. Kauf nur bei tiefem Moat (Score ≥ {MOAT_KAUF_MIN_SCORE},
-            Regel-Burggraben ≥ 7, kein Sell-Trigger-Warnung).
+            Free-Tier Gemini, skeptisch kalibriert. Quality-Kauf ab Moat-Score ≥ {MOAT_KAUF_MIN_SCORE}
+            (ab {MOAT_TIEF_SCORE} = „tief“), Regel-Burggraben ≥ 7, kein Sell-Trigger-Warnung.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -336,7 +337,11 @@ function MoatKiPanel({
             }`}
           >
             <p className="text-sm font-semibold">
-              {disziplinOk ? 'Tiefes Moat — Quality-Kauf möglich' : 'Kein Kauf — Moat zu schwach / unsicher'}
+              {disziplinOk
+                ? (moat.score ?? 0) >= MOAT_TIEF_SCORE
+                  ? 'Tiefes Moat — Quality-Kauf möglich'
+                  : 'Solides Moat — Quality-Kauf möglich'
+                : 'Kein Kauf — Moat zu schwach / unsicher'}
             </p>
             <p className="mt-1 text-[11px] opacity-90">
               KI {moat.score}/10 ({moat.urteil}) · Regel-Burggraben{' '}

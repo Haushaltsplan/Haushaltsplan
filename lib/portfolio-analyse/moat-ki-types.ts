@@ -37,7 +37,11 @@ export type MoatKiBewertung = {
   kiModell: string | null
 }
 
-export const MOAT_KAUF_MIN_SCORE = 8
+/** Gesamtscore für Quality-Kauf — 7 reicht (skeptische KI straft CapEx/Investitionsphasen oft ab). */
+export const MOAT_KAUF_MIN_SCORE = 7
 export const MOAT_KAUF_MIN_PFEILER = 6
 export const MOAT_KAUF_MIN_STARKE_PFEILER = 2
-export const MOAT_KAUF_STARKE_SCHWELLE = 8
+/** „Starker“ Pfeiler ab 7 — nicht erst ab 8. */
+export const MOAT_KAUF_STARKE_SCHWELLE = 7
+/** Ab hier UI-Label „tiefes Moat“ (darüber hinaus nur Nuance). */
+export const MOAT_TIEF_SCORE = 8

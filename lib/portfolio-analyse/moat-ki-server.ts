@@ -126,9 +126,12 @@ function disziplinAusPfeilern(pfeiler: MoatPfeilerBewertung[]): {
     score >= MOAT_KAUF_MIN_SCORE && minOk && starke >= MOAT_KAUF_MIN_STARKE_PFEILER
 
   if (kaufwuerdig) {
+    const tief = score >= 8
     return {
       kaufwuerdig: true,
-      kaufHinweis: `Tiefes Moat (Score ${score}/10) — für Quality-Kauf geeignet, sofern Bewertung passt.`,
+      kaufHinweis: tief
+        ? `Tiefes Moat (Score ${score}/10) — für Quality-Kauf geeignet, sofern Bewertung passt.`
+        : `Solides Moat (Score ${score}/10) — Quality-Kauf ok; CapEx/Investitionsphasen allein sind kein KO.`,
       score,
     }
   }

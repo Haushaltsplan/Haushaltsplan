@@ -62,7 +62,10 @@ Plattform-Zusatz (wenn SaaS/Netzwerk): ${MOAT_CHECK_PLATTFORM_ZUSATZ}
 Bias: Im Zweifel niedriger scoren. Marketing-Floskeln („Innovation“, „Ökosystem“) ohne strukturellen Beweis zählen nicht.
 
 ## kaufwuerdig
-Nur true, wenn Gesamtscore ≥ 8 UND alle Pfeiler ≥ 6 UND mindestens zwei Pfeiler ≥ 8.
+true, wenn Gesamtscore ≥ 7 UND alle Pfeiler ≥ 6 UND mindestens zwei Pfeiler ≥ 7.
+Hinweis: Hohe Reinvestitionen / KI-CapEx allein machen ein intaktes Moat nicht ungültig —
+nur echte Erosion (Preissetzung weg, Wechselkosten weg, Markt offen) senkt den Score unter 7.
+urteil „tief“ ab Score ≥ 8, „moderat“ bei 6–7 (7 kann trotzdem kaufwürdig sein).
 Sonst false mit klarem kaufHinweis.
 
 ## Sprache
