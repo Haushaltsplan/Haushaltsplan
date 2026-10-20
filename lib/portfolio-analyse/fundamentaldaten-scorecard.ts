@@ -34,8 +34,20 @@ export type ScorecardBalkenId =
   | 'fwdWachstum'
   | 'nrr'
   | 'roic'
+  | 'bruttomarge'
+  | 'bruttoStabilitaet'
+  | 'moatErosion'
+  | 'renditeVerfall'
+  | 'wachstumSubstanz'
+  | 'roic5y'
+  | 'incrementalRoic'
+  | 'mantraQualitaet'
 
-export type ScorecardStrategieId = 'dividendenertrag' | 'dividendenwachstum' | 'gewinnwachstum'
+export type ScorecardStrategieId =
+  | 'dividendenertrag'
+  | 'dividendenwachstum'
+  | 'gewinnwachstum'
+  | 'burggraben'
 
 export type ScorecardBalken = {
   id: ScorecardBalkenId
@@ -117,6 +129,23 @@ const ANZEIGE_BALKEN: Record<ScorecardStrategieId, ScorecardBalkenId[]> = {
     'discount',
     'nrr',
   ],
+  /**
+   * Burggraben & Modell-Unzerstörbarkeit:
+   * Preissetzungsmacht, Sell-Trigger (Moat/Rendite/Substanz), sticky Revenue (NRR),
+   * dauerhafte Kapitalrendite — nicht nochmal Dividenden-/Wachstums-Score.
+   */
+  burggraben: [
+    'bruttomarge',
+    'bruttoStabilitaet',
+    'moatErosion',
+    'nrr',
+    'roic5y',
+    'renditeVerfall',
+    'incrementalRoic',
+    'wachstumSubstanz',
+    'fcfConversion',
+    'mantraQualitaet',
+  ],
 }
 
 /** Gewicht nur der angezeigten Balken — Summe je Strategie ≈ 1. */
@@ -149,6 +178,18 @@ const GEWICHTE: Record<ScorecardStrategieId, Partial<Record<ScorecardBalkenId, n
     fwdWachstum: 0.1,
     discount: 0.08,
     nrr: 0.08,
+  },
+  burggraben: {
+    bruttomarge: 0.14,
+    bruttoStabilitaet: 0.14,
+    moatErosion: 0.16,
+    nrr: 0.1,
+    roic5y: 0.12,
+    renditeVerfall: 0.12,
+    incrementalRoic: 0.08,
+    wachstumSubstanz: 0.06,
+    fcfConversion: 0.05,
+    mantraQualitaet: 0.03,
   },
 }
 
@@ -514,6 +555,86 @@ function baueBalken(paket: FundamentaldatenPaket): ScorecardBalken[] {
   const payoutPosErtrag =
     keineDividende ? 0 : payoutZahl != null ? tent(payoutZahl, 8, 40, 82) : null
 
+  const bruttoZahl = kmZahl(paket, 'ltm_brutto')
+  const bruttoText = kmText(paket, 'ltm_brutto')
+  const scheinBrutto = bruttoZahl != null && bruttoZahl >= 99.5
+  let bruttoPos: number | null = null
+  let bruttoWert = bruttoText ?? '–'
+  let bruttoLeer: string | null = null
+  if (scheinBrutto) {
+    bruttoWert = `${fmtPct(bruttoZahl)} (Schein)`
+    bruttoLeer = 'keine echte COGS-Marge'
+  } else if (bruttoZahl != null) {
+    bruttoPos = linear(bruttoZahl, 35, 65)
+  } else {
+    bruttoLeer = 'keine Bruttomarge'
+  }
+
+  const bruttoStd = kmZahl(paket, 'brutto_std_10y')
+  const bruttoStdText = kmText(paket, 'brutto_std_10y')
+  let bruttoStabPos: number | null = null
+  let bruttoStabWert = bruttoStdText ?? '–'
+  let bruttoStabLeer: string | null = null
+  if (scheinBrutto) {
+    bruttoStabLeer = 'Schein-Brutto — Stabilität nicht bewertbar'
+  } else if (bruttoStd != null) {
+    // Niedrige StdAbw. = Pricing Power / Burggraben
+    bruttoStabPos = clamp01(1 - bruttoStd / 8)
+  } else {
+    bruttoStabLeer = 'keine Bruttomarge-Historie'
+  }
+
+  const roic5yZahl = kmZahl(paket, 'roic_5y_avg')
+  const roic5yText = kmText(paket, 'roic_5y_avg')
+  const roic5yPos = roic5yZahl == null ? null : linear(roic5yZahl, 8, 28)
+
+  const iRoicZahl = kmZahl(paket, 'incremental_roic')
+  const iRoicText = kmText(paket, 'incremental_roic')
+  const iRoicPos = iRoicZahl == null ? null : linear(iRoicZahl, 8, 35)
+
+  const watch = paket.mantra?.sellTriggerWatch ?? []
+  const moatWatch = watch.find((t) => t.id === 'burggraben-erosion')
+  const renditeWatch = watch.find((t) => t.id === 'rendite-verfall')
+  const wachstumWatch = watch.find((t) => t.id === 'kuenstliches-wachstum')
+
+  const sellPos = (status: string | undefined): number | null => {
+    if (status === 'ok') return 1
+    if (status === 'beobachten') return 0.4
+    if (status === 'warnung') return 0.05
+    return null
+  }
+  const sellLabel = (status: string | undefined): string => {
+    if (status === 'ok') return 'intakt'
+    if (status === 'beobachten') return 'beobachten'
+    if (status === 'warnung') return 'Warnung'
+    return '–'
+  }
+  const sellKurz = (begr: string | undefined, max = 72): string | null => {
+    const t = begr?.trim()
+    if (!t) return null
+    return t.length <= max ? t : `${t.slice(0, max - 1).trimEnd()}…`
+  }
+
+  const moatPos = sellPos(moatWatch?.status)
+  const moatWert = moatWatch ? sellLabel(moatWatch.status) : '–'
+  const moatLeer = moatPos == null ? 'Moat-Trigger ohne Daten' : null
+
+  const renditeVerfallPos = sellPos(renditeWatch?.status)
+  const renditeVerfallWert = renditeWatch ? sellLabel(renditeWatch.status) : '–'
+  const renditeVerfallLeer = renditeVerfallPos == null ? 'Rendite-Trigger ohne Daten' : null
+
+  const wachstumSubstanzPos = sellPos(wachstumWatch?.status)
+  const wachstumSubstanzWert = wachstumWatch ? sellLabel(wachstumWatch.status) : '–'
+  const wachstumSubstanzLeer = wachstumSubstanzPos == null ? 'Wachstums-Trigger ohne Daten' : null
+
+  const mantraPct = paket.mantra?.ampelScorePct ?? null
+  const mantraAmpel = paket.mantra?.ampel ?? null
+  const mantraPos = mantraPct == null ? null : clamp01(mantraPct / 100)
+  const mantraWert =
+    mantraPct != null
+      ? `${mantraPct.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %${mantraAmpel ? ` · ${mantraAmpel}` : ''}`
+      : '–'
+
   const werte: Record<ScorecardBalkenId, Omit<ScorecardBalken, 'id'>> = {
     gewinnstabilitaet: {
       label: stabJahre != null ? `Gewinnstabilität ${stabJahre}J` : 'Gewinnstabilität',
@@ -640,6 +761,54 @@ function baueBalken(paket: FundamentaldatenPaket): ScorecardBalken[] {
       position: roicPos,
       leergrund: roicPos == null ? 'kein ROIC' : null,
     },
+    bruttomarge: {
+      label: 'Preissetzungsmacht',
+      wertText: bruttoWert,
+      position: bruttoPos,
+      leergrund: bruttoLeer,
+    },
+    bruttoStabilitaet: {
+      label: 'Marge-Stabilität',
+      wertText: bruttoStabWert,
+      position: bruttoStabPos,
+      leergrund: bruttoStabLeer,
+    },
+    moatErosion: {
+      label: 'Burggraben-Status',
+      wertText: moatWert,
+      position: moatPos,
+      leergrund: moatLeer ?? sellKurz(moatWatch?.begruendung),
+    },
+    renditeVerfall: {
+      label: 'Rendite-Verfall',
+      wertText: renditeVerfallWert,
+      position: renditeVerfallPos,
+      leergrund: renditeVerfallLeer ?? sellKurz(renditeWatch?.begruendung),
+    },
+    wachstumSubstanz: {
+      label: 'Wachstums-Substanz',
+      wertText: wachstumSubstanzWert,
+      position: wachstumSubstanzPos,
+      leergrund: wachstumSubstanzLeer ?? sellKurz(wachstumWatch?.begruendung),
+    },
+    roic5y: {
+      label: 'ROIC 5J (Modell)',
+      wertText: roic5yText ?? '–',
+      position: roic5yPos,
+      leergrund: roic5yPos == null ? 'kein hist. ROIC' : null,
+    },
+    incrementalRoic: {
+      label: 'Reinvest-Rendite',
+      wertText: iRoicText ?? '–',
+      position: iRoicPos,
+      leergrund: iRoicPos == null ? 'kein iROIC' : null,
+    },
+    mantraQualitaet: {
+      label: 'Mantra gesamt',
+      wertText: mantraWert,
+      position: mantraPos,
+      leergrund: mantraPos == null ? 'kein Mantra-Score' : null,
+    },
   }
 
   return (Object.keys(werte) as ScorecardBalkenId[]).map((id) => ({ id, ...werte[id] }))
@@ -649,6 +818,7 @@ const STRATEGIE_TITEL: Record<ScorecardStrategieId, string> = {
   dividendenertrag: 'Dividendenertrag',
   dividendenwachstum: 'Dividendenwachstum',
   gewinnwachstum: 'Gewinnwachstum',
+  burggraben: 'Burggraben',
 }
 
 export function baueScorecard(paket: FundamentaldatenPaket, isin?: string | null): ScorecardModell {
@@ -657,8 +827,14 @@ export function baueScorecard(paket: FundamentaldatenPaket, isin?: string | null
   const keineDiv = keineDividendePaket(paket)
   const gj = zaehleGeschaeftsjahre(paket.perioden)
   const stufe = horizontStufe(gj)
+  const moatHinweis = (() => {
+    const w = paket.mantra?.sellTriggerWatch?.find((t) => t.id === 'burggraben-erosion')
+    const t = w?.begruendung?.trim()
+    if (!t) return null
+    return t.length <= 110 ? t : `${t.slice(0, 109).trimEnd()}…`
+  })()
   const strategien: ScorecardStrategie[] = (
-    ['dividendenertrag', 'dividendenwachstum', 'gewinnwachstum'] as const
+    ['dividendenertrag', 'dividendenwachstum', 'gewinnwachstum', 'burggraben'] as const
   ).map((id) => {
     const balken = ANZEIGE_BALKEN[id].flatMap((bid) => {
       const b = byId.get(bid)
@@ -672,7 +848,12 @@ export function baueScorecard(paket: FundamentaldatenPaket, isin?: string | null
       titel: STRATEGIE_TITEL[id],
       score: keineDiv && dividendenspalte ? 0 : score1bis10(balken, GEWICHTE[id]),
       balken,
-      hinweis: keineDiv && dividendenspalte ? 'Keine Dividende' : null,
+      hinweis:
+        keineDiv && dividendenspalte
+          ? 'Keine Dividende'
+          : id === 'burggraben'
+            ? moatHinweis
+            : null,
     }
   })
 

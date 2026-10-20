@@ -9,6 +9,11 @@ import {
   type ScorecardStrategieId,
 } from '@/lib/portfolio-analyse/fundamentaldaten-scorecard'
 import type { FundamentaldatenPaket, MantraAmpel } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { generiereMoatKiClient, ladeMoatKiClient } from '@/lib/portfolio-analyse/moat-ki-client'
+import {
+  MOAT_KAUF_MIN_SCORE,
+  type MoatKiBewertung,
+} from '@/lib/portfolio-analyse/moat-ki-types'
 
 const AMPEL_CLASS: Record<MantraAmpel, string> = {
   gruen: 'bg-emerald-500/20 text-emerald-300 ring-emerald-500/40',
@@ -40,6 +45,11 @@ const STRATEGIE_TINT: Record<ScorecardStrategieId, { head: string; bar: string; 
     bar: 'text-emerald-400',
     score: 'text-emerald-300',
   },
+  burggraben: {
+    head: 'bg-violet-500/15 text-violet-200',
+    bar: 'text-violet-400',
+    score: 'text-violet-300',
+  },
 }
 
 const BALKEN_SEGMENTE = 12
@@ -62,7 +72,7 @@ function ScoreBalken({ balken, tint }: { balken: ScorecardBalken; tint: string }
           />
         ))}
       </div>
-      {balken.position == null && balken.leergrund ? (
+      {balken.leergrund ? (
         <p className="text-[9px] leading-tight text-[var(--app-text-muted)]/80">{balken.leergrund}</p>
       ) : null}
     </div>
@@ -235,6 +245,154 @@ function baueRenditeZeilen(
   return out
 }
 
+const PFEILER_LABEL: Record<string, string> = {
+  preissetzungsmacht: 'Preissetzung',
+  replikationsbarriere: 'Replikation',
+  wechselkosten: 'Wechselkosten',
+  marktdichte: 'Marktdichte',
+}
+
+function MoatKiPanel({
+  paket,
+  isin,
+  regelBurggrabenScore,
+}: {
+  paket: FundamentaldatenPaket
+  isin?: string | null
+  regelBurggrabenScore: number | null
+}) {
+  const ticker = (paket.symbolYahoo?.split('.')[0] || paket.ticker).trim().toUpperCase()
+  const [moat, setMoat] = useState<MoatKiBewertung | null>(null)
+  const [laden, setLaden] = useState(false)
+  const [fehler, setFehler] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setMoat(null)
+    setFehler(null)
+    void ladeMoatKiClient(ticker).then((b) => {
+      if (!cancelled) setMoat(b)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [ticker])
+
+  async function starte(erzwingen: boolean) {
+    setLaden(true)
+    setFehler(null)
+    const res = await generiereMoatKiClient({ ticker, paket, isin, erzwingen })
+    setLaden(false)
+    if (!res.ok) {
+      setFehler(res.fehler)
+      return
+    }
+    setMoat(res.bewertung)
+  }
+
+  const regelOk = regelBurggrabenScore != null && regelBurggrabenScore >= 7
+  const kiOk = moat?.kaufwuerdig === true && (moat.score ?? 0) >= MOAT_KAUF_MIN_SCORE
+  const sellWarnung = (paket.mantra?.sellTriggerWatch ?? []).some((w) => w.status === 'warnung')
+  const disziplinOk = Boolean(moat && kiOk && regelOk && !sellWarnung)
+
+  return (
+    <div className="space-y-3 border-t border-[var(--app-border)] bg-violet-500/[0.04] px-4 py-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-violet-200">KI-Moat · Geschäftsmodell & Unzerstörbarkeit</p>
+          <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
+            Free-Tier Gemini, skeptisch kalibriert. Kauf nur bei tiefem Moat (Score ≥ {MOAT_KAUF_MIN_SCORE},
+            Regel-Burggraben ≥ 7, kein Sell-Trigger-Warnung).
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={laden}
+            onClick={() => void starte(!moat)}
+            className="rounded-lg bg-violet-500/25 px-3 py-1.5 text-[11px] font-semibold text-violet-100 ring-1 ring-violet-400/30 disabled:opacity-50"
+          >
+            {laden ? 'KI prüft …' : moat ? 'Moat neu bewerten' : 'KI-Moat prüfen'}
+          </button>
+        </div>
+      </div>
+
+      {fehler ? <p className="text-[11px] text-rose-300">{fehler}</p> : null}
+
+      {!moat && !laden ? (
+        <p className="text-[12px] text-[var(--app-text-muted)]">
+          Noch keine KI-Bewertung. Ein Klick bewertet Wechselkosten, Replikation, Preissetzung und
+          Marktdichte — und sagt klar, ob der Titel für einen strengen Moat-Kauf taugt.
+        </p>
+      ) : null}
+
+      {moat ? (
+        <>
+          <div
+            className={`rounded-lg px-3 py-2.5 ring-1 ${
+              disziplinOk
+                ? 'bg-emerald-500/15 text-emerald-100 ring-emerald-500/35'
+                : 'bg-rose-500/10 text-rose-100 ring-rose-500/30'
+            }`}
+          >
+            <p className="text-sm font-semibold">
+              {disziplinOk ? 'Tiefes Moat — Quality-Kauf möglich' : 'Kein Kauf — Moat zu schwach / unsicher'}
+            </p>
+            <p className="mt-1 text-[11px] opacity-90">
+              KI {moat.score}/10 ({moat.urteil}) · Regel-Burggraben{' '}
+              {regelBurggrabenScore != null ? `${regelBurggrabenScore}/10` : '–'}
+              {sellWarnung ? ' · Sell-Trigger Warnung' : ''}
+            </p>
+            <p className="mt-1 text-[11px] opacity-90">{moat.kaufHinweis}</p>
+          </div>
+
+          <p className="text-[12px] text-[var(--app-text)]">
+            <span className="text-[var(--app-text-muted)]">Modell: </span>
+            {moat.geschaeftsmodell}
+          </p>
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {moat.pfeiler.map((p) => (
+              <div
+                key={p.id}
+                className="rounded-lg bg-[var(--app-bg)]/50 px-3 py-2 ring-1 ring-white/[0.04]"
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-[11px] text-[var(--app-text-muted)]">
+                    {PFEILER_LABEL[p.id] ?? p.id}
+                  </span>
+                  <span
+                    className={`text-lg font-bold tabular-nums ${
+                      p.score >= 8 ? 'text-emerald-300' : p.score >= 6 ? 'text-amber-200' : 'text-rose-300'
+                    }`}
+                  >
+                    {p.score}
+                  </span>
+                </div>
+                <p className="mt-1 text-[10px] leading-snug text-[var(--app-text)]">{p.begruendung}</p>
+                <p className="mt-1 text-[10px] leading-snug text-rose-200/80">Risiko: {p.risiko}</p>
+              </div>
+            ))}
+          </div>
+
+          {moat.zerstoerungsszenarien.length > 0 ? (
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
+                Was den Burggraben zerstören könnte
+              </p>
+              <ul className="mt-1 list-inside list-disc text-[11px] text-[var(--app-text)]">
+                {moat.zerstoerungsszenarien.map((z) => (
+                  <li key={z}>{z}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </div>
+  )
+}
+
 export function PaFundamentalScorecard({
   paket,
   isin,
@@ -244,6 +402,8 @@ export function PaFundamentalScorecard({
 }) {
   const modell = useMemo(() => baueScorecard(paket, isin), [paket, isin])
   const [renditen, setRenditen] = useState<{ label: string; pct: number }[]>([])
+  const burggrabenScore =
+    modell.strategien.find((s) => s.id === 'burggraben')?.score ?? null
 
   useEffect(() => {
     const sym = paket.symbolYahoo
@@ -282,16 +442,17 @@ export function PaFundamentalScorecard({
 
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] ring-1 ring-white/[0.03]">
-      <div className="grid divide-y divide-[var(--app-border)] lg:grid-cols-4 lg:divide-x lg:divide-y-0">
+      <div className="grid divide-y divide-[var(--app-border)] xl:grid-cols-5 xl:divide-x xl:divide-y-0">
         <FirmaSpalte firma={modell.firma} renditen={renditen} historieBadge={modell.historie.badge} />
         {modell.strategien.map((s) => (
           <StrategieSpalte key={s.id} strategie={s} />
         ))}
       </div>
+      <MoatKiPanel paket={paket} isin={isin} regelBurggrabenScore={burggrabenScore} />
       <p className="border-t border-[var(--app-border)] px-4 py-2 text-[10px] text-[var(--app-text-muted)]">
-        {modell.historie.fussnote} Qualität 1–10 nur aus vorhandenen Balken der jeweiligen
-        Strategie (Ertrag: Rendite + FCF-Deckung + Bilanz; Wachstum: Conversion + Verwässerung;
-        Gewinn: Umsatz/ROIC/Forward). Fehlende Werte zählen nicht als 0.
+        {modell.historie.fussnote} Regel-Scores aus Kennzahlen; KI-Moat bewertet Geschäftsmodell und
+        qualitative Burggräben (gecacht). Disziplin: nur „Tiefes Moat“ + starke Regel-Spalte.
+        Fehlende Regelwerte zählen nicht als 0.
       </p>
     </div>
   )
