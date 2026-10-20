@@ -61,6 +61,12 @@ export const YOUTUBE_CREATORS: readonly YoutubeCreator[] = [
   },
   // —— English ——
   {
+    channelId: 'UC1nSthXmriGmX8HagFgm0Ag',
+    name: 'Christophe Nour - The French Investor',
+    handle: '@christophenour',
+    sprache: 'en',
+  },
+  {
     channelId: 'UCfCT7SSFEWyG4th9ZmaGYqQ',
     name: 'Joseph Carlson After Hours',
     handle: '@JosephCarlsonAfterHours',
