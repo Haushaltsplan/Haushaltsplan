@@ -282,13 +282,18 @@ function MoatKiPanel({
   async function starte(erzwingen: boolean) {
     setLaden(true)
     setFehler(null)
-    const res = await generiereMoatKiClient({ ticker, paket, isin, erzwingen })
-    setLaden(false)
-    if (!res.ok) {
-      setFehler(res.fehler)
-      return
+    try {
+      const res = await generiereMoatKiClient({ ticker, paket, isin, erzwingen })
+      if (!res.ok) {
+        setFehler(res.fehler)
+        return
+      }
+      setMoat(res.bewertung)
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : 'Moat-KI fehlgeschlagen')
+    } finally {
+      setLaden(false)
     }
-    setMoat(res.bewertung)
   }
 
   const regelOk = regelBurggrabenScore != null && regelBurggrabenScore >= 7
@@ -310,7 +315,7 @@ function MoatKiPanel({
           <button
             type="button"
             disabled={laden}
-            onClick={() => void starte(!moat)}
+            onClick={() => void starte(Boolean(moat))}
             className="rounded-lg bg-violet-500/25 px-3 py-1.5 text-[11px] font-semibold text-violet-100 ring-1 ring-violet-400/30 disabled:opacity-50"
           >
             {laden ? 'KI prüft …' : moat ? 'Moat neu bewerten' : 'KI-Moat prüfen'}

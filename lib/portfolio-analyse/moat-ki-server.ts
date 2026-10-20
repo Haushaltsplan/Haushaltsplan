@@ -180,10 +180,9 @@ function normalisiereBewertung(
 
   const disziplin = disziplinAusPfeilern(pfeiler)
   const kiScore = clampScore(roh.score)
+  // Regel-Disziplin ist maßgeblich; KI-Boolean kann zu streng sein (alte Prompt-Schwelle).
   const score = kiScore != null ? Math.round(((kiScore + disziplin.score) / 2) * 10) / 10 : disziplin.score
-
-  const kiKauf = roh.kaufwuerdig === true
-  const kaufwuerdig = kiKauf && disziplin.kaufwuerdig && score >= MOAT_KAUF_MIN_SCORE
+  const kaufwuerdig = disziplin.kaufwuerdig && score >= MOAT_KAUF_MIN_SCORE
 
   let urteil = (String(roh.urteil ?? '') as MoatKiUrteil)
   if (!['tief', 'moderat', 'schwach', 'unklar'].includes(urteil)) {
@@ -207,9 +206,7 @@ function normalisiereBewertung(
     score,
     urteil,
     kaufwuerdig,
-    kaufHinweis:
-      String(roh.kaufHinweis ?? '').trim().slice(0, 320) ||
-      (kaufwuerdig ? disziplin.kaufHinweis : disziplin.kaufHinweis),
+    kaufHinweis: disziplin.kaufHinweis,
     zerstoerungsszenarien: szenarien.length
       ? szenarien
       : ['Disruptive Technologie oder Regulierung', 'Margenkompression durch Wettbewerb'],
@@ -246,6 +243,25 @@ function kennzahlenKontextAusPaket(paket: FundamentaldatenPaket): string {
   return zeilen.slice(0, 24).join('\n') || '(keine Kennzahlen)'
 }
 
+/** Alte Caches an aktuelle Kaufschwellen anpassen (ohne neuen KI-Lauf). */
+export function aktualisiereKaufdisziplin(b: MoatKiBewertung): MoatKiBewertung {
+  const disziplin = disziplinAusPfeilern(b.pfeiler ?? [])
+  const score =
+    typeof b.score === 'number' && Number.isFinite(b.score) ? b.score : disziplin.score
+  const kaufwuerdig = disziplin.kaufwuerdig && score >= MOAT_KAUF_MIN_SCORE
+  let urteil = b.urteil
+  if (!kaufwuerdig && urteil === 'tief') urteil = 'moderat'
+  else if (kaufwuerdig && score >= 8) urteil = 'tief'
+  else if (kaufwuerdig && score >= MOAT_KAUF_MIN_SCORE && urteil === 'schwach') urteil = 'moderat'
+  return {
+    ...b,
+    score,
+    kaufwuerdig,
+    kaufHinweis: disziplin.kaufHinweis,
+    urteil,
+  }
+}
+
 export async function ladeMoatKiCache(ticker: string): Promise<MoatKiBewertung | null> {
   const t = tickerNorm(ticker)
   if (!t) return null
@@ -258,7 +274,7 @@ export async function ladeMoatKiCache(ticker: string): Promise<MoatKiBewertung |
         .eq('ticker', t)
         .maybeSingle()
       if (!error && data?.payload && typeof data.payload === 'object') {
-        return data.payload as MoatKiBewertung
+        return aktualisiereKaufdisziplin(data.payload as MoatKiBewertung)
       }
     } catch (e) {
       console.warn('[moat-ki] Cloud laden:', e)
@@ -266,7 +282,8 @@ export async function ladeMoatKiCache(ticker: string): Promise<MoatKiBewertung |
   }
 
   const datei = await leseDatei()
-  return datei.byTicker[t] ?? null
+  const hit = datei.byTicker[t]
+  return hit ? aktualisiereKaufdisziplin(hit) : null
 }
 
 export async function speichereMoatKiCache(bewertung: MoatKiBewertung): Promise<void> {

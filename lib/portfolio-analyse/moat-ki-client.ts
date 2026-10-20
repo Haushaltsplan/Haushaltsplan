@@ -41,23 +41,31 @@ export async function generiereMoatKiClient(opts: {
   isin?: string | null
   erzwingen?: boolean
 }): Promise<{ ok: true; bewertung: MoatKiBewertung } | { ok: false; fehler: string }> {
-  const res = await fetch('/api/portfolio-analyse/moat-ki', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      ticker: opts.ticker,
-      paket: schlankesPaket(opts.paket),
-      isin: opts.isin ?? null,
-      erzwingen: opts.erzwingen === true,
-    }),
-  })
-  const j = (await res.json()) as {
-    ok?: boolean
-    bewertung?: MoatKiBewertung
-    fehler?: string
+  try {
+    const res = await fetch('/api/portfolio-analyse/moat-ki', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ticker: opts.ticker,
+        paket: schlankesPaket(opts.paket),
+        isin: opts.isin ?? null,
+        erzwingen: opts.erzwingen === true,
+      }),
+    })
+    let j: { ok?: boolean; bewertung?: MoatKiBewertung; fehler?: string; error?: string }
+    try {
+      j = (await res.json()) as typeof j
+    } catch {
+      return { ok: false, fehler: `Moat-KI: ungültige Antwort (HTTP ${res.status})` }
+    }
+    if (!res.ok || !j.ok || !j.bewertung) {
+      return {
+        ok: false,
+        fehler: j.fehler || j.error || `Moat-KI fehlgeschlagen (HTTP ${res.status})`,
+      }
+    }
+    return { ok: true, bewertung: j.bewertung }
+  } catch (e) {
+    return { ok: false, fehler: e instanceof Error ? e.message : 'Netzwerkfehler bei Moat-KI' }
   }
-  if (!j.ok || !j.bewertung) {
-    return { ok: false, fehler: j.fehler || 'Moat-KI fehlgeschlagen' }
-  }
-  return { ok: true, bewertung: j.bewertung }
 }
