@@ -478,9 +478,31 @@ function baueBalken(paket: FundamentaldatenPaket): ScorecardBalken[] {
   const roicTextRoh = kmText(paket, 'ltm_roic') ?? kmText(paket, 'roic')
   const valueSpread = kmZahl(paket, 'ltm_value_spread')
   const incrementalRoic = kmZahl(paket, 'incremental_roic')
+  const roicExGw = kmZahl(paket, 'ltm_roic_ex_gw')
+  /**
+   * M&A-/Goodwill-Falle (TMO, Serial Acquirer): klassischer ROIC wird durch
+   * Akquisitionsprämien gedrückt — Score dann über iROIC / ROIC ex Goodwill.
+   */
+  const roicMaVerzerrt = (() => {
+    if (roicZahl == null) return false
+    if (incrementalRoic != null && incrementalRoic >= 15 && incrementalRoic >= roicZahl + 8) return true
+    if (incrementalRoic != null && roicZahl < 12 && incrementalRoic >= 18) return true
+    if (roicExGw != null && roicExGw >= 12 && roicExGw >= roicZahl + 3) return true
+    return false
+  })()
+
   let roicText = roicTextRoh ?? '–'
   let roicPos: number | null = roicZahl != null ? linear(roicZahl, 8, 30) : null
-  if (roicTextRoh && valueSpread != null) {
+  let roicLabel: string = valueSpread != null ? 'ROIC / Spread' : 'ROIC'
+  if (roicMaVerzerrt && incrementalRoic != null) {
+    roicLabel = 'ROIC (iROIC)'
+    roicText = `iROIC ${fmtPct(incrementalRoic)}${roicTextRoh ? ` · klass. ${roicTextRoh}` : ''}`
+    roicPos = linear(incrementalRoic, 10, 35)
+  } else if (roicMaVerzerrt && roicExGw != null) {
+    roicLabel = 'ROIC ex Goodwill'
+    roicText = `${fmtPct(roicExGw)}${roicTextRoh ? ` · klass. ${roicTextRoh}` : ''}`
+    roicPos = linear(roicExGw, 8, 30)
+  } else if (roicTextRoh && valueSpread != null) {
     roicText = `${roicTextRoh} · Spread ${fmtPct(valueSpread)}`
     const spreadPos = linear(valueSpread, -2, 10)
     roicPos = roicPos != null ? clamp01(0.6 * roicPos + 0.4 * spreadPos) : spreadPos
@@ -585,12 +607,33 @@ function baueBalken(paket: FundamentaldatenPaket): ScorecardBalken[] {
   }
 
   const roic5yZahl = kmZahl(paket, 'roic_5y_avg')
-  const roic5yText = kmText(paket, 'roic_5y_avg')
-  const roic5yPos = roic5yZahl == null ? null : linear(roic5yZahl, 8, 28)
-
-  const iRoicZahl = kmZahl(paket, 'incremental_roic')
+  const roic5yTextRoh = kmText(paket, 'roic_5y_avg')
+  const iRoicZahl = incrementalRoic
   const iRoicText = kmText(paket, 'incremental_roic')
   const iRoicPos = iRoicZahl == null ? null : linear(iRoicZahl, 8, 35)
+
+  // Burggraben: bei M&A-Verzerrung Modell-ROIC über iROIC scoren (nicht 5J-Klassik).
+  let roic5yLabel = 'ROIC 5J (Modell)'
+  let roic5yText = roic5yTextRoh ?? '–'
+  let roic5yPos: number | null = roic5yZahl == null ? null : linear(roic5yZahl, 8, 28)
+  let roic5yLeer: string | null = roic5yPos == null ? 'kein hist. ROIC' : null
+  if (roicMaVerzerrt && iRoicZahl != null) {
+    roic5yLabel = 'ROIC-Modell (iROIC)'
+    roic5yText =
+      roic5yZahl != null
+        ? `iROIC ${fmtPct(iRoicZahl)} · 5J ${fmtPct(roic5yZahl)}`
+        : `iROIC ${fmtPct(iRoicZahl)}`
+    roic5yPos = linear(iRoicZahl, 10, 35)
+    roic5yLeer = null
+  } else if (roicMaVerzerrt && roicExGw != null) {
+    roic5yLabel = 'ROIC-Modell (ex GW)'
+    roic5yText =
+      roic5yZahl != null
+        ? `ex GW ${fmtPct(roicExGw)} · 5J ${fmtPct(roic5yZahl)}`
+        : `ex GW ${fmtPct(roicExGw)}`
+    roic5yPos = linear(roicExGw, 8, 30)
+    roic5yLeer = null
+  }
 
   const watch = paket.mantra?.sellTriggerWatch ?? []
   const moatWatch = watch.find((t) => t.id === 'burggraben-erosion')
@@ -756,10 +799,15 @@ function baueBalken(paket: FundamentaldatenPaket): ScorecardBalken[] {
       optional: true,
     },
     roic: {
-      label: valueSpread != null ? 'ROIC / Spread' : 'ROIC',
+      label: roicLabel,
       wertText: roicText,
       position: roicPos,
-      leergrund: roicPos == null ? 'kein ROIC' : null,
+      leergrund:
+        roicPos == null
+          ? 'kein ROIC'
+          : roicMaVerzerrt
+            ? 'Score über iROIC/ex-GW — klassischer ROIC durch M&A/Goodwill verzerrt'
+            : null,
     },
     bruttomarge: {
       label: 'Preissetzungsmacht',
@@ -792,16 +840,22 @@ function baueBalken(paket: FundamentaldatenPaket): ScorecardBalken[] {
       leergrund: wachstumSubstanzLeer ?? sellKurz(wachstumWatch?.begruendung),
     },
     roic5y: {
-      label: 'ROIC 5J (Modell)',
-      wertText: roic5yText ?? '–',
+      label: roic5yLabel,
+      wertText: roic5yText,
       position: roic5yPos,
-      leergrund: roic5yPos == null ? 'kein hist. ROIC' : null,
+      leergrund:
+        roic5yLeer ??
+        (roicMaVerzerrt
+          ? 'Score über iROIC/ex-GW — 5J-ROIC durch Akquisitionen verzerrt'
+          : null),
     },
     incrementalRoic: {
       label: 'Reinvest-Rendite',
       wertText: iRoicText ?? '–',
-      position: iRoicPos,
+      // Bei M&A schon in ROIC-Modell (iROIC) gescoret — hier nicht doppelt zählen.
+      position: roicMaVerzerrt ? null : iRoicPos,
       leergrund: iRoicPos == null ? 'kein iROIC' : null,
+      optional: roicMaVerzerrt,
     },
     mantraQualitaet: {
       label: 'Mantra gesamt',
