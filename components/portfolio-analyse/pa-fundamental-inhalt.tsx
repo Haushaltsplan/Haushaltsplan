@@ -40,6 +40,7 @@ import {
 } from '@/lib/portfolio-analyse/fundamentaldaten-export-client'
 import {
   aktualisiereAlleFundamentaldaten,
+  erneuereFundamentaldatenClient,
   ladeFundamentaldatenAusLocalCache,
   ladeFundamentaldatenCacheZieleDetailed,
   ladeFundamentaldatenClient,
@@ -189,11 +190,26 @@ export function PaFundamentalInhalt({
     schreibeSichtbareCharts(sichtbareCharts)
   }, [sichtbareCharts, chartWahlBereit])
 
+  /** Während Einzel-/Batch-Scrape — Hintergrund-„immer“-Fetch darf Ergebnis nicht überschreiben. */
+  const scrapeAktivRef = useRef(false)
+  /** Invalidiert in-flight Einzel-Scrape bei Firmenwechsel. */
+  const scrapeGenRef = useRef(0)
+  const alleLaeuftRef = useRef(false)
+
+  useEffect(() => {
+    // Firmenwechsel: laufenden Einzel-Scrape verwerfen (Batch bleibt geschützt).
+    scrapeGenRef.current += 1
+    if (!alleLaeuftRef.current) scrapeAktivRef.current = false
+  }, [selectionKey])
+
   useEffect(() => {
     if (!effektiveAnfrage) {
       setDaten(null)
       return
     }
+    // Während Einzel-/Batch-Scrape keinen Cache-Reload — sonst überschreibt „immer“ den Frisch-Scrape.
+    if (scrapeAktivRef.current) return
+
     const cached = ladeFundamentaldatenAusLocalCache(effektiveAnfrage)
     if (cached?.ok) {
       setDaten(cached)
@@ -211,11 +227,13 @@ export function PaFundamentalInhalt({
         const res = await ladeFundamentaldatenClient(anfrageSnapshot, { signal: ac.signal })
         if (ac.signal.aborted) return
         if ((selectionKey ?? '') !== keySnapshot) return
+        if (scrapeAktivRef.current) return
         setDaten(res)
         setDatenGebundenAn(keySnapshot)
       } catch (e) {
         if (ac.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return
         if ((selectionKey ?? '') !== keySnapshot) return
+        if (scrapeAktivRef.current) return
         if (cached?.ok) {
           setDaten(cached)
           setDatenGebundenAn(keySnapshot)
@@ -290,22 +308,34 @@ export function PaFundamentalInhalt({
   const effektiveAnfrageRef = useRef(effektiveAnfrage)
   effektiveAnfrageRef.current = effektiveAnfrage
 
-  const ladePaket = useCallback(async (ziel: FundamentaldatenAnfrage, erneuern: boolean) => {
-    return ladeFundamentaldatenClient(erneuern ? { ...ziel, cacheModus: 'erneuern' } : ziel)
-  }, [])
+  const [scrapeHinweis, setScrapeHinweis] = useState<string | null>(null)
 
   const aktualisierePaket = useCallback(async () => {
     if (!effektiveAnfrage || aktualisiere || alleLaeuft) return
+    const gen = ++scrapeGenRef.current
+    const keySnapshot = selectionKey ?? ''
+    scrapeAktivRef.current = true
     setAktualisiere(true)
     setFehler(null)
+    setScrapeHinweis(null)
     try {
-      setDaten(await ladePaket(effektiveAnfrage, true))
+      const paket = await erneuereFundamentaldatenClient(effektiveAnfrage, {
+        frequenz: effektiveAnfrage.frequenz === 'quartal' ? 'quartal' : 'jahr',
+        onHinweis: setScrapeHinweis,
+      })
+      if (gen !== scrapeGenRef.current) return
+      setDaten(paket)
+      setDatenGebundenAn(keySnapshot)
+      setFehler(paket.fehler ?? null)
     } catch (e) {
+      if (gen !== scrapeGenRef.current) return
       setFehler(e instanceof Error ? e.message : 'Aktualisieren fehlgeschlagen')
     } finally {
+      if (gen === scrapeGenRef.current) scrapeAktivRef.current = false
       setAktualisiere(false)
+      setScrapeHinweis(null)
     }
-  }, [effektiveAnfrage, aktualisiere, alleLaeuft, ladePaket])
+  }, [effektiveAnfrage, aktualisiere, alleLaeuft, selectionKey])
 
   const brichAlleAb = useCallback(() => {
     alleAbortRef.current?.abort()
@@ -345,6 +375,8 @@ export function PaFundamentalInhalt({
 
     const ac = new AbortController()
     alleAbortRef.current = ac
+    scrapeAktivRef.current = true
+    alleLaeuftRef.current = true
     setAlleLaeuft(true)
     setFehler(null)
     setAlleFortschritt({
@@ -394,6 +426,8 @@ export function PaFundamentalInhalt({
         setFehler(e instanceof Error ? e.message : 'Alle aktualisieren fehlgeschlagen')
       }
     } finally {
+      scrapeAktivRef.current = false
+      alleLaeuftRef.current = false
       setAlleLaeuft(false)
       alleAbortRef.current = null
     }
@@ -574,6 +608,12 @@ export function PaFundamentalInhalt({
         </PaCard>
       ) : null}
 
+      {(scrapeHinweis || (fehler && daten?.ok)) && (
+        <PaCard className="border-amber-500/25 bg-amber-500/10 px-3 py-2">
+          <p className="text-[12px] text-amber-100/95">{scrapeHinweis ?? fehler}</p>
+        </PaCard>
+      )}
+
       {daten?.ok ? (
         <>
           <PaFundamentalUnternehmenHeader
@@ -596,7 +636,11 @@ export function PaFundamentalInhalt({
                   className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
                   title="Nur dieses Unternehmen neu scrapen und Cloud-Cache überschreiben"
                 >
-                  {aktualisiere ? 'Aktualisiere …' : 'Aktualisieren'}
+                  {aktualisiere
+                    ? scrapeHinweis
+                      ? 'Retry …'
+                      : 'Aktualisiere …'
+                    : 'Aktualisieren'}
                 </button>
                 {alleLaeuft ? (
                   <button

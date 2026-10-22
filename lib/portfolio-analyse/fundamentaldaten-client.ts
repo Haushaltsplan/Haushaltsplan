@@ -266,32 +266,71 @@ function kurzName(z: FundamentaldatenAnfrage): string {
   return (z.isin ?? 'Unbekannt').trim()
 }
 
+/** Soft-Fail: Server liefert ok+Cache, aber Live-Scrape ist fehlgeschlagen/unvollständig. */
+function istLiveScrapeSoftFail(paket: FundamentaldatenPaket): boolean {
+  const f = paket.fehler?.trim()
+  if (!f) return false
+  return /Live-Scrape|unvollständig|dünner als Cache|Cache belassen/i.test(f)
+}
+
 async function ladeTitelMitRetry(
   ziel: FundamentaldatenAnfrage,
   signal: AbortSignal | undefined,
   onHinweis: (hinweis: string) => void,
+  opts?: { frequenz?: 'jahr' | 'quartal'; maxVersuche?: number },
 ): Promise<FundamentaldatenPaket> {
+  const frequenz = opts?.frequenz === 'quartal' ? 'quartal' : 'jahr'
+  const maxVersuche = Math.max(1, opts?.maxVersuche ?? TITEL_MAX_VERSUCHE)
   let letzterFehler: unknown
-  for (let versuch = 0; versuch < TITEL_MAX_VERSUCHE; versuch++) {
+  let letzterSoft: FundamentaldatenPaket | null = null
+  for (let versuch = 0; versuch < maxVersuche; versuch++) {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
     try {
       if (versuch > 0) {
         const wait = TITEL_RETRY_PAUSE_MS[Math.min(versuch - 1, TITEL_RETRY_PAUSE_MS.length - 1)]!
-        onHinweis(`Retry ${versuch + 1}/${TITEL_MAX_VERSUCHE} in ${Math.round(wait / 1000)}s …`)
+        onHinweis(`Retry ${versuch + 1}/${maxVersuche} in ${Math.round(wait / 1000)}s …`)
         await pauseMs(wait, signal)
       }
-      return await ladeFundamentaldatenClient(
-        { ...ziel, frequenz: 'jahr', cacheModus: 'erneuern' },
+      const paket = await ladeFundamentaldatenClient(
+        { ...ziel, frequenz, cacheModus: 'erneuern' },
         { signal },
       )
+      // Soft-Fail (Cache belassen) wie Hard-Fail retrien — sonst wirkt „Aktualisieren“ tot.
+      if (istLiveScrapeSoftFail(paket) && versuch < maxVersuche - 1) {
+        letzterSoft = paket
+        letzterFehler = new Error(paket.fehler ?? 'Live-Scrape fehlgeschlagen')
+        onHinweis(paket.fehler ?? 'Live-Scrape fehlgeschlagen — Retry …')
+        continue
+      }
+      return paket
     } catch (e) {
       if (signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) throw e
       letzterFehler = e
     }
   }
+  if (letzterSoft?.ok) return letzterSoft
   throw letzterFehler instanceof Error
     ? letzterFehler
     : new Error('Fundamentaldaten konnten nicht geladen werden.')
+}
+
+/**
+ * Einzel-Titel neu scrapen — gleiche Retries wie Batch „Alle aktualisieren“.
+ * Soft-Fails (Live blockiert → Cache) werden mit Pause erneut versucht.
+ */
+export async function erneuereFundamentaldatenClient(
+  ziel: FundamentaldatenAnfrage,
+  opts?: {
+    signal?: AbortSignal
+    onHinweis?: (hinweis: string) => void
+    /** Default: Ziel-Frequenz oder jahr. */
+    frequenz?: 'jahr' | 'quartal'
+  },
+): Promise<FundamentaldatenPaket> {
+  return ladeTitelMitRetry(ziel, opts?.signal, opts?.onHinweis ?? (() => {}), {
+    frequenz: opts?.frequenz ?? (ziel.frequenz === 'quartal' ? 'quartal' : 'jahr'),
+    maxVersuche: TITEL_MAX_VERSUCHE,
+  })
 }
 
 async function laufBatchUeberZiele(
