@@ -266,11 +266,13 @@ function kurzName(z: FundamentaldatenAnfrage): string {
   return (z.isin ?? 'Unbekannt').trim()
 }
 
-/** Soft-Fail: Server liefert ok+Cache, aber Live-Scrape ist fehlgeschlagen/unvollständig. */
+/** Soft-Fail: Live komplett fehlgeschlagen / nichts übernommen — Retry sinnvoll. */
 function istLiveScrapeSoftFail(paket: FundamentaldatenPaket): boolean {
   const f = paket.fehler?.trim()
   if (!f) return false
-  return /Live-Scrape|unvollständig|dünner als Cache|Cache belassen/i.test(f)
+  // Marktdaten-Merge trotz dünner GuV ist kein Soft-Fail (Daten wurden aktualisiert).
+  if (/Marktdaten\/Kurse aktualisiert/i.test(f)) return false
+  return /Live-Scrape fehlgeschlagen|Live-Scrape unvollständig|Cache belassen/i.test(f)
 }
 
 async function ladeTitelMitRetry(

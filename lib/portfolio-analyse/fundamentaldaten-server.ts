@@ -933,6 +933,39 @@ function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): Fundamentald
   }
 }
 
+/** Kurse/Marktkap/News aus Live, GuV/Zeilen aus Cache (bei Teil-Scrape). */
+function uebernehmeFrischMarktdatenAusLive(
+  cached: FundamentaldatenPaket,
+  live: FundamentaldatenPaket,
+): FundamentaldatenPaket {
+  const frischIds = new Set(
+    live.keyMetrics
+      .filter(
+        (m) =>
+          m.gruppe === 'marktdaten' ||
+          m.id === 'market_cap' ||
+          m.id === 'enterprise_value' ||
+          m.id === 'shares_out',
+      )
+      .map((m) => m.id),
+  )
+  const vonLive = new Map(
+    live.keyMetrics.filter((m) => frischIds.has(m.id)).map((m) => [m.id, m] as const),
+  )
+  const keyMetrics = cached.keyMetrics.map((m) => vonLive.get(m.id) ?? m)
+  for (const m of vonLive.values()) {
+    if (!keyMetrics.some((k) => k.id === m.id)) keyMetrics.push(m)
+  }
+  return {
+    ...cached,
+    keyMetrics,
+    news: live.news?.length ? live.news : cached.news,
+    geladenAm: live.geladenAm || new Date().toISOString(),
+    mantraMeta: live.mantraMeta ?? cached.mantraMeta,
+    fehler: null,
+  }
+}
+
 export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
   const modus = anfrage.cacheModus ?? 'immer'
   const cacheKey = fundamentaldatenCacheKey(anfrage)
@@ -967,23 +1000,37 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       cached.paket.quelle === liveKorr.quelle &&
       cached.paket.guvQuelle === liveKorr.guvQuelle
     ) {
+      // GuV unverändert — trotzdem Live speichern (Kurse, Marktkap, News …).
+      // Früher: cached.paket zurück → „Aktualisieren“ wirkte tot (stale Aktueller Kurs).
+      console.info(
+        `[fundamental-cache] fingerprint gleich, Marktdaten aktualisiert ${cacheKey || anfrage.isin}`,
+      )
+      const frisch = { ...liveKorr, fehler: null }
       await speichereFundamentaldatenPaketCache({
         cacheKey,
         anfrage,
-        paket: cached.paket,
+        paket: frisch,
         fingerprint: fp,
       })
-      return paketMitKorrigiertemFwdWachstum(cached.paket)
+      return frisch
     }
-    // Teil-Scrape (CF/Timeout) darf volle Historie + CAGRs nicht überschreiben.
+    // Teil-Scrape (CF/Timeout) darf volle Historie + CAGRs nicht überschreiben —
+    // Marktdaten/Kurse aus Live aber trotzdem übernehmen.
     if (cached?.paket.ok && liveFundamentalIstDuennemAlsCache(liveKorr, cached.paket)) {
       console.warn(
-        `[fundamental-cache] live dünner als Cache → behalten ${cacheKey || anfrage.isin}`,
+        `[fundamental-cache] live dünner als Cache → GuV behalten, Marktdaten mergen ${cacheKey || anfrage.isin}`,
       )
+      const gemerged = uebernehmeFrischMarktdatenAusLive(cached.paket, liveKorr)
+      await speichereFundamentaldatenPaketCache({
+        cacheKey,
+        anfrage,
+        paket: gemerged,
+        fingerprint: fundamentaldatenFingerprint(gemerged),
+      })
       return paketMitKorrigiertemFwdWachstum({
-        ...cached.paket,
+        ...gemerged,
         fehler:
-          'Live-Scrape unvollständig (weniger Historie als Cache) — Cache belassen. Relay/Chrome prüfen und erneut scrapen.',
+          'GuV-Scrape unvollständig — Marktdaten/Kurse aktualisiert, GuV-Historie aus Cache. Relay/Chrome prüfen für vollen Rescan.',
       })
     }
     await speichereFundamentaldatenPaketCache({
