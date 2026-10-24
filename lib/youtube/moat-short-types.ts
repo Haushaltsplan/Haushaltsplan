@@ -22,6 +22,8 @@ export type MoatShortErgebnis = {
   description: string
   /** Angepinnter Kommentar — eine Streitfrage, kein Subscribe. */
   kommentar: string
+  /** Echte YouTube-Suchvorschläge zu Ticker/Firma. */
+  suchphrasen: string[]
   warnungen: string[]
 }
 

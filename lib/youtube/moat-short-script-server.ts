@@ -12,6 +12,7 @@ import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentald
 import { generiereMoatKiBewertung, ladeMoatKiCache } from '@/lib/portfolio-analyse/moat-ki-server'
 import type { MoatKiBewertung, MoatPfeilerId } from '@/lib/portfolio-analyse/moat-ki-types'
 import type { MoatShortErgebnis, MoatShortHookVariante, MoatShortMetrik } from '@/lib/youtube/moat-short-types'
+import { sucheYoutubePhrasen } from '@/lib/youtube/youtube-keywords'
 import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
 import {
   beschreibungFuerUpload,
@@ -146,13 +147,18 @@ Angles
 - Whole spoken script stays under 80 words. One-liners. Cut "basically" and "essentially".
 
 Also return
-- title: 30-50 characters, ticker or company first, curiosity without ALL-CAPS or !!. Examples: "ASML: why nobody can copy it" / "Visa's 67.4% problem".
+- title: 30-50 characters, ticker or company first, curiosity without ALL-CAPS or !!. If a YouTube search suggestion fits, prefer it. Examples: "ASML: why nobody can copy it" / "Visa's 67.4% problem".
 - description: two short English sentences, verdict plus the hook number. We add the first search line, disclaimer and hashtags.
 - comment: one pinned-comment question, 8-14 words, debatable, no subscribe/follow/like.
 
 The input data is partly in German. Write everything in English.`
 
-function baueUserPrompt(paket: FundamentaldatenPaket, moat: MoatKiBewertung, metriken: MoatShortMetrik[]): string {
+function baueUserPrompt(
+  paket: FundamentaldatenPaket,
+  moat: MoatKiBewertung,
+  metriken: MoatShortMetrik[],
+  suchphrasen: string[],
+): string {
   return [
     `Company: ${paket.firmenname} (${moat.ticker})`,
     paket.sektor ? `Sector: ${paket.sektor}` : null,
@@ -170,6 +176,9 @@ function baueUserPrompt(paket: FundamentaldatenPaket, moat: MoatKiBewertung, met
     '',
     'Metrics (id: label = exact value). Hook metrics are marked [hook]:',
     ...metriken.map((m) => `- ${m.id}: ${m.label} = ${m.value}${m.hook ? ' [hook]' : ''}`),
+    suchphrasen.length
+      ? `\nYouTube search suggestions (prefer one in the title if it fits): ${suchphrasen.join(' · ')}`
+      : null,
   ]
     .filter((z) => z != null)
     .join('\n')
@@ -215,11 +224,13 @@ export async function generiereMoatShort(opts: {
   const provider = resolveGeminiFreeTierProvider()
   if (!provider) throw new Error('GEMINI_API_KEY_FREE fehlt — das Script nutzt den Free-Key.')
 
+  const suchphrasen = await sucheYoutubePhrasen(ticker, paket.firmenname)
+
   const result = await runCoachCompletion(
     provider.provider,
     provider.apiKey,
     SYSTEM,
-    [{ role: 'user', content: baueUserPrompt(paket, moat, metriken) }],
+    [{ role: 'user', content: baueUserPrompt(paket, moat, metriken, suchphrasen) }],
     {
       geminiModels: geminiFreeTierFlashModelKandidaten(),
       geminiForceFreeApiKey: true,
@@ -323,6 +334,7 @@ export async function generiereMoatShort(opts: {
     title: titelFuerUpload(text(roh.title), ticker, startMetrik.value),
     description: beschreibungFuerUpload(String(roh.description ?? ''), paket.firmenname, ticker, startMetrik.value),
     kommentar: kommentarFuerUpload(text(roh.comment), verdict, ticker),
+    suchphrasen,
     warnungen,
   }
 }

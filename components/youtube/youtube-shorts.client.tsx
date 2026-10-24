@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -10,8 +10,25 @@ import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } 
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { scriptLoopWarnungen } from '@/lib/youtube/moat-short-script'
+import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
 import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
+
+type YtStatus = { configured: boolean; connected: boolean; channelTitle: string | null }
+type YtPrivacy = 'unlisted' | 'private' | 'public'
+
+function tagsFuerUpload(beschreibung: string, suchphrasen: string[], ticker: string): string[] {
+  const hashes = [...beschreibung.matchAll(/#([A-Za-z0-9_]+)/g)].map((m) => m[1])
+  const extra = suchphrasen.map((s) => s.replace(/[^A-Za-z0-9 ]/g, '').trim()).filter(Boolean)
+  const unique: string[] = []
+  for (const t of [ticker, ...hashes, ...extra]) {
+    const n = t.trim()
+    if (!n || unique.some((u) => u.toLowerCase() === n.toLowerCase())) continue
+    unique.push(n)
+    if (unique.length >= 8) break
+  }
+  return unique
+}
 
 const WINKEL_LABEL: Record<string, string> = {
   number_shock: 'Zahl schockt',
@@ -74,6 +91,7 @@ function beispielErgebnis(): MoatShortErgebnis {
     title: 'ASML: why nobody can copy it',
     description: 'ASML Holding (ASML): 51.3% moat check.\n\nAt 51.3% gross margin, ASML sells machines nobody else can build.\n\nNot investment advice.\n#ASML #investing #moat',
     kommentar: 'Is ASML a wide moat — or just the only shop in town?',
+    suchphrasen: ['ASML moat', 'ASML stock', 'ASML monopoly'],
     warnungen: [],
   }
 }
@@ -109,6 +127,30 @@ export function YoutubeShortsClient() {
   const [musikPegel, setMusikPegel] = useState(50)
   const [musikPegelCommit, setMusikPegelCommit] = useState(50)
   const [sfx, setSfx] = useState(true)
+  const [mp4Blob, setMp4Blob] = useState<Blob | null>(null)
+  const [yt, setYt] = useState<YtStatus>({ configured: false, connected: false, channelTitle: null })
+  const [ytLaedt, setYtLaedt] = useState(false)
+  const [uploadProzent, setUploadProzent] = useState(0)
+  const [uploadLaedt, setUploadLaedt] = useState(false)
+  const [videoId, setVideoId] = useState<string | null>(null)
+  const [privacy, setPrivacy] = useState<YtPrivacy>('unlisted')
+  const [uploadTitel, setUploadTitel] = useState('')
+  const [uploadBeschreibung, setUploadBeschreibung] = useState('')
+  const [uploadKommentar, setUploadKommentar] = useState('')
+
+  const ladeYtStatus = useCallback(async () => {
+    try {
+      const res = await fetch('/api/youtube/auth/status', { cache: 'no-store' })
+      const j = (await res.json()) as YtStatus
+      setYt({
+        configured: Boolean(j.configured),
+        connected: Boolean(j.connected),
+        channelTitle: j.channelTitle ?? null,
+      })
+    } catch {
+      setYt({ configured: false, connected: false, channelTitle: null })
+    }
+  }, [])
 
   useEffect(() => {
     void fetch('/api/youtube/musik')
@@ -121,7 +163,19 @@ export function YoutubeShortsClient() {
       setMusikPegel(v)
       setMusikPegelCommit(v)
     }
-  }, [])
+    void ladeYtStatus()
+    const sp = new URLSearchParams(window.location.search)
+    if (sp.get('yt') === 'connected') {
+      toast.success('YouTube verbunden.')
+      window.history.replaceState({}, '', window.location.pathname)
+      void ladeYtStatus()
+    }
+    const err = sp.get('yt_error')
+    if (err) {
+      toast.error(`YouTube: ${err}`)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [ladeYtStatus])
 
   const automatisch = trackZumUrteil(props?.verdict, tracks)
   const musik = musikWahl === 'auto' ? automatisch : musikWahl || null
@@ -136,11 +190,7 @@ export function YoutubeShortsClient() {
         sfx,
       }
     : null
-  const beschreibung = ergebnis
-    ? track?.credit
-      ? `${ergebnis.description}\n\n${track.credit}`
-      : ergebnis.description
-    : ''
+  const beschreibung = uploadBeschreibung
   const fremd =
     props && ergebnis
       ? fremdeZahlen(
@@ -151,6 +201,86 @@ export function YoutubeShortsClient() {
       : []
   const zahlenWarnung = fremd.length ? `Zahlen ohne Quelle im Export: ${fremd.join(', ')}` : null
   const loopWarnung = props ? scriptLoopWarnungen(props.hook, props.closing, props.metricValue) : []
+
+  useEffect(() => {
+    if (!ergebnis) return
+    setUploadTitel(ergebnis.title)
+    setUploadKommentar(ergebnis.kommentar)
+    setUploadBeschreibung(track?.credit ? `${ergebnis.description}\n\n${track.credit}` : ergebnis.description)
+  }, [ergebnis, track?.credit])
+
+  async function youtubeVerbinden() {
+    setYtLaedt(true)
+    try {
+      const res = await fetch('/api/youtube/auth/start', { method: 'POST' })
+      const body = (await res.json().catch(() => ({}))) as { url?: string; error?: string }
+      if (!res.ok || !body.url) {
+        toast.error(body.error ?? 'OAuth-Start fehlgeschlagen.')
+        return
+      }
+      window.location.href = body.url
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Verbindung fehlgeschlagen.')
+    } finally {
+      setYtLaedt(false)
+    }
+  }
+
+  async function youtubeTrennen() {
+    setYtLaedt(true)
+    try {
+      const res = await fetch('/api/youtube/auth/disconnect', { method: 'POST' })
+      if (!res.ok) {
+        toast.error('Trennen fehlgeschlagen.')
+        return
+      }
+      toast.success('YouTube getrennt.')
+      setYt((s) => ({ ...s, connected: false, channelTitle: null }))
+    } finally {
+      setYtLaedt(false)
+    }
+  }
+
+  async function nachYoutube() {
+    if (!mp4Blob) {
+      toast.error('Zuerst das MP4 im Browser rendern.')
+      return
+    }
+    if (!yt.connected) {
+      toast.error('Zuerst YouTube verbinden.')
+      return
+    }
+    const titel = uploadTitel.trim()
+    if (!titel || titel.length > 100) {
+      toast.error('Titel fehlt oder ist zu lang.')
+      return
+    }
+    setUploadLaedt(true)
+    setUploadProzent(0)
+    setVideoId(null)
+    try {
+      const res = await fetch('/api/youtube/upload/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: titel,
+          description: uploadBeschreibung,
+          tags: tagsFuerUpload(uploadBeschreibung, ergebnis?.suchphrasen ?? [], props?.ticker ?? ''),
+          privacy,
+          dateigroesse: mp4Blob.size,
+        }),
+      })
+      const j = (await res.json()) as { uploadUrl?: string; error?: string }
+      if (!res.ok || !j.uploadUrl) throw new Error(j.error || 'Upload-Init fehlgeschlagen.')
+      const id = await ladeMp4ZuYoutube(j.uploadUrl, mp4Blob, setUploadProzent)
+      setVideoId(id)
+      toast.success(privacy === 'unlisted' ? 'Unlisted auf YouTube.' : 'Auf YouTube hochgeladen.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Upload fehlgeschlagen.')
+    } finally {
+      setUploadLaedt(false)
+    }
+  }
 
   function waehleHook(h: MoatShortHookVariante) {
     const m = ergebnis?.metriken.find((x) => x.id === h.metrikId)
@@ -192,6 +322,8 @@ export function YoutubeShortsClient() {
       const logoUrl = await pruefeLogo(j.props.logoUrl)
       setErgebnis(j)
       setProps({ ...j.props, logoUrl })
+      setMp4Blob(null)
+      setVideoId(null)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Netzwerkfehler')
     } finally {
@@ -219,6 +351,7 @@ export function YoutubeShortsClient() {
       const blob = await rendereMoatShortImBrowser(fertig, (p) => {
         if (Number.isFinite(p)) setRenderProzent(Math.max(0, Math.min(100, Math.round(p * 100))))
       })
+      setMp4Blob(blob)
       speichereBlob(blob, dateiname)
       toast.success(`${dateiname} heruntergeladen.`)
     } catch (e) {
@@ -239,6 +372,51 @@ export function YoutubeShortsClient() {
         title="Moat Check Shorts"
         description="Fundamentaldaten-Export einfügen. Daraus entstehen Moat-Urteil, englisches Script und ein Short, das unsichtbar in sich zurückläuft."
       />
+
+      <section className="app-section-shell">
+        <div className="app-surface-card-header flex items-center justify-between px-4 py-2.5 sm:px-5">
+          <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">YouTube-Kanal</h2>
+          {yt.connected ? (
+            <span className="text-xs text-[var(--app-text-muted)]">{yt.channelTitle || 'YouTube verbunden'}</span>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5 sm:py-4">
+          {!yt.configured ? (
+            <p className="text-sm text-[var(--app-text-muted)]">
+              YOUTUBE_CLIENT_ID und YOUTUBE_CLIENT_SECRET fehlen. Redirect:{' '}
+              <code className="text-xs">/api/youtube/auth/callback</code>
+            </p>
+          ) : yt.connected ? (
+            <>
+              <p className="text-sm text-[var(--app-text-muted)]">
+                Upload direkt aus dem Browser. Standard ist unlisted, bis der Kanal geprüft ist.
+              </p>
+              <button
+                type="button"
+                disabled={ytLaedt}
+                onClick={() => void youtubeTrennen()}
+                className="ml-auto rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-sm text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]"
+              >
+                Trennen
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-[var(--app-text-muted)]">
+                Einmal verbinden — danach landet das gerenderte MP4 ohne Umweg über Studio.
+              </p>
+              <button
+                type="button"
+                disabled={ytLaedt}
+                onClick={() => void youtubeVerbinden()}
+                className="ml-auto rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {ytLaedt ? 'Weiterleitung…' : 'YouTube verbinden'}
+              </button>
+            </>
+          )}
+        </div>
+      </section>
 
       <section className="app-section-shell">
         <div className="app-surface-card-header px-4 py-2.5 sm:px-5">
@@ -264,6 +442,8 @@ export function YoutubeShortsClient() {
                 const b = beispielErgebnis()
                 setErgebnis(b)
                 setProps(b.props)
+                setMp4Blob(null)
+                setVideoId(null)
               }}
               className="rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-sm text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]"
             >
@@ -439,16 +619,33 @@ export function YoutubeShortsClient() {
 
               <div className="rounded-xl border border-[var(--app-border)] p-3 text-sm">
                 <p className="text-xs font-medium text-[var(--app-text-muted)]">Upload — Titel, Beschreibung, Kommentar</p>
-                <p className="mt-1 font-medium text-[var(--app-text)]">{ergebnis.title}</p>
-                <p className="text-[11px] text-[var(--app-text-muted)]">{ergebnis.title.length} Zeichen · YouTube-Suche mag 30–50</p>
-                <p className="mt-2 whitespace-pre-line text-[var(--app-text-muted)]">{beschreibung}</p>
-                <p className="mt-2 text-xs text-[var(--app-text)]">
-                  Anpinnen: <span className="text-[var(--app-text-muted)]">{ergebnis.kommentar}</span>
-                </p>
+                <label className="mt-2 block text-xs text-[var(--app-text-muted)]">Titel</label>
+                <input value={uploadTitel} onChange={(e) => setUploadTitel(e.target.value)} className={`${feldKlasse} mt-1`} />
+                <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">{uploadTitel.length} Zeichen · YouTube-Suche mag 30–50</p>
+                {ergebnis.suchphrasen.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {ergebnis.suchphrasen.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setUploadTitel(p.slice(0, 50))}
+                        className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[11px] text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]"
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">Keine YouTube-Suchvorschläge — Titel bleibt der Script-Vorschlag.</p>
+                )}
+                <label className="mt-3 block text-xs text-[var(--app-text-muted)]">Beschreibung</label>
+                <textarea value={uploadBeschreibung} onChange={(e) => setUploadBeschreibung(e.target.value)} rows={6} className={`${feldKlasse} mt-1 font-sans`} />
+                <label className="mt-3 block text-xs text-[var(--app-text-muted)]">Anzupinnender Kommentar</label>
+                <input value={uploadKommentar} onChange={(e) => setUploadKommentar(e.target.value)} className={`${feldKlasse} mt-1`} />
                 <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     type="button"
-                    onClick={() => void navigator.clipboard.writeText(ergebnis.title).then(() => toast.success('Titel kopiert'))}
+                    onClick={() => void navigator.clipboard.writeText(uploadTitel).then(() => toast.success('Titel kopiert'))}
                     className="rounded-lg border border-[var(--app-border)] px-3 py-1 text-xs text-[var(--app-text-muted)]"
                   >
                     Titel
@@ -462,14 +659,14 @@ export function YoutubeShortsClient() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void navigator.clipboard.writeText(ergebnis.kommentar).then(() => toast.success('Kommentar kopiert'))}
+                    onClick={() => void navigator.clipboard.writeText(uploadKommentar).then(() => toast.success('Kommentar kopiert'))}
                     className="rounded-lg border border-[var(--app-border)] px-3 py-1 text-xs text-[var(--app-text-muted)]"
                   >
                     Kommentar
                   </button>
                 </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
-                  In Studio: ersten Frame als Thumbnail (die Hook-Zahl), Related Video auf euer bestes Longform, KI-Kennzeichnung falls nötig. Nicht für Kinder.
+                  Anpinnen geht in Studio (kein extra Scope). Ersten Frame als Thumbnail, Related Video auf euer bestes Longform. Nicht für Kinder.
                 </p>
               </div>
             </div>
@@ -535,11 +732,41 @@ export function YoutubeShortsClient() {
               </button>
               {renderDatei ? (
                 <p className="text-xs text-[var(--app-text-muted)]">
-                  {rendert ? 'läuft im Browser' : 'heruntergeladen'}: <code>{renderDatei}</code>
+                  {rendert ? 'läuft im Browser' : mp4Blob ? 'bereit zum Upload' : 'heruntergeladen'}: <code>{renderDatei}</code>
                 </p>
               ) : null}
+              <label className="block text-xs font-medium text-[var(--app-text-muted)]">Sichtbarkeit</label>
+              <select value={privacy} onChange={(e) => setPrivacy(e.target.value as YtPrivacy)} className={`${feldKlasse} text-xs`}>
+                <option value="unlisted">Unlisted — Link kennt nur ihr</option>
+                <option value="private">Privat</option>
+                <option value="public">Öffentlich — erst nach Audit</option>
+              </select>
+              <button
+                type="button"
+                disabled={uploadLaedt || rendert || !mp4Blob || !yt.connected}
+                onClick={() => void nachYoutube()}
+                className="w-full rounded-xl border border-red-500/50 bg-red-600/90 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {uploadLaedt
+                  ? `YouTube lädt… ${uploadProzent}%`
+                  : !yt.connected
+                    ? 'YouTube verbinden, dann hochladen'
+                    : !mp4Blob
+                      ? 'Zuerst MP4 rendern'
+                      : 'Nach YouTube'}
+              </button>
+              {videoId ? (
+                <a
+                  href={youtubeShortsUrl(videoId)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="block text-center text-xs text-red-300 underline"
+                >
+                  Short öffnen
+                </a>
+              ) : null}
               <p className="text-xs text-[var(--app-text-muted)]">
-                Läuft online in Chrome oder Edge, ein bis drei Minuten. Tab offen lassen, danach startet der Download.
+                Läuft online in Chrome oder Edge, ein bis drei Minuten. Tab offen lassen. Das MP4 bleibt im Tab für den Upload — nicht über Vercel.
               </p>
             </div>
           </section>
