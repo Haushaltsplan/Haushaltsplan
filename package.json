@@ -55,6 +55,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@mozilla/readability": "^0.6.0",
     "@remotion/google-fonts": "4.0.538",
+    "@remotion/media": "^4.0.538",
     "@remotion/player": "4.0.538",
     "@remotion/sfx": "4.0.538",
     "@remotion/web-renderer": "^4.0.538",

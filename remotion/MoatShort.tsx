@@ -1,10 +1,10 @@
 import { loadFont as loadInterTight } from '@remotion/google-fonts/InterTight'
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono'
+import { Audio } from '@remotion/media'
 import { shutterModern, uiSwitch, whip, whoosh } from '@remotion/sfx'
 import { useMemo, useState } from 'react'
 import {
   AbsoluteFill,
-  Audio,
   Easing,
   Img,
   Sequence,
