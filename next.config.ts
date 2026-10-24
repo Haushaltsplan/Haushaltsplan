@@ -15,6 +15,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  transpilePackages: ['@remotion/web-renderer', 'mediabunny'],
   serverExternalPackages: ['jsdom', 'playwright', 'pdf-parse'],
   outputFileTracingExcludes: {
     '*': ['node_modules/playwright/**', 'node_modules/playwright-core/**'],

@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
+import { stelleTracksSicher } from '@/lib/youtube/moat-short-musik-server'
 import type { MoatShortProps } from '@/remotion/moat-short-types'
 
 export const MOAT_SHORT_OUT_ORDNER = path.join(process.cwd(), 'out', 'youtube')
@@ -130,6 +131,7 @@ export async function starteMoatShortRender(props: MoatShortProps): Promise<{ da
   const logDatei = path.join(MOAT_SHORT_OUT_ORDNER, `.${dateiname}.log`)
 
   await fs.mkdir(MOAT_SHORT_OUT_ORDNER, { recursive: true })
+  await stelleTracksSicher()
   await fs.writeFile(propsDatei, JSON.stringify(fertig), 'utf8')
   await schreibeJob({ status: 'laeuft', dateiname, gestartet: Date.now() })
   const port = await freierPort()

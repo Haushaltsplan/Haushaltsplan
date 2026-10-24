@@ -7,6 +7,7 @@ import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
 import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
+import { musikPlaySrc, rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
 import { MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
 
@@ -63,23 +64,19 @@ export function YoutubeShortsClient() {
   const [moatNeu, setMoatNeu] = useState(false)
   const [laedt, setLaedt] = useState(false)
   const [rendert, setRendert] = useState(false)
-  const [renderSekunden, setRenderSekunden] = useState(0)
+  const [renderProzent, setRenderProzent] = useState(0)
   const [renderDatei, setRenderDatei] = useState<string | null>(null)
   const [ergebnis, setErgebnis] = useState<MoatShortErgebnis | null>(null)
   const [props, setProps] = useState<MoatShortProps | null>(null)
   const [tracks, setTracks] = useState<string[]>(MOAT_SHORT_KATALOG_PFADE)
   const [musikWahl, setMusikWahl] = useState<string>('auto')
   const [sfx, setSfx] = useState(true)
-  const [exportLokal, setExportLokal] = useState<boolean | null>(null)
 
   useEffect(() => {
     void fetch('/api/youtube/musik')
       .then((r) => r.json() as Promise<{ tracks?: string[] }>)
       .then((j) => setTracks(sortiereTracks([...new Set([...MOAT_SHORT_KATALOG_PFADE, ...(j.tracks ?? [])])])))
       .catch(() => undefined)
-    void fetch('/api/youtube/render')
-      .then((r) => setExportLokal(r.ok))
-      .catch(() => setExportLokal(false))
   }, [])
 
   const automatisch = trackZumUrteil(props?.verdict, tracks)
@@ -88,7 +85,7 @@ export function YoutubeShortsClient() {
   const fertig = props
     ? {
         ...props,
-        musicSrc: musik,
+        musicSrc: musikPlaySrc(musik),
         musicGain: track?.gain ?? 0.5,
         musicTrim: Math.round((track?.startSekunden ?? 0) * MOAT_SHORT_FPS),
         sfx,
@@ -148,13 +145,8 @@ export function YoutubeShortsClient() {
     }
   }
 
-  async function ladeMp4(dateiname: string) {
-    const res = await fetch(`/api/youtube/render?datei=${encodeURIComponent(dateiname)}&download=1`)
-    if (!res.ok) {
-      const j = (await res.json().catch(() => ({}))) as { fehler?: string }
-      throw new Error(j.fehler || `Download fehlgeschlagen (HTTP ${res.status})`)
-    }
-    const url = URL.createObjectURL(await res.blob())
+  function speichereBlob(blob: Blob, dateiname: string) {
+    const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     a.download = dateiname
@@ -164,50 +156,20 @@ export function YoutubeShortsClient() {
 
   async function mp4Exportieren() {
     if (!fertig) return
+    const ticker = fertig.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'SHORT'
+    const dateiname = `${ticker}-moat.mp4`
     setRendert(true)
-    setRenderSekunden(0)
-    setRenderDatei(null)
-    const uhr = window.setInterval(() => setRenderSekunden((s) => s + 1), 1000)
+    setRenderProzent(0)
+    setRenderDatei(dateiname)
     try {
-      const start = await fetch('/api/youtube/render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ props: fertig }),
+      const blob = await rendereMoatShortImBrowser(fertig, (p) => {
+        if (Number.isFinite(p)) setRenderProzent(Math.max(0, Math.min(100, Math.round(p * 100))))
       })
-      const startJson = (await start.json().catch(() => ({}))) as {
-        dateiname?: string
-        fehler?: string
-        error?: string
-      }
-      if (!start.ok || !startJson.dateiname) {
-        toast.error(startJson.fehler || startJson.error || `Renderstart fehlgeschlagen (HTTP ${start.status})`)
-        return
-      }
-      const dateiname = startJson.dateiname
-      setRenderDatei(dateiname)
-      for (;;) {
-        await new Promise((r) => window.setTimeout(r, 2000))
-        const st = await fetch(`/api/youtube/render?datei=${encodeURIComponent(dateiname)}`)
-        const j = (await st.json().catch(() => ({}))) as {
-          status?: string
-          fehler?: string
-          sekunden?: number
-        }
-        if (typeof j.sekunden === 'number') setRenderSekunden(j.sekunden)
-        if (j.status === 'fertig') {
-          await ladeMp4(dateiname)
-          toast.success(`${dateiname} liegt unter out/youtube/`)
-          return
-        }
-        if (j.status === 'fehler' || !st.ok) {
-          toast.error(j.fehler || 'Render fehlgeschlagen.')
-          return
-        }
-      }
+      speichereBlob(blob, dateiname)
+      toast.success(`${dateiname} heruntergeladen.`)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Render fehlgeschlagen.')
+      toast.error(e instanceof Error ? e.message : 'Render im Browser fehlgeschlagen.')
     } finally {
-      window.clearInterval(uhr)
       setRendert(false)
     }
   }
@@ -444,24 +406,16 @@ export function YoutubeShortsClient() {
                 onClick={() => void mp4Exportieren()}
                 className="w-full rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
               >
-                {rendert
-                  ? `MP4 wird gerendert… ${Math.floor(renderSekunden / 60)}:${String(renderSekunden % 60).padStart(2, '0')}`
-                  : 'MP4 exportieren'}
+                {rendert ? `MP4 wird gerendert… ${renderProzent}%` : 'MP4 exportieren'}
               </button>
               {renderDatei ? (
                 <p className="text-xs text-[var(--app-text-muted)]">
-                  {rendert ? 'läuft' : 'fertig'}: <code>out/youtube/{renderDatei}</code>
+                  {rendert ? 'läuft im Browser' : 'heruntergeladen'}: <code>{renderDatei}</code>
                 </p>
               ) : null}
-              {exportLokal === false ? (
-                <p className="text-xs text-[var(--app-text-muted)]">
-                  Export braucht die lokale App (<code>npm run dev</code>). Auf Vercel gibt es kein Remotion.
-                </p>
-              ) : (
-                <p className="text-xs text-[var(--app-text-muted)]">
-                  Ein bis drei Minuten. Die Datei wird heruntergeladen und liegt unter <code>out/youtube/</code>.
-                </p>
-              )}
+              <p className="text-xs text-[var(--app-text-muted)]">
+                Läuft online in Chrome oder Edge, ein bis drei Minuten. Tab offen lassen, danach startet der Download.
+              </p>
             </div>
           </section>
         </div>

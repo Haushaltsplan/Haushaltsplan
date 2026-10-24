@@ -57,6 +57,7 @@
     "@remotion/google-fonts": "4.0.538",
     "@remotion/player": "4.0.538",
     "@remotion/sfx": "4.0.538",
+    "@remotion/web-renderer": "^4.0.538",
     "@supabase/supabase-js": "^2.103.3",
     "@tanstack/react-query": "^5.104.1",
     "@zxing/browser": "^0.2.0",

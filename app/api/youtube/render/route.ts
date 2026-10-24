@@ -17,8 +17,16 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 function nurLokal(): NextResponse | null {
-  if (!process.env.VERCEL) return null
-  return NextResponse.json({ ok: false, fehler: 'MP4-Export läuft nur lokal (npm run dev).' }, { status: 501 })
+  const env = process.env.VERCEL_ENV
+  if (env !== 'production' && env !== 'preview') return null
+  return NextResponse.json(
+    {
+      ok: false,
+      fehler:
+        'Du bist auf der Online-Seite. MP4-Export geht nur lokal: im Projektordner „npm run dev“ und dann http://localhost:3000/youtube öffnen.',
+    },
+    { status: 501 },
+  )
 }
 
 export async function POST(req: Request) {

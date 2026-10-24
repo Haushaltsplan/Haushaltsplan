@@ -141,7 +141,7 @@ function Ton({
     <>
       {musicSrc ? (
         <Audio
-          src={staticFile(musicSrc.replace(/^\/+/, ''))}
+          src={musikAudioSrc(musicSrc)}
           loop
           volume={musikVolume}
           trimBefore={musicTrim > 0 ? musicTrim : undefined}
@@ -160,6 +160,15 @@ function Ton({
 
 function logoSrc(url: string): string {
   return /^https?:\/\//i.test(url) ? url : staticFile(url.replace(/^\/+/, ''))
+}
+
+function musikAudioSrc(src: string): string {
+  if (/^https?:\/\//i.test(src) || src.startsWith('/api/')) return src
+  const datei = src.split('/').pop() ?? src
+  if (typeof window !== 'undefined' && !('remotion_staticBase' in window && window.remotion_staticBase) && datei) {
+    return `${window.location.origin}/api/youtube/musik/datei/${encodeURIComponent(datei)}`
+  }
+  return staticFile(src.replace(/^\/+/, ''))
 }
 
 function Kopfzeile({ ticker, logoUrl, fortschritt }: { ticker: string; logoUrl: string | null; fortschritt: number }) {
