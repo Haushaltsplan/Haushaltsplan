@@ -53,6 +53,8 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@mozilla/readability": "^0.6.0",
+    "@remotion/google-fonts": "4.0.538",
+    "@remotion/player": "4.0.538",
     "@supabase/supabase-js": "^2.103.3",
     "@tanstack/react-query": "^5.104.1",
     "@zxing/browser": "^0.2.0",
@@ -73,11 +75,13 @@
     "react-hot-toast": "^2.6.0",
     "react-leaflet": "^5.0.0",
     "recharts": "^3.9.0",
+    "remotion": "4.0.538",
     "server-only": "^0.0.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.0.0",
+    "@remotion/cli": "4.0.538",
     "@tailwindcss/postcss": "^4.2.2",
     "@tanstack/react-query-devtools": "^5.104.1",
     "@types/jsdom": "^28.0.1",

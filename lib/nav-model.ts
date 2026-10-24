@@ -5,14 +5,6 @@ export const NAV_LINK_DEFS = [
   { href: '/kalender', label: 'Kalender', shortLabel: 'Kalender', emoji: '📅', color: 'text-teal-400', ring: 'focus-visible:ring-teal-500/50' },
   { href: '/rennrad', label: 'Rennrad', shortLabel: 'Rennrad', emoji: '🚴', color: 'text-rose-400', ring: 'focus-visible:ring-rose-500/50' },
   {
-    href: '/trainingsplan',
-    label: 'Trainingsplan',
-    shortLabel: 'Training',
-    emoji: '💪',
-    color: 'text-orange-400',
-    ring: 'focus-visible:ring-orange-500/50',
-  },
-  {
     href: '/etsy-ki-agent',
     label: 'Etsy',
     shortLabel: 'Etsy',
@@ -20,6 +12,7 @@ export const NAV_LINK_DEFS = [
     color: 'text-amber-400',
     ring: 'focus-visible:ring-amber-500/50',
   },
+  { href: '/youtube', label: 'YouTube', shortLabel: 'YouTube', emoji: '🎬', color: 'text-red-400', ring: 'focus-visible:ring-red-500/50' },
   {
     href: '/portfolioanalyse',
     label: 'Portfolioanalyse',
@@ -50,9 +43,11 @@ export function mergePersistedWithKnown(saved: string[] | null | undefined): str
       if (known.has(h) && !next.includes(h)) next.push(h)
     }
   }
-  for (const h of DEFAULT_HREF_ORDER) {
-    if (!next.includes(h)) next.push(h)
-  }
+  DEFAULT_HREF_ORDER.forEach((h, i) => {
+    if (next.includes(h)) return
+    const vorgaenger = DEFAULT_HREF_ORDER.slice(0, i).reverse().find((v) => next.includes(v))
+    next.splice(vorgaenger ? next.indexOf(vorgaenger) + 1 : 0, 0, h)
+  })
   return next
 }
 
