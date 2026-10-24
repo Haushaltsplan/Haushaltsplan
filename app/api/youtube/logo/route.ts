@@ -4,13 +4,14 @@
  */
 import { NextResponse } from 'next/server'
 import { istErlaubteLogoQuelle, ladeLogoProxy } from '@/lib/youtube/moat-short-logo-server'
+import { originaleLogoQuelle } from '@/lib/youtube/moat-short-media-src'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
 export async function GET(req: Request) {
-  const url = new URL(req.url).searchParams.get('u') ?? ''
+  const url = originaleLogoQuelle(new URL(req.url).searchParams.get('u') ?? '')
   if (!istErlaubteLogoQuelle(url)) {
     return NextResponse.json({ ok: false, fehler: 'Logo-Quelle nicht erlaubt.' }, { status: 400 })
   }

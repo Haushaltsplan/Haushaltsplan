@@ -15,6 +15,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion'
+import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline } from './moat-short-timeline'
 import type { MoatShortBeat, MoatShortProps, MoatShortVerdict } from './moat-short-types'
 
@@ -159,15 +160,9 @@ function Ton({
 }
 
 function logoSrc(url: string): string {
-  if (url.startsWith('/api/') || url.includes('/api/youtube/logo')) {
-    if (url.startsWith('http')) return url
-    return typeof window !== 'undefined' ? `${window.location.origin}${url}` : url
-  }
-  if (/^https?:\/\//i.test(url) && typeof window !== 'undefined' && !('remotion_staticBase' in window && window.remotion_staticBase)) {
-    return `${window.location.origin}/api/youtube/logo?u=${encodeURIComponent(url)}`
-  }
-  if (/^https?:\/\//i.test(url)) return url
-  return staticFile(url.replace(/^\/+/, ''))
+  const play = logoPlaySrc(url)
+  if (play && (play.startsWith('http') || play.startsWith('/api/'))) return play
+  return staticFile((play ?? url).replace(/^\/+/, ''))
 }
 
 function musikAudioSrc(src: string): string {

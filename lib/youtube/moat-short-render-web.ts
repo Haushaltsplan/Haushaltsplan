@@ -1,3 +1,4 @@
+import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { MoatShort } from '@/remotion/MoatShort'
 import { berechneMoatShortTimeline } from '@/remotion/moat-short-timeline'
 import {
@@ -8,23 +9,7 @@ import {
   type MoatShortProps,
 } from '@/remotion/moat-short-types'
 
-export function musikPlaySrc(rel: string | null): string | null {
-  if (!rel) return null
-  if (/^https?:\/\//i.test(rel) || rel.startsWith('/api/')) return rel
-  const datei = rel.split('/').pop()
-  if (!datei || typeof window === 'undefined') return rel
-  return `${window.location.origin}/api/youtube/musik/datei/${encodeURIComponent(datei)}`
-}
-
-/** Same-Origin, sonst blockiert der Browser-Export fremde Logo-Hosts (CORS). */
-export function logoPlaySrc(rel: string | null): string | null {
-  if (!rel) return null
-  if (typeof window === 'undefined') return rel
-  const origin = window.location.origin
-  if (rel.startsWith('/api/')) return `${origin}${rel}`
-  if (/^https?:\/\//i.test(rel)) return `${origin}/api/youtube/logo?u=${encodeURIComponent(rel)}`
-  return `${origin}/${rel.replace(/^\/+/, '')}`
-}
+export { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 
 export async function rendereMoatShortImBrowser(
   props: MoatShortProps,

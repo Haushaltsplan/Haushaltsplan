@@ -7,6 +7,7 @@ import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { portfolioLogoQuellen } from '@/lib/portfolio-analyse/portfolio-logos'
 import { alleLogoUrls } from '@/lib/stock-logo-urls'
+import { originaleLogoQuelle } from '@/lib/youtube/moat-short-media-src'
 
 const CACHE_ORDNER = 'youtube-logos'
 const MIN_BYTES = 4_000
@@ -32,7 +33,7 @@ export function istErlaubteLogoQuelle(url: string): boolean {
 }
 
 export function logoProxyPfad(url: string): string {
-  return `/api/youtube/logo?u=${encodeURIComponent(url)}`
+  return `/api/youtube/logo?u=${encodeURIComponent(originaleLogoQuelle(url))}`
 }
 
 function hostAusWebsite(website: string | null | undefined): string | null {
