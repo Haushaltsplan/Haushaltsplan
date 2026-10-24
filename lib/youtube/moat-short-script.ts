@@ -42,7 +42,8 @@ const VERBOTENE_WOERTER = [
   'utilize',
 ]
 
-const SATZ_MAX_WOERTER = 10
+const SATZ_MIN_WOERTER = 7
+const SATZ_MAX_WOERTER = 20
 
 function woerter(text: string): string[] {
   return text
@@ -51,12 +52,13 @@ function woerter(text: string): string[] {
     .filter((w) => w && !/^[—–\-,.;:!?…]+$/.test(w))
 }
 
-/** ElevenLabs braucht Kommas und Gedankenstriche — Bindestriche mit Leerzeichen werden zu Em-Dashes. */
-export function normalisiereTtsPausen(text: string): string {
+/** Gedankenstrich und „Wort - Wort“ sind KI-Ton. Zwei kurze Sätze oder ein Komma. */
+export function ohneKiBindestrich(text: string): string {
   return text
-    .replace(/\u2013/g, '—')
-    .replace(/\s+-\s+/g, ' — ')
-    .replace(/\s*—\s*/g, ' — ')
+    .replace(/\s*[—–]\s*/g, '. ')
+    .replace(/\s+-\s+/g, '. ')
+    .replace(/\.\s+([a-z])/g, (_, c: string) => `. ${c.toUpperCase()}`)
+    .replace(/\.\s*\./g, '.')
     .replace(/\s+/g, ' ')
     .trim()
 }
@@ -67,22 +69,22 @@ export function oeffneSprechende(text: string): string {
 }
 
 export function fallbackLand(verdict: MoatShortVerdict, _value?: string): string {
-  if (verdict === 'wide') return 'Nobody else has this lock, which is why'
-  if (verdict === 'narrow') return "It's thin — still, that's why"
-  return 'The number already told you, which is why'
+  if (verdict === 'wide') return 'Nobody else has a lock like this, which is why'
+  if (verdict === 'narrow') return 'The lead is thinner than it looks, which is why'
+  return 'The number already told you the story, which is why'
 }
 
 export function istOffeneBruecke(land: string, value?: string): boolean {
-  const t = oeffneSprechende(normalisiereTtsPausen(land))
+  const t = oeffneSprechende(ohneKiBindestrich(land))
   if (!t || ABSCHIED.test(t) || /\bout of 10\b/i.test(t)) return false
   if (value && t.includes(value)) return false
   if (ZUSAMMENFASSUNG.test(t) && !BRUECKE_ENDE.test(t)) return false
-  return BRUECKE_ENDE.test(t) || /—$/.test(t)
+  return BRUECKE_ENDE.test(t)
 }
 
-/** Letzter Satz vor dem Restart — offene Brücke in den Hook, keine Zahl, kein Abschied. */
+/** Letzter Satz vor dem Restart. Offene Brücke in den Hook, keine Zahl, kein Abschied. */
 export function saubererLand(land: string, verdict: MoatShortVerdict, value: string): string {
-  const t = oeffneSprechende(normalisiereTtsPausen(land))
+  const t = oeffneSprechende(ohneKiBindestrich(land))
   if (istOffeneBruecke(t, value)) return t
   if (t && !ABSCHIED.test(t) && !/\bout of 10\b/i.test(t) && !(value && t.includes(value)) && !ZUSAMMENFASSUNG.test(t)) {
     return `${t}, which is why`
@@ -110,19 +112,21 @@ export function zuLangeSaetze(text: string, max = SATZ_MAX_WOERTER): string[] {
   return saetze(text).filter((s) => woerter(s).length > max)
 }
 
-function hatMikroPausen(text: string): boolean {
-  return /[,?—]|—/.test(text)
-}
-
 export function scriptTonWarnungen(texte: string[]): string[] {
   const w: string[] = []
   const alles = texte.filter(Boolean).join(' ')
   const verboten = verboteneWoerterIn(alles)
-  if (verboten.length) w.push(`KI-Ton im Script: ${verboten.join(', ')} — ersetzen.`)
+  if (verboten.length) w.push(`KI-Ton im Script: ${verboten.join(', ')}. Ersetzen.`)
+  if (/[—–]|\s-\s/.test(alles)) w.push('Gedankenstriche im Script. Komma oder ganzer Satz, kein Bindestrich.')
   const lang = texte.flatMap((t) => zuLangeSaetze(t))
   if (lang.length) w.push(`Sätze über ${SATZ_MAX_WOERTER} Wörter: „${lang[0]}“`)
-  const ohnePause = texte.flatMap((t) => saetze(t)).filter((s) => woerter(s).length >= 7 && !hatMikroPausen(s))
-  if (ohnePause.length) w.push('Längere Zeilen brauchen ein Komma oder einen Gedankenstrich für die Stimme.')
+  const fetzen = texte
+    .flatMap((t) => saetze(t))
+    .filter((s) => {
+      const n = woerter(s).length
+      return n > 0 && n < SATZ_MIN_WOERTER && !/[?]$/.test(s) && !BRUECKE_ENDE.test(oeffneSprechende(s))
+    })
+  if (fetzen.length) w.push(`Zu kurz, klingt nach Slogan: „${fetzen[0]}“`)
   return w
 }
 
@@ -154,7 +158,7 @@ export function beschreibungFuerUpload(roh: string, firmenname: string, ticker: 
 export function kommentarFuerUpload(roh: string, verdict: MoatShortVerdict, ticker: string): string {
   const t = roh.replace(/\s+/g, ' ').replace(/#\w+/g, '').trim()
   if (t && !/\b(subscribe|follow|like this)\b/i.test(t) && t.length <= 80) return t
-  if (verdict === 'wide') return `Is ${ticker} a wide moat — or just the only shop in town?`
+  if (verdict === 'wide') return `Is ${ticker} a wide moat, or just the only shop in town?`
   if (verdict === 'narrow') return `${ticker}: narrow moat. Durable, or one shock away?`
   return `${ticker}: no moat. Agree, or am I missing the lock-in?`
 }

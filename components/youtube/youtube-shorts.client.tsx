@@ -89,8 +89,8 @@ function beispielErgebnis(): MoatShortErgebnis {
     },
     moatAusCache: true,
     title: 'ASML: why nobody can copy it',
-    description: 'ASML Holding (ASML): 51.3% moat check.\n\nASML prints a 51.3% margin — machines nobody else can build.\n\nNot investment advice.\n#ASML #investing #moat',
-    kommentar: 'Is ASML a wide moat — or just the only shop in town?',
+    description: 'ASML Holding (ASML): 51.3% moat check.\n\nASML prints a 51.3% margin selling machines nobody else can build.\n\nNot investment advice.\n#ASML #investing #moat',
+    kommentar: 'Is ASML a wide moat, or just the only shop in town?',
     suchphrasen: ['ASML moat', 'ASML stock', 'ASML monopoly'],
     warnungen: [],
   }

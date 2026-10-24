@@ -16,6 +16,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion'
+import { ohneKiBindestrich } from '../lib/youtube/moat-short-script'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline, MOAT_SHORT_LOOP_FRAMES } from './moat-short-timeline'
 import { MOAT_SHORT_HEIGHT, type MoatShortBeat, type MoatShortProps, type MoatShortVerdict } from './moat-short-types'
@@ -36,13 +37,27 @@ const STEMPEL_AUFPRALL = 9
 const SAFE_TOP = 300
 const SAFE_LEFT = 72
 const SAFE_RIGHT = 200
-/** 12 % über der alten Lage (1188) — frei von Balken, Charts und Sektionstiteln. */
-const CAPTION_TOP = 1044
-const CAPTION_GAP = 36
-const CONTENT_MAX_BOTTOM = CAPTION_TOP - CAPTION_GAP
-const CONTENT_BOTTOM_PAD = MOAT_SHORT_HEIGHT - CONTENT_MAX_BOTTOM
+/** YouTube-UI unten. Hero-Szenen füllen die Fläche darüber. */
+const SAFE_BOTTOM = 360
+/** Untertitel im unteren Drittel, unter der großen Zahl, über der YouTube-Leiste. */
+const CAPTION_TOP = 1200
+/** Gleicher Rand links und rechts, sonst hängt die Pill optisch links. */
+const CAPTION_SIDE = 88
+const PILLAR_BOTTOM_PAD = MOAT_SHORT_HEIGHT - (CAPTION_TOP - 32)
 const CAPTION_YELLOW = '#FFC700'
 const CAPTION_SIZE = 62
+
+function saubereProps(p: MoatShortProps): MoatShortProps {
+  return {
+    ...p,
+    hook: ohneKiBindestrich(p.hook),
+    hookLoop: ohneKiBindestrich(p.hookLoop),
+    business: ohneKiBindestrich(p.business),
+    crack: ohneKiBindestrich(p.crack),
+    closing: ohneKiBindestrich(p.closing),
+    pillars: p.pillars.map((x) => ({ ...x, line: ohneKiBindestrich(x.line) })),
+  }
+}
 
 function scoreFarbe(score: number): string {
   if (score >= 8) return VERDICT_FARBE.wide
@@ -54,8 +69,9 @@ function beat(beats: MoatShortBeat[], id: MoatShortBeat['id']): MoatShortBeat {
   return beats.find((b) => b.id === id) ?? { id, text: '', from: 0, duration: 1 }
 }
 
-export const MoatShort: React.FC<MoatShortProps> = (props) => {
+export const MoatShort: React.FC<MoatShortProps> = (roh) => {
   const frame = useCurrentFrame()
+  const props = useMemo(() => saubereProps(roh), [roh])
   const timeline = useMemo(() => berechneMoatShortTimeline(props), [props])
   const { beats, captions, durationInFrames } = timeline
 
@@ -265,7 +281,14 @@ function HookSzene({
   const teaser = teaserAb == null || ruhe ? 0 : interpolate(frame, [teaserAb, teaserAb + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   const headlineGroesse = headline.length <= 55 ? 78 : headline.length <= 85 ? 66 : 56
   return (
-    <AbsoluteFill style={{ alignItems: 'center', padding: `${SAFE_TOP + 130}px ${SAFE_RIGHT}px ${CONTENT_BOTTOM_PAD}px ${SAFE_LEFT}px`, transform: `scale(${schub})` }}>
+    <AbsoluteFill
+      style={{
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: `${SAFE_TOP + 40}px ${SAFE_RIGHT}px ${SAFE_BOTTOM}px ${SAFE_LEFT}px`,
+        transform: `scale(${schub})`,
+      }}
+    >
       <div style={{ fontSize: headlineGroesse, fontWeight: 800, letterSpacing: -2, lineHeight: 1.08, textAlign: 'center', opacity: 1 - 0.6 * teaser }}>
         {headline.split(' ').map((w, i) => (
           <span key={i} style={{ color: /\d/.test(w) ? BRAND : TEXT }}>
@@ -274,8 +297,8 @@ function HookSzene({
           </span>
         ))}
       </div>
-      <div style={{ marginTop: 48, textAlign: 'center', transform: `scale(${interpolate(einschlag, [0, 1], [1.15, 1])})` }}>
-        <div style={{ fontSize: value.length > 7 ? 168 : 200, fontWeight: 900, letterSpacing: -8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+      <div style={{ marginTop: 90, textAlign: 'center', transform: `scale(${interpolate(einschlag, [0, 1], [1.15, 1])})` }}>
+        <div style={{ fontSize: value.length > 7 ? 180 : 230, fontWeight: 900, letterSpacing: -8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
           {zaehleHoch(value, 1)}
         </div>
         <div style={{ marginTop: 30, fontFamily: MONO, fontSize: 32, letterSpacing: 7, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
@@ -291,11 +314,11 @@ function BusinessSzene({ ticker, name, logoUrl }: { ticker: string; name: string
   const tile = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 12 })
   const text = spring({ frame: frame - 4, fps, config: { damping: 200 }, durationInFrames: 12 })
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SAFE_TOP + 80, paddingBottom: CONTENT_BOTTOM_PAD }}>
+    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SAFE_TOP, paddingBottom: SAFE_BOTTOM }}>
       <div
         style={{
-          width: 300,
-          height: 300,
+          width: 340,
+          height: 340,
           borderRadius: 72,
           background: logoUrl && !logoKaputt ? '#FFFFFF' : BRAND,
           display: 'flex',
@@ -311,13 +334,13 @@ function BusinessSzene({ ticker, name, logoUrl }: { ticker: string; name: string
           <Img
             src={logoSrc(logoUrl)}
             onError={() => setLogoKaputt(true)}
-            style={{ width: 220, height: 220, objectFit: 'contain' }}
+            style={{ width: 250, height: 250, objectFit: 'contain' }}
           />
         ) : (
           <span style={{ fontSize: Math.min(100, Math.floor(300 / Math.max(1, ticker.length))), fontWeight: 900, color: BG, letterSpacing: -2 }}>{ticker}</span>
         )}
       </div>
-      <div style={{ marginTop: 40, textAlign: 'center', opacity: text, transform: `translateY(${interpolate(text, [0, 1], [24, 0])}px)` }}>
+      <div style={{ marginTop: 56, textAlign: 'center', opacity: text, transform: `translateY(${interpolate(text, [0, 1], [24, 0])}px)` }}>
         <div style={{ fontSize: name.length > 22 ? 70 : 88, fontWeight: 800, letterSpacing: -2, lineHeight: 1.05, maxWidth: 900 }}>{name}</div>
         <div style={{ marginTop: 18, fontFamily: MONO, fontSize: 32, letterSpacing: 6, color: MUTED }}>WHAT THEY SELL</div>
       </div>
@@ -332,7 +355,7 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
   const eintritt = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 10 })
   const mitStats = pillars.some((p) => p.stat)
   return (
-    <AbsoluteFill style={{ padding: `${SAFE_TOP + 130}px ${SAFE_RIGHT}px ${CONTENT_BOTTOM_PAD}px ${SAFE_LEFT}px`, opacity: eintritt }}>
+    <AbsoluteFill style={{ padding: `${SAFE_TOP + 130}px ${SAFE_RIGHT}px ${PILLAR_BOTTOM_PAD}px ${SAFE_LEFT}px`, opacity: eintritt }}>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         <div style={{ fontFamily: MONO, fontSize: 28, letterSpacing: 7, color: MUTED, marginBottom: mitStats ? 18 : 22, flexShrink: 0 }}>
           FOUR PILLARS
@@ -387,7 +410,7 @@ function CrackSzene() {
   const pfad = 'M -20 70 L 150 40 L 260 105 L 400 30 L 520 120 L 660 50 L 780 110 L 900 35 L 1100 90'
   const laenge = 1600
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SAFE_TOP + 80, paddingBottom: CONTENT_BOTTOM_PAD, transform: `scale(${zurueck})` }}>
+    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SAFE_TOP, paddingBottom: SAFE_BOTTOM, transform: `scale(${zurueck})` }}>
       <div style={{ fontFamily: MONO, fontSize: 32, letterSpacing: 8, color: VERDICT_FARBE.none, opacity: interpolate(frame, [0, 5], [0, 1], { extrapolateRight: 'clamp' }) }}>
         WHAT COULD BREAK IT
       </div>
@@ -413,8 +436,8 @@ function VerdictSzene({ verdict, score, fadeOut }: { verdict: MoatShortVerdict; 
       style={{
         alignItems: 'center',
         justifyContent: 'center',
-        paddingTop: SAFE_TOP + 80,
-        paddingBottom: CONTENT_BOTTOM_PAD,
+        paddingTop: SAFE_TOP,
+        paddingBottom: SAFE_BOTTOM,
         opacity: 1 - fadeOut,
         transform: `translate(${wackeln}px, ${wackeln * 0.6}px)`,
       }}
@@ -468,20 +491,23 @@ function Caption({ text }: { text: string }) {
         position: 'absolute',
         top: CAPTION_TOP,
         left: 0,
+        right: 0,
         width: '100%',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
         textAlign: 'center',
         pointerEvents: 'none',
-        paddingLeft: SAFE_LEFT,
-        paddingRight: SAFE_RIGHT,
+        paddingLeft: CAPTION_SIDE,
+        paddingRight: CAPTION_SIDE,
         boxSizing: 'border-box',
       }}
     >
       <div
         style={{
           display: 'inline-block',
+          marginLeft: 'auto',
+          marginRight: 'auto',
           maxWidth: '100%',
           textAlign: 'center',
           background: 'rgba(0, 0, 0, 0.65)',
@@ -495,6 +521,8 @@ function Caption({ text }: { text: string }) {
       >
         <span
           style={{
+            display: 'block',
+            width: '100%',
             fontFamily: SANS,
             fontSize: CAPTION_SIZE,
             fontWeight: 700,

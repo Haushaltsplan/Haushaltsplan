@@ -27,33 +27,38 @@ export const MOAT_SHORT_LOOP_FRAMES = 16
 const CAPTION_ENDE_VOR_LOOP = 8
 /** Der Hook steht als Überschrift im Bild — doppelte Untertitel wären nur Lärm. */
 const OHNE_CAPTIONS = new Set<MoatShortBeatId>(['hook', 'loop'])
-const CAPTION_MAX_WOERTER = 8
+const CAPTION_MAX_WOERTER = 16
 
 function woerter(text: string): string[] {
   return text.trim().split(/\s+/).filter(Boolean)
 }
 
 function captionChunks(text: string): string[] {
+  const saetze = text
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
   const chunks: string[] = []
-  let aktuell: string[] = []
-  for (const wort of woerter(text)) {
-    aktuell.push(wort)
-    if (aktuell.length >= CAPTION_MAX_WOERTER || /[.,;:!?]$/.test(wort)) {
-      chunks.push(aktuell.join(' '))
-      aktuell = []
+  for (const satz of saetze.length ? saetze : [text.trim()]) {
+    const w = woerter(satz)
+    if (w.length <= CAPTION_MAX_WOERTER) {
+      chunks.push(satz)
+      continue
     }
+    const teile = satz.split(/(?<=,)\s+/)
+    let aktuell: string[] = []
+    for (const teil of teile) {
+      const next = [...aktuell, teil]
+      if (woerter(next.join(' ')).length > CAPTION_MAX_WOERTER && aktuell.length) {
+        chunks.push(aktuell.join(' '))
+        aktuell = [teil]
+      } else {
+        aktuell = next
+      }
+    }
+    if (aktuell.length) chunks.push(aktuell.join(' '))
   }
-  if (aktuell.length) chunks.push(aktuell.join(' '))
-  const letzter = chunks[chunks.length - 1]
-  if (
-    chunks.length > 1 &&
-    letzter &&
-    woerter(letzter).length <= 2 &&
-    woerter(`${chunks[chunks.length - 2]} ${letzter}`).length <= CAPTION_MAX_WOERTER + 1
-  ) {
-    chunks.splice(-2, 2, `${chunks[chunks.length - 2]} ${letzter}`)
-  }
-  return chunks
+  return chunks.filter(Boolean)
 }
 
 export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimeline {
