@@ -1,6 +1,7 @@
 import { MoatShort } from '@/remotion/MoatShort'
 import { berechneMoatShortTimeline } from '@/remotion/moat-short-timeline'
 import {
+  MOAT_SHORT_DEFAULT_PROPS,
   MOAT_SHORT_FPS,
   MOAT_SHORT_HEIGHT,
   MOAT_SHORT_WIDTH,
@@ -43,6 +44,7 @@ export async function rendereMoatShortImBrowser(
       fps: MOAT_SHORT_FPS,
       width: MOAT_SHORT_WIDTH,
       height: MOAT_SHORT_HEIGHT,
+      defaultProps: MOAT_SHORT_DEFAULT_PROPS,
     },
     inputProps: webProps,
     container: 'mp4',
