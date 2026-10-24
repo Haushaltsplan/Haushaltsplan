@@ -12,6 +12,29 @@ const CACHE_ORDNER = 'youtube-logos'
 const MIN_BYTES = 4_000
 const MAX_BYTES = 2_000_000
 
+const LOGO_HOSTS = new Set([
+  'static2.finnhub.io',
+  'companiesmarketcap.com',
+  'www.companiesmarketcap.com',
+  'financialmodelingprep.com',
+  'images.financialmodelingprep.com',
+  'logo.clearbit.com',
+])
+
+export function istErlaubteLogoQuelle(url: string): boolean {
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:') return false
+    return LOGO_HOSTS.has(u.hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+export function logoProxyPfad(url: string): string {
+  return `/api/youtube/logo?u=${encodeURIComponent(url)}`
+}
+
 function hostAusWebsite(website: string | null | undefined): string | null {
   if (!website?.trim()) return null
   try {
@@ -104,5 +127,13 @@ export async function findeMoatShortLogo(opts: {
   treffer.sort((a, b) => b.bytes.length - a.bytes.length)
   const best = treffer[0]
   if (!best) return null
-  return (await speichereCache(ticker, best)) ?? best.url
+  return (await speichereCache(ticker, best)) ?? logoProxyPfad(best.url)
+}
+
+export async function ladeLogoProxy(url: string): Promise<{ bytes: Buffer; typ: string } | null> {
+  if (!istErlaubteLogoQuelle(url)) return null
+  const bild = await ladeBild(url)
+  if (!bild) return null
+  const typ = bild.ext === 'jpg' ? 'image/jpeg' : bild.ext === 'webp' ? 'image/webp' : bild.ext === 'svg' ? 'image/svg+xml' : 'image/png'
+  return { bytes: bild.bytes, typ }
 }

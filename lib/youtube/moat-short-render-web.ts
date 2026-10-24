@@ -16,6 +16,16 @@ export function musikPlaySrc(rel: string | null): string | null {
   return `${window.location.origin}/api/youtube/musik/datei/${encodeURIComponent(datei)}`
 }
 
+/** Same-Origin, sonst blockiert der Browser-Export fremde Logo-Hosts (CORS). */
+export function logoPlaySrc(rel: string | null): string | null {
+  if (!rel) return null
+  if (typeof window === 'undefined') return rel
+  const origin = window.location.origin
+  if (rel.startsWith('/api/')) return `${origin}${rel}`
+  if (/^https?:\/\//i.test(rel)) return `${origin}/api/youtube/logo?u=${encodeURIComponent(rel)}`
+  return `${origin}/${rel.replace(/^\/+/, '')}`
+}
+
 export async function rendereMoatShortImBrowser(
   props: MoatShortProps,
   onProgress?: (fortschritt: number) => void,
@@ -34,7 +44,11 @@ export async function rendereMoatShortImBrowser(
     throw new Error(grund || 'Dieser Browser kann kein MP4 erzeugen. Bitte Chrome oder Edge.')
   }
 
-  const webProps: MoatShortProps = { ...props, musicSrc: musikPlaySrc(props.musicSrc) }
+  const webProps: MoatShortProps = {
+    ...props,
+    musicSrc: musikPlaySrc(props.musicSrc),
+    logoUrl: logoPlaySrc(props.logoUrl),
+  }
   const dauer = berechneMoatShortTimeline(webProps).durationInFrames
   const { getBlob } = await renderMediaOnWeb({
     composition: {

@@ -7,7 +7,7 @@ import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
 import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
-import { musikPlaySrc, rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
+import { logoPlaySrc, musikPlaySrc, rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
 import { MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
 
@@ -43,7 +43,7 @@ function leseExport(text: string): Eingabe | string {
 }
 
 function logoHref(url: string): string {
-  return /^https?:\/\//i.test(url) ? url : `/${url.replace(/^\/+/, '')}`
+  return logoPlaySrc(url) ?? `/${url.replace(/^\/+/, '')}`
 }
 
 function pruefeLogo(url: string | null): Promise<string | null> {
@@ -86,6 +86,7 @@ export function YoutubeShortsClient() {
     ? {
         ...props,
         musicSrc: musikPlaySrc(musik),
+        logoUrl: logoPlaySrc(props.logoUrl),
         musicGain: track?.gain ?? 0.5,
         musicTrim: Math.round((track?.startSekunden ?? 0) * MOAT_SHORT_FPS),
         sfx,

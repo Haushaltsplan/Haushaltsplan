@@ -45,7 +45,8 @@ function oeffentlicheApi(pathname: string): boolean {
     pathname === '/api/portfolio-analyse/nachkaeufe/cron-scan' ||
     pathname === '/api/portfolio-analyse/quartals-auto-ki/cron' ||
     pathname === '/api/export-data' ||
-    pathname.startsWith('/api/youtube/musik/datei/')
+    pathname.startsWith('/api/youtube/musik/datei/') ||
+    pathname === '/api/youtube/logo'
   )
 }
 
