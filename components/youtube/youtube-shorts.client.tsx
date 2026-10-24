@@ -9,8 +9,9 @@ import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from 
 import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
+import { scriptLoopWarnungen } from '@/lib/youtube/moat-short-script'
 import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
-import { MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
+import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
 
 const WINKEL_LABEL: Record<string, string> = {
   number_shock: 'Zahl schockt',
@@ -43,6 +44,40 @@ function leseExport(text: string): Eingabe | string {
   }
 }
 
+function beispielErgebnis(): MoatShortErgebnis {
+  const props = { ...MOAT_SHORT_DEFAULT_PROPS }
+  return {
+    props,
+    metriken: [
+      { id: 'gm', label: 'Gross margin', value: '51.3%', hook: true },
+      { id: 'swing', label: '10y gross margin swing', value: '2.1 pts', hook: false },
+      { id: 'roic', label: '5-year avg. ROIC', value: '28.4%', hook: false },
+    ],
+    hookVarianten: [
+      { winkel: 'number_shock', claim: props.hook, loop: props.hookLoop, land: props.closing, metrikId: 'gm' },
+    ],
+    moat: {
+      ticker: props.ticker,
+      isin: null,
+      firmenname: props.firmenname,
+      geschaeftsmodell: props.business,
+      pfeiler: props.pillars.map((p) => ({ id: p.id, score: p.score, begruendung: p.line, risiko: '' })),
+      score: props.score,
+      urteil: 'tief',
+      kaufwuerdig: true,
+      kaufHinweis: '',
+      zerstoerungsszenarien: [props.crack],
+      stand: '',
+      kiModell: null,
+    },
+    moatAusCache: true,
+    title: 'ASML: why nobody can copy it',
+    description: 'ASML Holding (ASML): 51.3% moat check.\n\nAt 51.3% gross margin, ASML sells machines nobody else can build.\n\nNot investment advice.\n#ASML #investing #moat',
+    kommentar: 'Is ASML a wide moat — or just the only shop in town?',
+    warnungen: [],
+  }
+}
+
 function logoHref(url: string): string {
   return logoPlaySrc(url) ?? `/${url.replace(/^\/+/, '')}`
 }
@@ -71,6 +106,8 @@ export function YoutubeShortsClient() {
   const [props, setProps] = useState<MoatShortProps | null>(null)
   const [tracks, setTracks] = useState<string[]>(MOAT_SHORT_KATALOG_PFADE)
   const [musikWahl, setMusikWahl] = useState<string>('auto')
+  const [musikPegel, setMusikPegel] = useState(50)
+  const [musikPegelCommit, setMusikPegelCommit] = useState(50)
   const [sfx, setSfx] = useState(true)
 
   useEffect(() => {
@@ -78,6 +115,12 @@ export function YoutubeShortsClient() {
       .then((r) => r.json() as Promise<{ tracks?: string[] }>)
       .then((j) => setTracks(sortiereTracks([...new Set([...MOAT_SHORT_KATALOG_PFADE, ...(j.tracks ?? [])])])))
       .catch(() => undefined)
+    const gespeichert = Number(typeof window !== 'undefined' ? window.localStorage.getItem('moat-short-musik-pegel') : NaN)
+    if (Number.isFinite(gespeichert)) {
+      const v = Math.max(0, Math.min(100, gespeichert))
+      setMusikPegel(v)
+      setMusikPegelCommit(v)
+    }
   }, [])
 
   const automatisch = trackZumUrteil(props?.verdict, tracks)
@@ -88,7 +131,7 @@ export function YoutubeShortsClient() {
         ...props,
         musicSrc: musikPlaySrc(musik),
         logoUrl: logoPlaySrc(props.logoUrl),
-        musicGain: track?.gain ?? 0.5,
+        musicGain: (track?.gain ?? 0.5) * (musikPegel / 100),
         musicTrim: Math.round((track?.startSekunden ?? 0) * MOAT_SHORT_FPS),
         sfx,
       }
@@ -101,17 +144,26 @@ export function YoutubeShortsClient() {
   const fremd =
     props && ergebnis
       ? fremdeZahlen(
-          [props.hook, props.hookLoop, props.business, ...props.pillars.map((p) => p.line), props.crack].join(' '),
+          [props.hook, props.hookLoop, props.business, ...props.pillars.map((p) => p.line), props.crack, props.closing].join(' '),
           ergebnis.metriken,
           [ergebnis.moat.score, ...props.pillars.map((p) => p.score)],
         )
       : []
   const zahlenWarnung = fremd.length ? `Zahlen ohne Quelle im Export: ${fremd.join(', ')}` : null
+  const loopWarnung = props ? scriptLoopWarnungen(props.hook, props.closing, props.metricValue) : []
 
   function waehleHook(h: MoatShortHookVariante) {
     const m = ergebnis?.metriken.find((x) => x.id === h.metrikId)
     setProps((p) =>
-      p ? { ...p, hook: h.claim, hookLoop: h.loop, ...(m ? { metricValue: m.value, metricLabel: m.label } : {}) } : p,
+      p
+        ? {
+            ...p,
+            hook: h.claim,
+            hookLoop: h.loop,
+            closing: h.land,
+            ...(m ? { metricValue: m.value, metricLabel: m.label } : {}),
+          }
+        : p,
     )
   }
 
@@ -185,7 +237,7 @@ export function YoutubeShortsClient() {
       <PageHero
         eyebrow="YouTube"
         title="Moat Check Shorts"
-        description="Fundamentaldaten-Export einfügen. Daraus entstehen Moat-Urteil, englisches Script und ein 45-Sekunden-Short."
+        description="Fundamentaldaten-Export einfügen. Daraus entstehen Moat-Urteil, englisches Script und ein Short, das unsichtbar in sich zurückläuft."
       />
 
       <section className="app-section-shell">
@@ -206,6 +258,17 @@ export function YoutubeShortsClient() {
               JSON-Datei wählen
               <input type="file" accept="application/json,.json" className="hidden" onChange={(e) => void dateiGewaehlt(e.target.files?.[0])} />
             </label>
+            <button
+              type="button"
+              onClick={() => {
+                const b = beispielErgebnis()
+                setErgebnis(b)
+                setProps(b.props)
+              }}
+              className="rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-sm text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]"
+            >
+              ASML-Beispiel
+            </button>
             <label className="flex items-center gap-2 text-sm text-[var(--app-text-muted)]">
               <input type="checkbox" checked={moatNeu} onChange={(e) => setMoatNeu(e.target.checked)} />
               Moat neu bewerten (statt gespeichertes Urteil)
@@ -262,7 +325,9 @@ export function YoutubeShortsClient() {
               ) : null}
 
               <div className="space-y-2">
-                <p className="text-xs font-medium text-[var(--app-text-muted)]">Hook — die ersten zwei Sekunden entscheiden</p>
+                <p className="text-xs font-medium text-[var(--app-text-muted)]">
+                  Hook-Kreis — Landung und Behauptung müssen als ein Gedanke klingen
+                </p>
                 {ergebnis.hookVarianten.map((h, i) => {
                   const aktiv = h.claim === props.hook
                   return (
@@ -281,6 +346,7 @@ export function YoutubeShortsClient() {
                       </span>
                       <span className="mt-0.5 block font-medium text-[var(--app-text)]">{h.claim}</span>
                       <span className="block text-[var(--app-text-muted)]">{h.loop}</span>
+                      <span className="mt-1 block text-[11px] text-[var(--app-text-muted)]">Ende → {h.land}</span>
                     </button>
                   )
                 })}
@@ -305,9 +371,11 @@ export function YoutubeShortsClient() {
                       </option>
                     ))}
                 </select>
-                {!props.hook.includes(props.metricValue) ? (
-                  <p className="text-xs text-amber-300">Die Behauptung nennt {props.metricValue} nicht wörtlich.</p>
-                ) : null}
+                {loopWarnung.map((w) => (
+                  <p key={w} className="text-xs text-amber-300">
+                    {w}
+                  </p>
+                ))}
                 {zahlenWarnung ? <p className="text-xs text-amber-300">{zahlenWarnung}</p> : null}
               </div>
 
@@ -353,21 +421,56 @@ export function YoutubeShortsClient() {
               ))}
 
               <div>
-                <label className="text-xs font-medium text-[var(--app-text-muted)]">The crack</label>
+                <label className="text-xs font-medium text-[var(--app-text-muted)]">The crack — löst den Spannungssatz</label>
                 <textarea value={props.crack} onChange={(e) => setze('crack', e.target.value)} rows={2} className={`${feldKlasse} mt-1`} />
               </div>
 
+              <div>
+                <label className="text-xs font-medium text-[var(--app-text-muted)]">
+                  Landung — letzter Satz, danach beginnt die Behauptung von vorn
+                </label>
+                <textarea value={props.closing} onChange={(e) => setze('closing', e.target.value)} rows={2} className={`${feldKlasse} mt-1`} />
+                <p className="mt-2 rounded-lg bg-[var(--app-surface-muted)] px-3 py-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
+                  <span className="font-medium text-[var(--app-text)]">{props.closing}</span>
+                  {' → '}
+                  {props.hook}
+                </p>
+              </div>
+
               <div className="rounded-xl border border-[var(--app-border)] p-3 text-sm">
-                <p className="text-xs font-medium text-[var(--app-text-muted)]">Titel & Beschreibung für YouTube</p>
+                <p className="text-xs font-medium text-[var(--app-text-muted)]">Upload — Titel, Beschreibung, Kommentar</p>
                 <p className="mt-1 font-medium text-[var(--app-text)]">{ergebnis.title}</p>
-                <p className="mt-1 whitespace-pre-line text-[var(--app-text-muted)]">{beschreibung}</p>
-                <button
-                  type="button"
-                  onClick={() => void navigator.clipboard.writeText(`${ergebnis.title}\n\n${beschreibung}`).then(() => toast.success('Kopiert'))}
-                  className="mt-2 rounded-lg border border-[var(--app-border)] px-3 py-1 text-xs text-[var(--app-text-muted)]"
-                >
-                  Kopieren
-                </button>
+                <p className="text-[11px] text-[var(--app-text-muted)]">{ergebnis.title.length} Zeichen · YouTube-Suche mag 30–50</p>
+                <p className="mt-2 whitespace-pre-line text-[var(--app-text-muted)]">{beschreibung}</p>
+                <p className="mt-2 text-xs text-[var(--app-text)]">
+                  Anpinnen: <span className="text-[var(--app-text-muted)]">{ergebnis.kommentar}</span>
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard.writeText(ergebnis.title).then(() => toast.success('Titel kopiert'))}
+                    className="rounded-lg border border-[var(--app-border)] px-3 py-1 text-xs text-[var(--app-text-muted)]"
+                  >
+                    Titel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard.writeText(beschreibung).then(() => toast.success('Beschreibung kopiert'))}
+                    className="rounded-lg border border-[var(--app-border)] px-3 py-1 text-xs text-[var(--app-text-muted)]"
+                  >
+                    Beschreibung
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard.writeText(ergebnis.kommentar).then(() => toast.success('Kommentar kopiert'))}
+                    className="rounded-lg border border-[var(--app-border)] px-3 py-1 text-xs text-[var(--app-text-muted)]"
+                  >
+                    Kommentar
+                  </button>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
+                  In Studio: ersten Frame als Thumbnail (die Hook-Zahl), Related Video auf euer bestes Longform, KI-Kennzeichnung falls nötig. Nicht für Kinder.
+                </p>
               </div>
             </div>
           </section>
@@ -377,7 +480,7 @@ export function YoutubeShortsClient() {
               <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">3 · Vorschau</h2>
             </div>
             <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
-              {fertig ? <MoatShortPreview props={fertig} /> : null}
+              {fertig ? <MoatShortPreview props={fertig} restartKey={musikPegelCommit} /> : null}
               <select value={musikWahl} onChange={(e) => setMusikWahl(e.target.value)} className={`${feldKlasse} text-xs`}>
                 <option value="auto">
                   Automatisch
@@ -390,9 +493,29 @@ export function YoutubeShortsClient() {
                   </option>
                 ))}
               </select>
+              {musik ? (
+                <label className="block text-xs text-[var(--app-text-muted)]">
+                  Musik {musikPegel}%
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={musikPegel}
+                    onChange={(e) => {
+                      const v = Number(e.target.value)
+                      setMusikPegel(v)
+                      window.localStorage.setItem('moat-short-musik-pegel', String(v))
+                    }}
+                    onPointerUp={(e) => setMusikPegelCommit(Number((e.target as HTMLInputElement).value))}
+                    onKeyUp={(e) => setMusikPegelCommit(Number((e.target as HTMLInputElement).value))}
+                    className="mt-1 w-full accent-red-600"
+                  />
+                </label>
+              ) : null}
               {track?.credit ? (
                 <p className="text-xs text-[var(--app-text-muted)]">
-                  Passend zum Urteil, Pegel angeglichen. Lizenz CC BY 4.0 – Namensnennung steht in der Beschreibung oben.
+                  Passend zum Urteil. Tracks sind untereinander angeglichen — der Regler sitzt darüber. Lizenz CC BY 4.0, Namensnennung in der Beschreibung.
                 </p>
               ) : null}
               {!tracks.length ? (

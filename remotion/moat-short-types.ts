@@ -24,10 +24,11 @@ export type MoatShortProps = {
   crack: string
   verdict: MoatShortVerdict
   score: number
+  /** Landung: letzter Satz, endet auf der Hook-Zahl, danach beginnt hook von vorn. */
   closing: string
   /** Pfad relativ zu `public/`, z. B. „youtube-music/track.mp3“. */
   musicSrc: string | null
-  /** Linearer Pegel, gleicht Tracks untereinander an. */
+  /** Linearer Pegel: Katalog-Angleich × Nutzerregler. */
   musicGain: number
   /** Quell-Frames, die übersprungen werden (leises Intro). */
   musicTrim: number
@@ -44,6 +45,7 @@ export type MoatShortBeatId =
   | 'pillar3'
   | 'crack'
   | 'verdict'
+  | 'loop'
 
 export type MoatShortBeat = {
   id: MoatShortBeatId
@@ -90,7 +92,7 @@ export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
   crack: 'The risk is not a rival. It is export controls cutting off its biggest customers.',
   verdict: 'wide',
   score: 9,
-  closing: 'Wide moat. 9 out of 10.',
+  closing: 'Wide moat. The proof is 51.3%.',
   musicSrc: null,
   musicGain: 0.5,
   musicTrim: 0,

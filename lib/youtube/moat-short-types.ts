@@ -7,6 +7,8 @@ export type MoatShortHookVariante = {
   winkel: string
   claim: string
   loop: string
+  /** Letzter gesprochener Satz — danach beginnt claim von vorn. */
+  land: string
   metrikId: string
 }
 
@@ -18,6 +20,8 @@ export type MoatShortErgebnis = {
   moatAusCache: boolean
   title: string
   description: string
+  /** Angepinnter Kommentar — eine Streitfrage, kein Subscribe. */
+  kommentar: string
   warnungen: string[]
 }
 

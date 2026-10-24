@@ -16,7 +16,7 @@ import {
   useVideoConfig,
 } from 'remotion'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
-import { berechneMoatShortTimeline } from './moat-short-timeline'
+import { berechneMoatShortTimeline, MOAT_SHORT_LOOP_FRAMES } from './moat-short-timeline'
 import type { MoatShortBeat, MoatShortProps, MoatShortVerdict } from './moat-short-types'
 
 const { fontFamily: DISPLAY } = loadInterTight('normal', { weights: ['600', '800', '900'], subsets: ['latin'] })
@@ -30,6 +30,11 @@ const BRAND = '#E9B44C'
 const VERDICT_FARBE: Record<MoatShortVerdict, string> = { wide: '#6FD39A', narrow: '#E9B44C', none: '#EF6A5A' }
 const VERDICT_LABEL: Record<MoatShortVerdict, string> = { wide: 'Wide moat', narrow: 'Narrow moat', none: 'No moat' }
 const STEMPEL_AUFPRALL = 9
+/** YouTube-UI: oben Suche, unten Titel/Abo, rechts Buttons. */
+const SAFE_TOP = 300
+const SAFE_LEFT = 72
+const SAFE_RIGHT = 200
+const CAPTION_TOP = 1188
 
 function scoreFarbe(score: number): string {
   if (score >= 8) return VERDICT_FARBE.wide
@@ -53,13 +58,23 @@ export const MoatShort: React.FC<MoatShortProps> = (props) => {
   const p3 = beat(beats, 'pillar3')
   const crack = beat(beats, 'crack')
   const verdict = beat(beats, 'verdict')
+  const loop = beats.find((b) => b.id === 'loop')
   const crackEnde = crack.from + crack.duration
+  const loopFrom = loop?.from ?? durationInFrames - MOAT_SHORT_LOOP_FRAMES
+  const loopDauer = loop?.duration ?? MOAT_SHORT_LOOP_FRAMES
+  const loopBlend = interpolate(frame, [loopFrom, loopFrom + 10], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
 
-  const bg = interpolateColors(
-    frame,
-    [crack.from, crack.from + 6, crackEnde - 4, crackEnde],
-    [BG, BG_CRACK, BG_CRACK, BG],
-  )
+  const bg =
+    beats.some((b) => b.id === 'crack') && crack.from > 0
+      ? interpolateColors(
+          frame,
+          [crack.from, crack.from + 6, crackEnde - 4, crackEnde],
+          [BG, BG_CRACK, BG_CRACK, BG],
+        )
+      : BG
 
   return (
     <AbsoluteFill style={{ backgroundColor: bg, color: TEXT, fontFamily: DISPLAY }}>
@@ -75,8 +90,13 @@ export const MoatShort: React.FC<MoatShortProps> = (props) => {
       <Sequence from={crack.from} durationInFrames={crack.duration} layout="none">
         <CrackSzene />
       </Sequence>
-      <Sequence from={verdict.from} durationInFrames={verdict.duration} layout="none">
-        <VerdictSzene verdict={props.verdict} score={props.score} />
+      <Sequence from={verdict.from} durationInFrames={verdict.duration + loopDauer} layout="none">
+        <VerdictSzene verdict={props.verdict} score={props.score} fadeOut={loopBlend} />
+      </Sequence>
+      <Sequence from={loopFrom} durationInFrames={loopDauer} layout="none">
+        <AbsoluteFill style={{ opacity: loopBlend }}>
+          <HookSzene headline={props.hook} value={props.metricValue} label={props.metricLabel} teaserAb={null} ruhe />
+        </AbsoluteFill>
       </Sequence>
 
       {captions.map((c, i) => (
@@ -85,7 +105,12 @@ export const MoatShort: React.FC<MoatShortProps> = (props) => {
         </Sequence>
       ))}
 
-      <Kopfzeile ticker={props.ticker} logoUrl={props.logoUrl} fortschritt={frame / Math.max(1, durationInFrames - 1)} />
+      <Kopfzeile
+        ticker={props.ticker}
+        logoUrl={props.logoUrl}
+        fortschritt={frame / Math.max(1, durationInFrames - 1)}
+        balkenSichtbar={frame > 3 && frame < durationInFrames - 12}
+      />
       <Koernung />
       <Ton
         musicSrc={props.musicSrc}
@@ -93,7 +118,6 @@ export const MoatShort: React.FC<MoatShortProps> = (props) => {
         musicTrim={props.musicTrim ?? 0}
         sfx={props.sfx}
         beats={beats}
-        dauer={durationInFrames}
       />
     </AbsoluteFill>
   )
@@ -105,19 +129,17 @@ function Ton({
   musicTrim,
   sfx,
   beats,
-  dauer,
 }: {
   musicSrc: string | null
   musicGain: number
   musicTrim: number
   sfx: boolean
   beats: MoatShortBeat[]
-  dauer: number
 }) {
   const crack = beats.find((b) => b.id === 'crack')
   const cues: { from: number; src: string; volume: number }[] = []
   for (const b of beats) {
-    if (b.id === 'hook') cues.push({ from: b.from, src: whip, volume: 0.35 })
+    if (b.id === 'hook') cues.push({ from: b.from + 4, src: whip, volume: 0.35 })
     if (b.id === 'business') cues.push({ from: Math.max(0, b.from - 4), src: whoosh, volume: 0.35 })
     if (b.id.startsWith('pillar')) cues.push({ from: b.from, src: uiSwitch, volume: 0.25 })
     if (b.id === 'crack') cues.push({ from: b.from + 2, src: whip, volume: 0.4 })
@@ -125,8 +147,6 @@ function Ton({
   }
 
   const musikVolume = (f: number) => {
-    const rein = interpolate(f, [0, 6], [0, 1], { extrapolateRight: 'clamp' })
-    const raus = interpolate(f, [dauer - 30, dauer - 1], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
     const crackEnde = crack ? crack.from + crack.duration : 0
     const duck =
       crack && crack.from >= 4
@@ -135,7 +155,7 @@ function Ton({
             extrapolateRight: 'clamp',
           })
         : 1
-    return Math.min(1, musicGain) * rein * raus * duck
+    return Math.max(0, Math.min(1, musicGain)) * duck
   }
 
   return (
@@ -174,9 +194,19 @@ function musikAudioSrc(src: string): string {
   return staticFile(src.replace(/^\/+/, ''))
 }
 
-function Kopfzeile({ ticker, logoUrl, fortschritt }: { ticker: string; logoUrl: string | null; fortschritt: number }) {
+function Kopfzeile({
+  ticker,
+  logoUrl,
+  fortschritt,
+  balkenSichtbar,
+}: {
+  ticker: string
+  logoUrl: string | null
+  fortschritt: number
+  balkenSichtbar: boolean
+}) {
   return (
-    <div style={{ position: 'absolute', top: 132, left: 90, right: 90 }}>
+    <div style={{ position: 'absolute', top: SAFE_TOP, left: SAFE_LEFT, right: SAFE_RIGHT }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: MONO, fontSize: 28, letterSpacing: 6, fontWeight: 700 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <span style={{ width: 14, height: 14, borderRadius: 7, background: BRAND }} />
@@ -189,8 +219,8 @@ function Kopfzeile({ ticker, logoUrl, fortschritt }: { ticker: string; logoUrl: 
           ${ticker}
         </span>
       </div>
-      <div style={{ marginTop: 26, height: 3, background: 'rgba(243,241,236,0.1)', borderRadius: 2 }}>
-        <div style={{ width: `${Math.min(1, fortschritt) * 100}%`, height: '100%', background: BRAND, borderRadius: 2 }} />
+      <div style={{ marginTop: 26, height: 3, background: 'rgba(243,241,236,0.1)', borderRadius: 2, opacity: balkenSichtbar ? 1 : 0 }}>
+        <div style={{ width: `${Math.min(0.92, fortschritt) * 100}%`, height: '100%', background: BRAND, borderRadius: 2 }} />
       </div>
     </div>
   )
@@ -205,16 +235,28 @@ function zaehleHoch(value: string, t: number): string {
   return `${m[1]}${(Number(m[2]) * t).toFixed(nachkomma)}${m[3]}`
 }
 
-function HookSzene({ headline, value, label, teaserAb }: { headline: string; value: string; label: string; teaserAb: number | null }) {
+function HookSzene({
+  headline,
+  value,
+  label,
+  teaserAb,
+  ruhe,
+}: {
+  headline: string
+  value: string
+  label: string
+  teaserAb: number | null
+  ruhe?: boolean
+}) {
   const frame = useCurrentFrame()
   const { fps, durationInFrames } = useVideoConfig()
-  const einschlag = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 9 })
-  const zaehlen = interpolate(frame, [0, 16], [0.45, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
-  const schub = interpolate(frame, [0, durationInFrames], [1, 1.05], { easing: Easing.out(Easing.quad), extrapolateRight: 'clamp' })
-  const teaser = teaserAb == null ? 0 : interpolate(frame, [teaserAb, teaserAb + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const amJoin = ruhe || frame < 2
+  const einschlag = amJoin ? 1 : spring({ frame: frame - 2, fps, config: { damping: 200 }, durationInFrames: 9 })
+  const schub = amJoin ? 1 : interpolate(frame, [2, durationInFrames], [1, 1.04], { easing: Easing.out(Easing.quad), extrapolateRight: 'clamp' })
+  const teaser = teaserAb == null || ruhe ? 0 : interpolate(frame, [teaserAb, teaserAb + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   const headlineGroesse = headline.length <= 55 ? 78 : headline.length <= 85 ? 66 : 56
   return (
-    <AbsoluteFill style={{ alignItems: 'center', padding: '300px 90px 0', transform: `scale(${schub})` }}>
+    <AbsoluteFill style={{ alignItems: 'center', padding: `${SAFE_TOP + 130}px ${SAFE_RIGHT}px 0 ${SAFE_LEFT}px`, transform: `scale(${schub})` }}>
       <div style={{ fontSize: headlineGroesse, fontWeight: 800, letterSpacing: -2, lineHeight: 1.08, textAlign: 'center', opacity: 1 - 0.6 * teaser }}>
         {headline.split(' ').map((w, i) => (
           <span key={i} style={{ color: /\d/.test(w) ? BRAND : TEXT }}>
@@ -225,7 +267,7 @@ function HookSzene({ headline, value, label, teaserAb }: { headline: string; val
       </div>
       <div style={{ marginTop: 110, textAlign: 'center', transform: `scale(${interpolate(einschlag, [0, 1], [1.15, 1])})` }}>
         <div style={{ fontSize: value.length > 7 ? 180 : 230, fontWeight: 900, letterSpacing: -8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-          {zaehleHoch(value, zaehlen)}
+          {zaehleHoch(value, 1)}
         </div>
         <div style={{ marginTop: 30, fontFamily: MONO, fontSize: 32, letterSpacing: 7, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
       </div>
@@ -240,7 +282,7 @@ function BusinessSzene({ ticker, name, logoUrl }: { ticker: string; name: string
   const tile = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 12 })
   const text = spring({ frame: frame - 4, fps, config: { damping: 200 }, durationInFrames: 12 })
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingBottom: 300 }}>
+    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingBottom: 360 }}>
       <div
         style={{
           width: 340,
@@ -281,7 +323,7 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
   const eintritt = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 10 })
   const mitStats = pillars.some((p) => p.stat)
   return (
-    <AbsoluteFill style={{ padding: '310px 90px 0', opacity: eintritt }}>
+    <AbsoluteFill style={{ padding: `${SAFE_TOP + 130}px ${SAFE_RIGHT}px 0 ${SAFE_LEFT}px`, opacity: eintritt }}>
       <div style={{ fontFamily: MONO, fontSize: 30, letterSpacing: 7, color: MUTED, marginBottom: mitStats ? 40 : 54 }}>FOUR PILLARS</div>
       {pillars.slice(0, 4).map((p, i) => {
         const lokal = frame - (starts[i] ?? 0)
@@ -332,7 +374,7 @@ function CrackSzene() {
   const pfad = 'M -20 70 L 150 40 L 260 105 L 400 30 L 520 120 L 660 50 L 780 110 L 900 35 L 1100 90'
   const laenge = 1600
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingBottom: 300, transform: `scale(${zurueck})` }}>
+    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingBottom: 360, transform: `scale(${zurueck})` }}>
       <div style={{ fontFamily: MONO, fontSize: 32, letterSpacing: 8, color: VERDICT_FARBE.none, opacity: interpolate(frame, [0, 5], [0, 1], { extrapolateRight: 'clamp' }) }}>
         WHAT COULD BREAK IT
       </div>
@@ -346,15 +388,23 @@ function CrackSzene() {
   )
 }
 
-function VerdictSzene({ verdict, score }: { verdict: MoatShortVerdict; score: number }) {
+function VerdictSzene({ verdict, score, fadeOut }: { verdict: MoatShortVerdict; score: number; fadeOut: number }) {
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const stempel = spring({ frame: frame - 3, fps, config: { damping: 11, mass: 0.6, stiffness: 180 } })
   const aufprall = Math.max(0, 1 - Math.abs(frame - STEMPEL_AUFPRALL) / 4)
-  const wackeln = aufprall * Math.sin(frame * 2.3) * 7
+  const wackeln = fadeOut > 0.2 ? 0 : aufprall * Math.sin(frame * 2.3) * 7
   const farbe = VERDICT_FARBE[verdict]
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingBottom: 300, transform: `translate(${wackeln}px, ${wackeln * 0.6}px)` }}>
+    <AbsoluteFill
+      style={{
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingBottom: 360,
+        opacity: 1 - fadeOut,
+        transform: `translate(${wackeln}px, ${wackeln * 0.6}px)`,
+      }}
+    >
       <div style={{ fontFamily: MONO, fontSize: 32, letterSpacing: 8, color: MUTED, opacity: interpolate(frame, [0, 4], [0, 1], { extrapolateRight: 'clamp' }) }}>
         VERDICT
       </div>
@@ -380,16 +430,17 @@ function VerdictSzene({ verdict, score }: { verdict: MoatShortVerdict; score: nu
         {score.toFixed(1)}
         <span style={{ color: MUTED, fontSize: 38 }}> / 10</span>
       </div>
-      <div style={{ position: 'absolute', bottom: 430, fontFamily: MONO, fontSize: 24, letterSpacing: 3, color: MUTED }}>NOT INVESTMENT ADVICE</div>
     </AbsoluteFill>
   )
 }
 
 function Caption({ text }: { text: string }) {
   const frame = useCurrentFrame()
-  const rein = interpolate(frame, [0, 4], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+  const { fps } = useVideoConfig()
+  const rein = interpolate(frame, [0, 3], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+  const punch = spring({ frame, fps, config: { damping: 14, mass: 0.55, stiffness: 180 } })
   return (
-    <div style={{ position: 'absolute', top: 1290, left: 90, right: 90, textAlign: 'center' }}>
+    <div style={{ position: 'absolute', top: CAPTION_TOP, left: SAFE_LEFT, right: SAFE_RIGHT, textAlign: 'center' }}>
       <span
         style={{
           display: 'inline-block',
@@ -398,16 +449,19 @@ function Caption({ text }: { text: string }) {
           letterSpacing: -1.5,
           lineHeight: 1.1,
           opacity: rein,
-          transform: `translateY(${interpolate(rein, [0, 1], [14, 0])}px)`,
+          transform: `translateY(${interpolate(rein, [0, 1], [16, 0])}px) scale(${interpolate(punch, [0, 1], [1.08, 1])})`,
           textShadow: '0 4px 24px rgba(0,0,0,0.55)',
         }}
       >
-        {text.split(' ').map((w, i) => (
-          <span key={i} style={{ color: /\d/.test(w) ? BRAND : TEXT }}>
-            {i > 0 ? ' ' : ''}
-            {w}
-          </span>
-        ))}
+        {text.split(' ').map((w, i) => {
+          const zahl = /\d/.test(w)
+          return (
+            <span key={i} style={{ color: zahl ? BRAND : TEXT, fontSize: zahl ? 84 : 72 }}>
+              {i > 0 ? ' ' : ''}
+              {w}
+            </span>
+          )
+        })}
       </span>
     </div>
   )
@@ -415,12 +469,14 @@ function Caption({ text }: { text: string }) {
 
 function Koernung() {
   const frame = useCurrentFrame()
+  const { durationInFrames } = useVideoConfig()
+  const amJoin = frame < 2 || frame >= durationInFrames - 2
   return (
     <AbsoluteFill style={{ pointerEvents: 'none' }}>
       <AbsoluteFill style={{ background: 'radial-gradient(ellipse at 50% 42%, rgba(0,0,0,0) 45%, rgba(0,0,0,0.55) 100%)' }} />
       <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, opacity: 0.07, mixBlendMode: 'overlay' }}>
         <filter id="moat-korn">
-          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} seed={Math.floor(frame / 2) % 6} stitchTiles="stitch" />
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} seed={amJoin ? 0 : Math.floor(frame / 2) % 6} stitchTiles="stitch" />
         </filter>
         <rect width="100%" height="100%" filter="url(#moat-korn)" />
       </svg>

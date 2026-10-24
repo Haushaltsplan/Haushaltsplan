@@ -1,5 +1,5 @@
 /**
- * Englisches 45-Sekunden-Script für Moat-Shorts — Free-Tier Gemini (wie Moat-KI, kein Billing).
+ * Englisches ~32-Sekunden-Script für loopbare Moat-Shorts — Free-Tier Gemini (wie Moat-KI, kein Billing).
  */
 import 'server-only'
 
@@ -13,6 +13,13 @@ import { generiereMoatKiBewertung, ladeMoatKiCache } from '@/lib/portfolio-analy
 import type { MoatKiBewertung, MoatPfeilerId } from '@/lib/portfolio-analyse/moat-ki-types'
 import type { MoatShortErgebnis, MoatShortHookVariante, MoatShortMetrik } from '@/lib/youtube/moat-short-types'
 import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
+import {
+  beschreibungFuerUpload,
+  kommentarFuerUpload,
+  saubererLand,
+  scriptLoopWarnungen,
+  titelFuerUpload,
+} from '@/lib/youtube/moat-short-script'
 import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
 
@@ -30,7 +37,7 @@ const VERDICT_SATZ: Record<MoatShortVerdict, string> = {
 }
 
 const KEINE_METRIK = 'none'
-const MAX_WOERTER_GESAMT = 125
+const MAX_WOERTER_GESAMT = 80
 
 function verdictAusUrteil(urteil: MoatKiBewertung['urteil']): MoatShortVerdict {
   if (urteil === 'tief') return 'wide'
@@ -54,9 +61,10 @@ function baueSchema(hookIds: string[], alleIds: string[]) {
             angle: { type: 'string', enum: ['number_shock', 'contrast', 'stakes'] },
             claim: { type: 'string' },
             loop: { type: 'string' },
+            land: { type: 'string' },
             metricId: { type: 'string', enum: hookIds },
           },
-          required: ['angle', 'claim', 'loop', 'metricId'],
+          required: ['angle', 'claim', 'loop', 'land', 'metricId'],
         },
       },
       business: { type: 'string' },
@@ -75,39 +83,58 @@ function baueSchema(hookIds: string[], alleIds: string[]) {
       crack: { type: 'string' },
       title: { type: 'string' },
       description: { type: 'string' },
+      comment: { type: 'string' },
     },
-    required: ['hooks', 'business', 'pillarLines', 'crack', 'title', 'description'],
+    required: ['hooks', 'business', 'pillarLines', 'crack', 'title', 'description', 'comment'],
   } as const
 }
 
-const SYSTEM = `You write voiceover scripts for "Moat Check", a YouTube Shorts series that judges one company's competitive moat in about 45 seconds.
+const SYSTEM = `You write voiceover scripts for "Moat Check", a YouTube Shorts series that judges one company's competitive moat in about 32 seconds.
 
 Voice: a sharp, calm analyst talking to a smart friend. Plain spoken English. Short sentences. Concrete nouns. No hype.
 
-## The first two seconds decide everything
-A viewer swipes away unless the opening creates a gap they need closed. Every hook has two parts:
+YouTube replays the Short from frame one. The spoken script must still make sense when the last sentence is followed immediately by the first sentence. Read land + claim out loud as one thought. If that pair is a non sequitur, rewrite land.
 
-1. claim (8-13 words, shown on screen as a headline): contains the chosen metric value exactly as written and makes ONE specific, surprising claim. The number must mean something: say what it implies, not just what it is.
-2. loop (4-9 words, spoken right after): opens a question that only "the crack" later in the video answers. It must promise a payoff, e.g. "But one thing could still break it." / "Here is what nobody prices in." / "And that is exactly the problem."
+## Each hook is a closed circle
+Write THREE hooks. Each has four fields:
 
-Write THREE hooks with different angles:
-- number_shock: the number itself is absurd for this industry, and you say why.
-- contrast: the expected story vs. the real one ("Everyone thinks X. The 71.2% says Y.").
-- stakes: what the world would lose if this company vanished tomorrow, anchored by the number.
+1. claim (8-12 words, on-screen headline): contains the chosen metric value exactly as written. ONE surprising claim. The number must mean something.
+2. loop (4-8 words, spoken next): opens a gap that the single crack later fills. Same threat in all three hooks, three phrasings.
+3. land (6-10 words, last spoken line): names the verdict in passing and ends on that same metric value. No "out of 10". No goodbye. After land, the picture cuts back to claim — so land must make the viewer want that number again.
+4. metricId: the hook metric whose exact value appears in both claim and land.
+
+Write land first for each hook, then write claim as the sentence that answers it.
+
+Good pair (read as land → claim):
+- land: "Wide moat. The proof is 51.3%."
+- claim: "At 51.3% gross margin, ASML sells machines nobody else can build."
+- land: "No real moat. 12.6% already said so."
+- claim: "Everyone calls Costco a retailer. Its 12.6% margin says it sells memberships."
+- land: "That's why banks still pay. 67.4%."
+- claim: "Visa keeps 67.4% of every dollar as profit, and banks pay it gladly."
+
+Bad land
+- "Wide moat. 9 out of 10." (scoreboard, video is over)
+- "Thanks for watching." / "Follow for more."
+- "And that is the story of ASML." (period energy, no number)
+- A land that does not contain the claim's metric value.
 
 Good claims
 - "Visa keeps 67.4% of every dollar as profit, and banks pay it gladly."
 - "At 51.3% gross margin, ASML sells machines nobody else can build."
-- "Everyone calls Costco a retailer. Its 12.6% margin says it sells memberships."
 Bad claims
 - "Is ASML the most important company in the world?" (question, no number)
 - "Today we look at Visa's incredible moat." (announces instead of claiming)
-- "Visa has a gross margin of 80%." (number with no meaning)
+
+Angles
+- number_shock: the number is absurd for this industry, and you say why.
+- contrast: expected story vs. the real one.
+- stakes: what the world loses if this company vanishes, anchored by the number.
 
 ## Rest of the script
-- business: 10-16 words, what they sell and to whom.
-- pillarLines: one per pillar, 7-12 words, must match the score (high = name the strength, low = name the weakness). Give at most TWO pillars a metricId when a number genuinely proves the point, and then put that exact value into the line. Otherwise metricId "none".
-- crack: 12-18 words, the single most concrete threat from the scenarios. It must pay off the loop.
+- business: 8-13 words, what they sell and to whom.
+- pillarLines: one per pillar, 6-10 words, match the score (high = strength, low = weakness). At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none".
+- crack: 10-15 words, ONE concrete threat. It must answer all three loop lines. No sign-off.
 
 ## Hard rules
 - Use ONLY facts and numbers from the data provided. Never invent numbers, customers, market shares, years or events.
@@ -115,10 +142,13 @@ Bad claims
 - Never open a claim with a question, "Did you know", "In this video", "Let's talk about".
 - Banned words: game-changer, revolutionary, insane, crazy, massive, juggernaut, powerhouse, unstoppable, secret.
 - No buy/sell/hold advice, no price targets, no emojis, no hashtags in spoken text.
+- Do not speak the score as "X out of 10". The stamp is visual.
+- Whole spoken script stays under 80 words. One-liners. Cut "basically" and "essentially".
 
 Also return
-- title: max 60 characters, curiosity without clickbait caps, e.g. "Why nobody can copy ASML" or "Visa's 67.4% problem".
-- description: 2 short sentences in English, then "Not investment advice.", then "#shorts #investing #stocks #moat".
+- title: 30-50 characters, ticker or company first, curiosity without ALL-CAPS or !!. Examples: "ASML: why nobody can copy it" / "Visa's 67.4% problem".
+- description: two short English sentences, verdict plus the hook number. We add the first search line, disclaimer and hashtags.
+- comment: one pinned-comment question, 8-14 words, debatable, no subscribe/follow/like.
 
 The input data is partly in German. Write everything in English.`
 
@@ -204,28 +234,39 @@ export async function generiereMoatShort(opts: {
   const roh = parseJson(result.reply)
   if (!roh) throw new Error('Script-KI lieferte kein gültiges JSON — bitte erneut versuchen.')
 
+  const verdict = verdictAusUrteil(moat.urteil)
   const hookVarianten: MoatShortHookVariante[] = objekte(roh.hooks)
-    .map((h) => ({
-      winkel: text(h.angle),
-      claim: text(h.claim),
-      loop: text(h.loop),
-      metrikId: hookMetriken.some((m) => m.id === h.metricId) ? text(h.metricId) : hookMetriken[0]!.id,
-    }))
+    .map((h) => {
+      const metrikId = hookMetriken.some((m) => m.id === h.metricId) ? text(h.metricId) : hookMetriken[0]!.id
+      const wert = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).value
+      return {
+        winkel: text(h.angle),
+        claim: text(h.claim),
+        loop: text(h.loop),
+        land: saubererLand(text(h.land), verdict, wert),
+        metrikId,
+      }
+    })
     .filter((h) => h.claim)
   if (!hookVarianten.length) throw new Error('Script-KI lieferte keinen Hook — bitte erneut versuchen.')
 
   const zeilen = new Map(objekte(roh.pillarLines).map((r) => [text(r.id), r]))
   const scores = [moat.score, ...moat.pfeiler.map((p) => p.score)]
 
-  // Bevorzugt die erste Variante, deren Claim die Zahl wörtlich trägt und keine fremden Zahlen enthält.
+  // Bevorzugt die Variante, deren Kreis schließt: Claim + Landung tragen die Zahl, keine fremden Zahlen.
   const start =
     hookVarianten.find((h) => {
       const m = metriken.find((x) => x.id === h.metrikId)
-      return m && h.claim.includes(m.value) && !fremdeZahlen(`${h.claim} ${h.loop}`, metriken, scores).length
+      const gesprochen = `${h.claim} ${h.loop} ${h.land}`
+      return (
+        m &&
+        h.claim.includes(m.value) &&
+        h.land.includes(m.value) &&
+        !fremdeZahlen(gesprochen, metriken, scores).length
+      )
     }) ?? hookVarianten[0]!
   const startMetrik = metriken.find((m) => m.id === start.metrikId) ?? hookMetriken[0]!
 
-  const verdict = verdictAusUrteil(moat.urteil)
   const logoUrl = await findeMoatShortLogo({
     ticker,
     firmenname: paket.firmenname,
@@ -256,7 +297,7 @@ export async function generiereMoatShort(opts: {
     crack: text(roh.crack),
     verdict,
     score: moat.score,
-    closing: `${VERDICT_SATZ[verdict]} ${moat.score} out of 10.`,
+    closing: start.land,
     musicSrc: null,
     musicGain: 0.5,
     musicTrim: 0,
@@ -264,12 +305,12 @@ export async function generiereMoatShort(opts: {
   }
 
   const warnungen: string[] = []
-  if (!props.hook.includes(props.metricValue)) warnungen.push(`Der Hook nennt die Zahl ${props.metricValue} nicht wörtlich.`)
+  warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue))
   const gesprochen = [props.hook, props.hookLoop, props.business, ...props.pillars.map((p) => p.line), props.crack, props.closing]
   const fremd = fremdeZahlen(gesprochen.join(' '), metriken, scores)
   if (fremd.length) warnungen.push(`Zahlen ohne Quelle im Export: ${fremd.join(', ')} — bitte prüfen oder streichen.`)
   const gesamt = gesprochen.map(woerter).reduce((a, b) => a + b, 0)
-  if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — das Video wird länger als 45 Sekunden.`)
+  if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — zu lang für einen Loop unter 30 Sekunden.`)
   if (zeilen.size < 4) warnungen.push('Nicht alle vier Pfeiler haben einen eigenen Satz bekommen.')
   if (!logoUrl) warnungen.push('Kein drucktaugliches Firmenlogo gefunden — die Business-Szene zeigt nur den Ticker.')
 
@@ -279,8 +320,9 @@ export async function generiereMoatShort(opts: {
     hookVarianten,
     moat,
     moatAusCache,
-    title: text(roh.title).slice(0, 100),
-    description: String(roh.description ?? '').trim(),
+    title: titelFuerUpload(text(roh.title), ticker, startMetrik.value),
+    description: beschreibungFuerUpload(String(roh.description ?? ''), paket.firmenname, ticker, startMetrik.value),
+    kommentar: kommentarFuerUpload(text(roh.comment), verdict, ticker),
     warnungen,
   }
 }

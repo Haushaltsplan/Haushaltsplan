@@ -7,22 +7,26 @@ import {
   type MoatShortTimeline,
 } from './moat-short-types'
 
-/** Geschätztes Sprechtempo ohne Audiospur — Shorts-Erzähler liegen bei ~150–165 Wörtern/Minute. */
-const WOERTER_PRO_SEKUNDE = 2.6
-const PAUSE_SEKUNDEN = 0.3
-const MIN_SEKUNDEN: Record<MoatShortBeatId, number> = {
-  hook: 2.6,
-  teaser: 1.4,
-  business: 2.4,
-  pillar0: 2.2,
-  pillar1: 2.2,
-  pillar2: 2.2,
-  pillar3: 2.2,
-  crack: 3,
-  verdict: 3.6,
+/** Shorts-Tempo: lieber knapp als tot — Guides wollen einen Beat alle 2–3 Sekunden. */
+const WOERTER_PRO_SEKUNDE = 3
+const PAUSE_SEKUNDEN = 0.16
+const MIN_SEKUNDEN: Record<Exclude<MoatShortBeatId, 'loop'>, number> = {
+  hook: 2,
+  teaser: 1,
+  business: 1.8,
+  pillar0: 1.5,
+  pillar1: 1.5,
+  pillar2: 1.5,
+  pillar3: 1.5,
+  crack: 2.1,
+  verdict: 2,
 }
+/** Letzte Frames: Hook-Ruhepose, damit YouTube unsichtbar neu startet. */
+export const MOAT_SHORT_LOOP_FRAMES = 16
+/** Untertitel müssen vor dem Join weg sein — sonst sieht man den Cut. */
+const CAPTION_ENDE_VOR_LOOP = 8
 /** Der Hook steht als Überschrift im Bild — doppelte Untertitel wären nur Lärm. */
-const OHNE_CAPTIONS = new Set<MoatShortBeatId>(['hook'])
+const OHNE_CAPTIONS = new Set<MoatShortBeatId>(['hook', 'loop'])
 const CAPTION_MAX_WOERTER = 3
 
 function woerter(text: string): string[] {
@@ -48,11 +52,11 @@ function captionChunks(text: string): string[] {
 }
 
 export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimeline {
-  const texte: [MoatShortBeatId, string][] = [
+  const texte: [Exclude<MoatShortBeatId, 'loop'>, string][] = [
     ['hook', props.hook],
     ['teaser', props.hookLoop],
     ['business', props.business],
-    ...props.pillars.slice(0, 4).map((p, i) => [`pillar${i}` as MoatShortBeatId, p.line] as [MoatShortBeatId, string]),
+    ...props.pillars.slice(0, 4).map((p, i) => [`pillar${i}` as Exclude<MoatShortBeatId, 'loop'>, p.line] as [Exclude<MoatShortBeatId, 'loop'>, string]),
     ['crack', props.crack],
     ['verdict', props.closing],
   ]
@@ -86,5 +90,12 @@ export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimel
     cursor += duration
   }
 
-  return { beats, captions, durationInFrames: cursor }
+  beats.push({ id: 'loop', text: '', from: cursor, duration: MOAT_SHORT_LOOP_FRAMES })
+  const durationInFrames = cursor + MOAT_SHORT_LOOP_FRAMES
+  const captionEnde = durationInFrames - CAPTION_ENDE_VOR_LOOP
+  const saubereCaptions = captions
+    .map((c) => ({ ...c, duration: Math.min(c.duration, captionEnde - c.from) }))
+    .filter((c) => c.duration >= 6)
+
+  return { beats, captions: saubereCaptions, durationInFrames }
 }
