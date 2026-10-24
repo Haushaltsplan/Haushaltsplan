@@ -27,7 +27,7 @@ export const MOAT_SHORT_LOOP_FRAMES = 16
 const CAPTION_ENDE_VOR_LOOP = 8
 /** Der Hook steht als Überschrift im Bild — doppelte Untertitel wären nur Lärm. */
 const OHNE_CAPTIONS = new Set<MoatShortBeatId>(['hook', 'loop'])
-const CAPTION_MAX_WOERTER = 3
+const CAPTION_MAX_WOERTER = 8
 
 function woerter(text: string): string[] {
   return text.trim().split(/\s+/).filter(Boolean)
@@ -45,7 +45,12 @@ function captionChunks(text: string): string[] {
   }
   if (aktuell.length) chunks.push(aktuell.join(' '))
   const letzter = chunks[chunks.length - 1]
-  if (chunks.length > 1 && letzter && !letzter.includes(' ')) {
+  if (
+    chunks.length > 1 &&
+    letzter &&
+    woerter(letzter).length <= 2 &&
+    woerter(`${chunks[chunks.length - 2]} ${letzter}`).length <= CAPTION_MAX_WOERTER + 1
+  ) {
     chunks.splice(-2, 2, `${chunks[chunks.length - 2]} ${letzter}`)
   }
   return chunks
@@ -68,7 +73,8 @@ export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimel
   for (const [id, text] of texte) {
     if (!text.trim()) continue
     const sprechSek = woerter(text).length / WOERTER_PRO_SEKUNDE
-    const sek = Math.max(MIN_SEKUNDEN[id], sprechSek + PAUSE_SEKUNDEN)
+    const pause = id === 'verdict' ? 0 : PAUSE_SEKUNDEN
+    const sek = Math.max(MIN_SEKUNDEN[id], sprechSek + pause)
     const duration = Math.round(sek * MOAT_SHORT_FPS)
     beats.push({ id, text, from: cursor, duration })
 

@@ -1,3 +1,4 @@
+import { loadFont as loadInter } from '@remotion/google-fonts/Inter'
 import { loadFont as loadInterTight } from '@remotion/google-fonts/InterTight'
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono'
 import { Audio } from '@remotion/media'
@@ -17,9 +18,10 @@ import {
 } from 'remotion'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline, MOAT_SHORT_LOOP_FRAMES } from './moat-short-timeline'
-import type { MoatShortBeat, MoatShortProps, MoatShortVerdict } from './moat-short-types'
+import { MOAT_SHORT_HEIGHT, type MoatShortBeat, type MoatShortProps, type MoatShortVerdict } from './moat-short-types'
 
 const { fontFamily: DISPLAY } = loadInterTight('normal', { weights: ['600', '800', '900'], subsets: ['latin'] })
+const { fontFamily: SANS } = loadInter('normal', { weights: ['600', '700'], subsets: ['latin'] })
 const { fontFamily: MONO } = loadMono('normal', { weights: ['500', '700'], subsets: ['latin'] })
 
 const BG = '#0C0C0E'
@@ -34,7 +36,13 @@ const STEMPEL_AUFPRALL = 9
 const SAFE_TOP = 300
 const SAFE_LEFT = 72
 const SAFE_RIGHT = 200
-const CAPTION_TOP = 1188
+/** 12 % über der alten Lage (1188) — frei von Balken, Charts und Sektionstiteln. */
+const CAPTION_TOP = 1044
+const CAPTION_GAP = 36
+const CONTENT_MAX_BOTTOM = CAPTION_TOP - CAPTION_GAP
+const CONTENT_BOTTOM_PAD = MOAT_SHORT_HEIGHT - CONTENT_MAX_BOTTOM
+const CAPTION_YELLOW = '#FFC700'
+const CAPTION_SIZE = 62
 
 function scoreFarbe(score: number): string {
   if (score >= 8) return VERDICT_FARBE.wide
@@ -99,12 +107,6 @@ export const MoatShort: React.FC<MoatShortProps> = (props) => {
         </AbsoluteFill>
       </Sequence>
 
-      {captions.map((c, i) => (
-        <Sequence key={i} from={c.from} durationInFrames={c.duration} layout="none">
-          <Caption text={c.text} />
-        </Sequence>
-      ))}
-
       <Kopfzeile
         ticker={props.ticker}
         logoUrl={props.logoUrl}
@@ -112,6 +114,13 @@ export const MoatShort: React.FC<MoatShortProps> = (props) => {
         balkenSichtbar={frame > 3 && frame < durationInFrames - 12}
       />
       <Koernung />
+
+      {captions.map((c, i) => (
+        <Sequence key={i} from={c.from} durationInFrames={c.duration} layout="none">
+          <Caption text={c.text} />
+        </Sequence>
+      ))}
+
       <Ton
         musicSrc={props.musicSrc}
         musicGain={props.musicGain}
@@ -256,7 +265,7 @@ function HookSzene({
   const teaser = teaserAb == null || ruhe ? 0 : interpolate(frame, [teaserAb, teaserAb + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   const headlineGroesse = headline.length <= 55 ? 78 : headline.length <= 85 ? 66 : 56
   return (
-    <AbsoluteFill style={{ alignItems: 'center', padding: `${SAFE_TOP + 130}px ${SAFE_RIGHT}px 0 ${SAFE_LEFT}px`, transform: `scale(${schub})` }}>
+    <AbsoluteFill style={{ alignItems: 'center', padding: `${SAFE_TOP + 130}px ${SAFE_RIGHT}px ${CONTENT_BOTTOM_PAD}px ${SAFE_LEFT}px`, transform: `scale(${schub})` }}>
       <div style={{ fontSize: headlineGroesse, fontWeight: 800, letterSpacing: -2, lineHeight: 1.08, textAlign: 'center', opacity: 1 - 0.6 * teaser }}>
         {headline.split(' ').map((w, i) => (
           <span key={i} style={{ color: /\d/.test(w) ? BRAND : TEXT }}>
@@ -265,8 +274,8 @@ function HookSzene({
           </span>
         ))}
       </div>
-      <div style={{ marginTop: 110, textAlign: 'center', transform: `scale(${interpolate(einschlag, [0, 1], [1.15, 1])})` }}>
-        <div style={{ fontSize: value.length > 7 ? 180 : 230, fontWeight: 900, letterSpacing: -8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+      <div style={{ marginTop: 48, textAlign: 'center', transform: `scale(${interpolate(einschlag, [0, 1], [1.15, 1])})` }}>
+        <div style={{ fontSize: value.length > 7 ? 168 : 200, fontWeight: 900, letterSpacing: -8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
           {zaehleHoch(value, 1)}
         </div>
         <div style={{ marginTop: 30, fontFamily: MONO, fontSize: 32, letterSpacing: 7, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
@@ -282,11 +291,11 @@ function BusinessSzene({ ticker, name, logoUrl }: { ticker: string; name: string
   const tile = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 12 })
   const text = spring({ frame: frame - 4, fps, config: { damping: 200 }, durationInFrames: 12 })
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingBottom: 360 }}>
+    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SAFE_TOP + 80, paddingBottom: CONTENT_BOTTOM_PAD }}>
       <div
         style={{
-          width: 340,
-          height: 340,
+          width: 300,
+          height: 300,
           borderRadius: 72,
           background: logoUrl && !logoKaputt ? '#FFFFFF' : BRAND,
           display: 'flex',
@@ -302,13 +311,13 @@ function BusinessSzene({ ticker, name, logoUrl }: { ticker: string; name: string
           <Img
             src={logoSrc(logoUrl)}
             onError={() => setLogoKaputt(true)}
-            style={{ width: 250, height: 250, objectFit: 'contain' }}
+            style={{ width: 220, height: 220, objectFit: 'contain' }}
           />
         ) : (
           <span style={{ fontSize: Math.min(100, Math.floor(300 / Math.max(1, ticker.length))), fontWeight: 900, color: BG, letterSpacing: -2 }}>{ticker}</span>
         )}
       </div>
-      <div style={{ marginTop: 56, textAlign: 'center', opacity: text, transform: `translateY(${interpolate(text, [0, 1], [24, 0])}px)` }}>
+      <div style={{ marginTop: 40, textAlign: 'center', opacity: text, transform: `translateY(${interpolate(text, [0, 1], [24, 0])}px)` }}>
         <div style={{ fontSize: name.length > 22 ? 70 : 88, fontWeight: 800, letterSpacing: -2, lineHeight: 1.05, maxWidth: 900 }}>{name}</div>
         <div style={{ marginTop: 18, fontFamily: MONO, fontSize: 32, letterSpacing: 6, color: MUTED }}>WHAT THEY SELL</div>
       </div>
@@ -323,45 +332,49 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
   const eintritt = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 10 })
   const mitStats = pillars.some((p) => p.stat)
   return (
-    <AbsoluteFill style={{ padding: `${SAFE_TOP + 130}px ${SAFE_RIGHT}px 0 ${SAFE_LEFT}px`, opacity: eintritt }}>
-      <div style={{ fontFamily: MONO, fontSize: 30, letterSpacing: 7, color: MUTED, marginBottom: mitStats ? 40 : 54 }}>FOUR PILLARS</div>
-      {pillars.slice(0, 4).map((p, i) => {
-        const lokal = frame - (starts[i] ?? 0)
-        const fuell = spring({ frame: lokal, fps, config: { damping: 22, mass: 0.7 }, durationInFrames: 18 })
-        const gestartet = lokal >= 0
-        const opacity = !gestartet ? 0.22 : i === aktiv ? 1 : 0.5
-        const farbe = scoreFarbe(p.score)
-        const anzeige = gestartet ? Math.round(p.score * Math.min(1, fuell)) : 0
-        return (
-          <div key={p.id} style={{ marginBottom: mitStats ? 40 : 58, opacity }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-              <span style={{ fontSize: 58, fontWeight: 800, letterSpacing: -1.5 }}>{p.label}</span>
-              <span style={{ fontFamily: MONO, fontSize: 46, fontWeight: 700, color: gestartet ? farbe : MUTED, fontVariantNumeric: 'tabular-nums' }}>
-                {anzeige}
-                <span style={{ color: MUTED, fontSize: 30 }}>/10</span>
-              </span>
-            </div>
-            <div style={{ marginTop: 20, height: 18, borderRadius: 9, background: 'rgba(243,241,236,0.09)', overflow: 'hidden' }}>
-              <div style={{ width: `${gestartet ? (p.score / 10) * fuell * 100 : 0}%`, height: '100%', borderRadius: 9, background: farbe }} />
-            </div>
-            {mitStats ? (
-              <div
-                style={{
-                  marginTop: 14,
-                  height: 34,
-                  fontFamily: MONO,
-                  fontSize: 28,
-                  letterSpacing: 1,
-                  opacity: p.stat && gestartet ? interpolate(lokal, [6, 12], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) : 0,
-                }}
-              >
-                <span style={{ color: farbe, fontWeight: 700 }}>{p.stat?.value}</span>
-                <span style={{ color: MUTED }}> · {p.stat?.label}</span>
+    <AbsoluteFill style={{ padding: `${SAFE_TOP + 130}px ${SAFE_RIGHT}px ${CONTENT_BOTTOM_PAD}px ${SAFE_LEFT}px`, opacity: eintritt }}>
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ fontFamily: MONO, fontSize: 28, letterSpacing: 7, color: MUTED, marginBottom: mitStats ? 18 : 22, flexShrink: 0 }}>
+          FOUR PILLARS
+        </div>
+        {pillars.slice(0, 4).map((p, i) => {
+          const lokal = frame - (starts[i] ?? 0)
+          const fuell = spring({ frame: lokal, fps, config: { damping: 22, mass: 0.7 }, durationInFrames: 18 })
+          const gestartet = lokal >= 0
+          const opacity = !gestartet ? 0.22 : i === aktiv ? 1 : 0.5
+          const farbe = scoreFarbe(p.score)
+          const anzeige = gestartet ? Math.round(p.score * Math.min(1, fuell)) : 0
+          return (
+            <div key={p.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 0, opacity }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ fontSize: 50, fontWeight: 800, letterSpacing: -1.5 }}>{p.label}</span>
+                <span style={{ fontFamily: MONO, fontSize: 40, fontWeight: 700, color: gestartet ? farbe : MUTED, fontVariantNumeric: 'tabular-nums' }}>
+                  {anzeige}
+                  <span style={{ color: MUTED, fontSize: 26 }}>/10</span>
+                </span>
               </div>
-            ) : null}
-          </div>
-        )
-      })}
+              <div style={{ marginTop: 12, height: 14, borderRadius: 7, background: 'rgba(243,241,236,0.09)', overflow: 'hidden' }}>
+                <div style={{ width: `${gestartet ? (p.score / 10) * fuell * 100 : 0}%`, height: '100%', borderRadius: 7, background: farbe }} />
+              </div>
+              {mitStats ? (
+                <div
+                  style={{
+                    marginTop: 8,
+                    height: 26,
+                    fontFamily: MONO,
+                    fontSize: 24,
+                    letterSpacing: 1,
+                    opacity: p.stat && gestartet ? interpolate(lokal, [6, 12], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) : 0,
+                  }}
+                >
+                  <span style={{ color: farbe, fontWeight: 700 }}>{p.stat?.value}</span>
+                  <span style={{ color: MUTED }}> · {p.stat?.label}</span>
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
+      </div>
     </AbsoluteFill>
   )
 }
@@ -374,7 +387,7 @@ function CrackSzene() {
   const pfad = 'M -20 70 L 150 40 L 260 105 L 400 30 L 520 120 L 660 50 L 780 110 L 900 35 L 1100 90'
   const laenge = 1600
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingBottom: 360, transform: `scale(${zurueck})` }}>
+    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SAFE_TOP + 80, paddingBottom: CONTENT_BOTTOM_PAD, transform: `scale(${zurueck})` }}>
       <div style={{ fontFamily: MONO, fontSize: 32, letterSpacing: 8, color: VERDICT_FARBE.none, opacity: interpolate(frame, [0, 5], [0, 1], { extrapolateRight: 'clamp' }) }}>
         WHAT COULD BREAK IT
       </div>
@@ -400,7 +413,8 @@ function VerdictSzene({ verdict, score, fadeOut }: { verdict: MoatShortVerdict; 
       style={{
         alignItems: 'center',
         justifyContent: 'center',
-        paddingBottom: 360,
+        paddingTop: SAFE_TOP + 80,
+        paddingBottom: CONTENT_BOTTOM_PAD,
         opacity: 1 - fadeOut,
         transform: `translate(${wackeln}px, ${wackeln * 0.6}px)`,
       }}
@@ -434,35 +448,69 @@ function VerdictSzene({ verdict, score, fadeOut }: { verdict: MoatShortVerdict; 
   )
 }
 
+function gesprochnesWortIndex(text: string, frame: number, dauer: number): number {
+  const woerter = text.trim().split(/\s+/).filter(Boolean)
+  if (!woerter.length) return 0
+  const progress = frame / Math.max(1, dauer)
+  return Math.min(woerter.length - 1, Math.floor(progress * woerter.length))
+}
+
 function Caption({ text }: { text: string }) {
   const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
+  const { fps, durationInFrames } = useVideoConfig()
   const rein = interpolate(frame, [0, 3], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
   const punch = spring({ frame, fps, config: { damping: 14, mass: 0.55, stiffness: 180 } })
+  const woerter = text.trim().split(/\s+/).filter(Boolean)
+  const aktiv = gesprochnesWortIndex(text, frame, durationInFrames)
   return (
-    <div style={{ position: 'absolute', top: CAPTION_TOP, left: SAFE_LEFT, right: SAFE_RIGHT, textAlign: 'center' }}>
-      <span
+    <div
+      style={{
+        position: 'absolute',
+        top: CAPTION_TOP,
+        left: 0,
+        width: '100%',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        textAlign: 'center',
+        pointerEvents: 'none',
+        paddingLeft: SAFE_LEFT,
+        paddingRight: SAFE_RIGHT,
+        boxSizing: 'border-box',
+      }}
+    >
+      <div
         style={{
           display: 'inline-block',
-          fontSize: 72,
-          fontWeight: 800,
-          letterSpacing: -1.5,
-          lineHeight: 1.1,
+          maxWidth: '100%',
+          textAlign: 'center',
+          background: 'rgba(0, 0, 0, 0.65)',
+          backdropFilter: 'blur(4px)',
+          WebkitBackdropFilter: 'blur(4px)',
+          padding: '12px 28px',
+          borderRadius: 12,
           opacity: rein,
           transform: `translateY(${interpolate(rein, [0, 1], [16, 0])}px) scale(${interpolate(punch, [0, 1], [1.08, 1])})`,
-          textShadow: '0 4px 24px rgba(0,0,0,0.55)',
         }}
       >
-        {text.split(' ').map((w, i) => {
-          const zahl = /\d/.test(w)
-          return (
-            <span key={i} style={{ color: zahl ? BRAND : TEXT, fontSize: zahl ? 84 : 72 }}>
+        <span
+          style={{
+            fontFamily: SANS,
+            fontSize: CAPTION_SIZE,
+            fontWeight: 700,
+            letterSpacing: -0.6,
+            lineHeight: 1.22,
+            textAlign: 'center',
+          }}
+        >
+          {woerter.map((w, i) => (
+            <span key={i} style={{ color: i === aktiv ? CAPTION_YELLOW : TEXT, fontWeight: i === aktiv ? 700 : 600 }}>
               {i > 0 ? ' ' : ''}
               {w}
             </span>
-          )
-        })}
-      </span>
+          ))}
+        </span>
+      </div>
     </div>
   )
 }

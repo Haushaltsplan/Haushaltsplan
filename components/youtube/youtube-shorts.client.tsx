@@ -89,7 +89,7 @@ function beispielErgebnis(): MoatShortErgebnis {
     },
     moatAusCache: true,
     title: 'ASML: why nobody can copy it',
-    description: 'ASML Holding (ASML): 51.3% moat check.\n\nAt 51.3% gross margin, ASML sells machines nobody else can build.\n\nNot investment advice.\n#ASML #investing #moat',
+    description: 'ASML Holding (ASML): 51.3% moat check.\n\nASML prints a 51.3% margin — machines nobody else can build.\n\nNot investment advice.\n#ASML #investing #moat',
     kommentar: 'Is ASML a wide moat — or just the only shop in town?',
     suchphrasen: ['ASML moat', 'ASML stock', 'ASML monopoly'],
     warnungen: [],
@@ -506,7 +506,7 @@ export function YoutubeShortsClient() {
 
               <div className="space-y-2">
                 <p className="text-xs font-medium text-[var(--app-text-muted)]">
-                  Hook-Kreis — Landung und Behauptung müssen als ein Gedanke klingen
+                  Hook-Kreis — Landung mündet grammatisch in die Behauptung
                 </p>
                 {ergebnis.hookVarianten.map((h, i) => {
                   const aktiv = h.claim === props.hook
@@ -607,7 +607,7 @@ export function YoutubeShortsClient() {
 
               <div>
                 <label className="text-xs font-medium text-[var(--app-text-muted)]">
-                  Landung — letzter Satz, danach beginnt die Behauptung von vorn
+                  Landung — offene Brücke, kein Schlusssatz. Danach beginnt die Behauptung.
                 </label>
                 <textarea value={props.closing} onChange={(e) => setze('closing', e.target.value)} rows={2} className={`${feldKlasse} mt-1`} />
                 <p className="mt-2 rounded-lg bg-[var(--app-surface-muted)] px-3 py-2 text-xs leading-relaxed text-[var(--app-text-muted)]">

@@ -17,8 +17,11 @@ import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
 import {
   beschreibungFuerUpload,
   kommentarFuerUpload,
+  istOffeneBruecke,
+  normalisiereTtsPausen,
   saubererLand,
   scriptLoopWarnungen,
+  scriptTonWarnungen,
   titelFuerUpload,
 } from '@/lib/youtube/moat-short-script'
 import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
@@ -90,61 +93,74 @@ function baueSchema(hookIds: string[], alleIds: string[]) {
   } as const
 }
 
-const SYSTEM = `You write voiceover scripts for "Moat Check", a YouTube Shorts series that judges one company's competitive moat in about 32 seconds.
+const SYSTEM = `You write the spoken voiceover for "Moat Check", a YouTube Short that judges one company's moat in about 32 seconds.
 
-Voice: a sharp, calm analyst talking to a smart friend. Plain spoken English. Short sentences. Concrete nouns. No hype.
+Persona: a grounded, sharp equity analyst talking to another investor over coffee. Direct. Dry. Specific. You are not a presenter and not a marketer.
 
-YouTube replays the Short from frame one. The spoken script must still make sense when the last sentence is followed immediately by the first sentence. Read land + claim out loud as one thought. If that pair is a non sequitur, rewrite land.
+## Voice — strict no-AI-sound
+- Max 8-10 words per sentence. Short, rhythmic, active voice.
+- Good: "Mastercard prints cash." Bad: "Mastercard demonstrates high cash generation."
+- Transitions are spoken cues, not essay glue: "The catch?", "Why?", "Look at the margins."
+- Metaphors stay vivid and ordinary: "global tollbooth", "only shop in town", "cash printer". Never "integrated settlement network".
+- FORBIDDEN words: delve, game-changer, unbelievable, testament, revolutionizing, mind-blowing, pivotal, furthermore, consequently, moreover, therefore, thus, additionally, revolutionary, insane, crazy, massive, juggernaut, powerhouse, unstoppable, incredible, groundbreaking, synergy.
+- Cut "basically", "essentially", "secret".
+- TTS needs micro-pauses: put a comma or an em-dash (—) in every line of 7+ words. Example: "They sell lithography tools — the ones that print chips."
 
-## Each hook is a closed circle
-Write THREE hooks. Each has four fields:
+## Seamless loop (land + claim = ONE sentence)
+YouTube restarts the Short on the first frame with zero gap. The last spoken line must be an unfinished bridge that feeds grammatically into the first sentence. Not a summary. Not a repeated phrase. Not a period.
 
-1. claim (8-12 words, on-screen headline): contains the chosen metric value exactly as written. ONE surprising claim. The number must mean something.
-2. loop (4-8 words, spoken next): opens a gap that the single crack later fills. Same threat in all three hooks, three phrasings.
-3. land (6-10 words, last spoken line): names the verdict in passing and ends on that same metric value. No "out of 10". No goodbye. After land, the picture cuts back to claim — so land must make the viewer want that number again.
-4. metricId: the hook metric whose exact value appears in both claim and land.
+Draft the pair as one spoken sentence, then split it.
 
-Write land first for each hook, then write claim as the sentence that answers it.
+Good pair (read land then claim out loud, no pause):
+- land: "Banks can't leave and merchants can't opt out, which is why"
+- claim: "Mastercard prints a 58% margin without taking credit risk."
+- Heard loop: "...which is why Mastercard prints a 58% margin without taking credit risk."
 
-Good pair (read as land → claim):
-- land: "Wide moat. The proof is 51.3%."
-- claim: "At 51.3% gross margin, ASML sells machines nobody else can build."
-- land: "No real moat. 12.6% already said so."
-- claim: "Everyone calls Costco a retailer. Its 12.6% margin says it sells memberships."
-- land: "That's why banks still pay. 67.4%."
-- claim: "Visa keeps 67.4% of every dollar as profit, and banks pay it gladly."
+- land: "There is no second supplier, which is why"
+- claim: "ASML prints a 51.3% margin on machines nobody else can build."
 
 Bad land
-- "Wide moat. 9 out of 10." (scoreboard, video is over)
-- "Thanks for watching." / "Follow for more."
-- "And that is the story of ASML." (period energy, no number)
-- A land that does not contain the claim's metric value.
+- "Wide moat. The proof is 51.3%." (standalone summary, repeats the number)
+- "Wide moat. 9 out of 10."
+- "Thanks for watching." / "And that is the story of ASML."
+- Any land that contains the hook metric value
+- Any land that ends with a period or a finished thought
 
-Good claims
-- "Visa keeps 67.4% of every dollar as profit, and banks pay it gladly."
-- "At 51.3% gross margin, ASML sells machines nobody else can build."
-Bad claims
-- "Is ASML the most important company in the world?" (question, no number)
-- "Today we look at Visa's incredible moat." (announces instead of claiming)
+Land rules
+- 6-12 words, one clause, NO metric value.
+- End on "which is why" or "that's why" or an em-dash. Never end with . ! ?
+- After land, speech restarts instantly on claim. Zero trailing silence.
+
+Claim rules
+- 8-12 words, ONE sentence.
+- MUST start with the company name or ticker, then a verb. Never start with "At 51.3%" or a question.
+- Contains the chosen metric value exactly as written.
+- The number must mean something.
+
+## Each hook
+Write THREE hooks. Each has four fields:
+1. claim — see above.
+2. loop (4-8 words): spoken next. Opens a gap the single crack later fills. Same threat, three phrasings. Natural cue ok: "The catch? One thing could still break it."
+3. land — unfinished bridge into THAT claim. No number.
+4. metricId — hook metric whose exact value appears in claim only.
 
 Angles
 - number_shock: the number is absurd for this industry, and you say why.
 - contrast: expected story vs. the real one.
-- stakes: what the world loses if this company vanishes, anchored by the number.
+- stakes: what breaks if this company vanishes, anchored by the number.
 
 ## Rest of the script
-- business: 8-13 words, what they sell and to whom.
+- business: 8-12 words, what they sell and to whom. One or two short sentences. Use a metaphor if it is earned.
 - pillarLines: one per pillar, 6-10 words, match the score (high = strength, low = weakness). At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none".
-- crack: 10-15 words, ONE concrete threat. It must answer all three loop lines. No sign-off.
+- crack: 8-14 words, ONE concrete threat. It answers all three loop lines. Two short sentences ok. No sign-off.
 
 ## Hard rules
 - Use ONLY facts and numbers from the data provided. Never invent numbers, customers, market shares, years or events.
 - Write numbers exactly as given (e.g. "28.4%", "2.1 pts", "0.4x").
 - Never open a claim with a question, "Did you know", "In this video", "Let's talk about".
-- Banned words: game-changer, revolutionary, insane, crazy, massive, juggernaut, powerhouse, unstoppable, secret.
 - No buy/sell/hold advice, no price targets, no emojis, no hashtags in spoken text.
-- Do not speak the score as "X out of 10". The stamp is visual.
-- Whole spoken script stays under 80 words. One-liners. Cut "basically" and "essentially".
+- Do not speak the score as "X out of 10".
+- Whole spoken script stays under 80 words.
 
 Also return
 - title: 30-50 characters, ticker or company first, curiosity without ALL-CAPS or !!. If a YouTube search suggestion fits, prefer it. Examples: "ASML: why nobody can copy it" / "Visa's 67.4% problem".
@@ -197,6 +213,10 @@ function parseJson(reply: string): Record<string, unknown> | null {
 
 function text(v: unknown): string {
   return String(v ?? '').replace(/\s+/g, ' ').trim()
+}
+
+function sprechtext(v: unknown): string {
+  return normalisiereTtsPausen(text(v))
 }
 
 function objekte(v: unknown): Record<string, unknown>[] {
@@ -252,9 +272,9 @@ export async function generiereMoatShort(opts: {
       const wert = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).value
       return {
         winkel: text(h.angle),
-        claim: text(h.claim),
-        loop: text(h.loop),
-        land: saubererLand(text(h.land), verdict, wert),
+        claim: sprechtext(h.claim),
+        loop: sprechtext(h.loop),
+        land: saubererLand(sprechtext(h.land), verdict, wert),
         metrikId,
       }
     })
@@ -264,7 +284,7 @@ export async function generiereMoatShort(opts: {
   const zeilen = new Map(objekte(roh.pillarLines).map((r) => [text(r.id), r]))
   const scores = [moat.score, ...moat.pfeiler.map((p) => p.score)]
 
-  // Bevorzugt die Variante, deren Kreis schließt: Claim + Landung tragen die Zahl, keine fremden Zahlen.
+  // Bevorzugt die Variante, deren Landung offen in den Hook mündet — Zahl nur im Claim.
   const start =
     hookVarianten.find((h) => {
       const m = metriken.find((x) => x.id === h.metrikId)
@@ -272,7 +292,7 @@ export async function generiereMoatShort(opts: {
       return (
         m &&
         h.claim.includes(m.value) &&
-        h.land.includes(m.value) &&
+        istOffeneBruecke(h.land, m.value) &&
         !fremdeZahlen(gesprochen, metriken, scores).length
       )
     }) ?? hookVarianten[0]!
@@ -293,7 +313,7 @@ export async function generiereMoatShort(opts: {
     hookLoop: start.loop,
     metricValue: startMetrik.value,
     metricLabel: startMetrik.label,
-    business: text(roh.business),
+    business: sprechtext(roh.business),
     pillars: moat.pfeiler.map((p) => {
       const z = zeilen.get(p.id)
       const stat = metriken.find((m) => m.id === z?.metricId)
@@ -301,11 +321,11 @@ export async function generiereMoatShort(opts: {
         id: p.id,
         label: PFEILER_LABEL[p.id],
         score: p.score,
-        line: text(z?.line) || `${PFEILER_LABEL[p.id]}: ${p.score} out of 10.`,
+        line: sprechtext(z?.line) || `${PFEILER_LABEL[p.id]} is the weak spot.`,
         stat: stat ? { value: stat.value, label: stat.label } : null,
       }
     }),
-    crack: text(roh.crack),
+    crack: sprechtext(roh.crack),
     verdict,
     score: moat.score,
     closing: start.land,
@@ -318,6 +338,7 @@ export async function generiereMoatShort(opts: {
   const warnungen: string[] = []
   warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue))
   const gesprochen = [props.hook, props.hookLoop, props.business, ...props.pillars.map((p) => p.line), props.crack, props.closing]
+  warnungen.push(...scriptTonWarnungen(gesprochen))
   const fremd = fremdeZahlen(gesprochen.join(' '), metriken, scores)
   if (fremd.length) warnungen.push(`Zahlen ohne Quelle im Export: ${fremd.join(', ')} — bitte prüfen oder streichen.`)
   const gesamt = gesprochen.map(woerter).reduce((a, b) => a + b, 0)

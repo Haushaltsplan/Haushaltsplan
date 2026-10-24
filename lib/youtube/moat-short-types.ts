@@ -7,7 +7,7 @@ export type MoatShortHookVariante = {
   winkel: string
   claim: string
   loop: string
-  /** Letzter gesprochener Satz — danach beginnt claim von vorn. */
+  /** Offene Brücke in den Claim — kein Schlusssatz, keine Hook-Zahl. */
   land: string
   metrikId: string
 }

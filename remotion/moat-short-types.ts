@@ -12,7 +12,7 @@ export type MoatShortProps = {
   ticker: string
   firmenname: string
   logoUrl: string | null
-  /** Behauptung — steht als Überschrift im Bild, enthält metricValue wörtlich. */
+  /** Behauptung — beginnt mit Firmenname, enthält metricValue wörtlich. */
   hook: string
   /** Offene Schleife nach dem Hook, wird erst beim Crack aufgelöst. */
   hookLoop: string
@@ -24,7 +24,7 @@ export type MoatShortProps = {
   crack: string
   verdict: MoatShortVerdict
   score: number
-  /** Landung: letzter Satz, endet auf der Hook-Zahl, danach beginnt hook von vorn. */
+  /** Offene Brücke in den Hook — kein Schlusssatz, keine Hook-Zahl. */
   closing: string
   /** Pfad relativ zu `public/`, z. B. „youtube-music/track.mp3“. */
   musicSrc: string | null
@@ -66,33 +66,33 @@ export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
   ticker: 'ASML',
   firmenname: 'ASML Holding',
   logoUrl: 'portfolio-logos/asml.png',
-  hook: 'At 51.3% gross margin, ASML sells machines nobody else can build.',
-  hookLoop: 'But one thing could still break it.',
+  hook: 'ASML prints a 51.3% margin — machines nobody else can build.',
+  hookLoop: 'The catch? One thing could still break it.',
   metricValue: '51.3%',
   metricLabel: 'Gross margin',
-  business: 'ASML sells lithography systems that print the smallest features on silicon wafers.',
+  business: 'They sell lithography tools — the ones that print chips.',
   pillars: [
     {
       id: 'preissetzungsmacht',
       label: 'Pricing power',
       score: 9,
-      line: 'Margins barely moved in ten years: a 2.1 pts swing.',
+      line: 'Look at the margins — a 2.1 pts swing.',
       stat: { value: '2.1 pts', label: '10y gross margin swing' },
     },
     {
       id: 'replikationsbarriere',
       label: 'Hard to copy',
       score: 10,
-      line: 'Decades of optics and suppliers nobody can rebuild.',
+      line: 'Decades of optics. Nobody can rebuild that stack.',
       stat: { value: '28.4%', label: '5-year avg. ROIC' },
     },
-    { id: 'wechselkosten', label: 'Switching costs', score: 8, line: 'Whole production lines are designed around these tools.', stat: null },
-    { id: 'marktdichte', label: 'Market control', score: 9, line: 'In EUV there is simply no second supplier.', stat: null },
+    { id: 'wechselkosten', label: 'Switching costs', score: 8, line: 'Whole factories are built around these tools — lock-in.', stat: null },
+    { id: 'marktdichte', label: 'Market control', score: 9, line: 'In EUV, there is simply no second shop.', stat: null },
   ],
-  crack: 'The risk is not a rival. It is export controls cutting off its biggest customers.',
+  crack: 'The risk is not a rival. It is export controls, cutting off its biggest customers.',
   verdict: 'wide',
   score: 9,
-  closing: 'Wide moat. The proof is 51.3%.',
+  closing: 'There is no second supplier, which is why',
   musicSrc: null,
   musicGain: 0.5,
   musicTrim: 0,
