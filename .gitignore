@@ -57,6 +57,10 @@ next-env.d.ts
 /public/youtube-music/*
 !/public/youtube-music/.gitkeep
 
+# Gecachte Firmenlogos für Shorts (werden beim Script-Lauf nachgeladen)
+/public/youtube-logos/*
+!/public/youtube-logos/.gitkeep
+
 # Lokale Debug-APK (sideload, nicht committen)
 *.apk
 Omnia-debug.apk

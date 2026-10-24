@@ -46,8 +46,12 @@ export async function GET(req: Request) {
   if (gesperrt) return gesperrt
 
   const out = await jsonMitOwner(req, async () => {
-    const dateiname = new URL(req.url).searchParams.get('datei') ?? ''
-    const download = new URL(req.url).searchParams.get('download') === '1'
+    const url = new URL(req.url)
+    const dateiname = url.searchParams.get('datei') ?? ''
+    const download = url.searchParams.get('download') === '1'
+    if (!dateiname) {
+      return NextResponse.json({ ok: true, lokal: true })
+    }
     if (!istMoatShortDateiname(dateiname)) {
       return NextResponse.json({ ok: false, status: 'fehler', fehler: 'Ungültiger Dateiname.' }, { status: 400 })
     }

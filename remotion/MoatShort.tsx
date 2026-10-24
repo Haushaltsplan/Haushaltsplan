@@ -84,7 +84,7 @@ export const MoatShort: React.FC<MoatShortProps> = (props) => {
         </Sequence>
       ))}
 
-      <Kopfzeile ticker={props.ticker} fortschritt={frame / Math.max(1, durationInFrames - 1)} />
+      <Kopfzeile ticker={props.ticker} logoUrl={props.logoUrl} fortschritt={frame / Math.max(1, durationInFrames - 1)} />
       <Koernung />
       <Ton
         musicSrc={props.musicSrc}
@@ -140,7 +140,12 @@ function Ton({
   return (
     <>
       {musicSrc ? (
-        <Audio src={staticFile(musicSrc)} loop volume={musikVolume} trimBefore={musicTrim > 0 ? musicTrim : undefined} />
+        <Audio
+          src={staticFile(musicSrc.replace(/^\/+/, ''))}
+          loop
+          volume={musikVolume}
+          trimBefore={musicTrim > 0 ? musicTrim : undefined}
+        />
       ) : null}
       {sfx
         ? cues.map((c, i) => (
@@ -153,7 +158,11 @@ function Ton({
   )
 }
 
-function Kopfzeile({ ticker, fortschritt }: { ticker: string; fortschritt: number }) {
+function logoSrc(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : staticFile(url.replace(/^\/+/, ''))
+}
+
+function Kopfzeile({ ticker, logoUrl, fortschritt }: { ticker: string; logoUrl: string | null; fortschritt: number }) {
   return (
     <div style={{ position: 'absolute', top: 132, left: 90, right: 90 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: MONO, fontSize: 28, letterSpacing: 6, fontWeight: 700 }}>
@@ -161,7 +170,12 @@ function Kopfzeile({ ticker, fortschritt }: { ticker: string; fortschritt: numbe
           <span style={{ width: 14, height: 14, borderRadius: 7, background: BRAND }} />
           MOAT CHECK
         </span>
-        <span style={{ color: MUTED }}>${ticker}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 14, color: MUTED }}>
+          {logoUrl ? (
+            <Img src={logoSrc(logoUrl)} style={{ width: 44, height: 44, objectFit: 'contain', borderRadius: 10, background: '#FFFFFF', padding: 4 }} />
+          ) : null}
+          ${ticker}
+        </span>
       </div>
       <div style={{ marginTop: 26, height: 3, background: 'rgba(243,241,236,0.1)', borderRadius: 2 }}>
         <div style={{ width: `${Math.min(1, fortschritt) * 100}%`, height: '100%', background: BRAND, borderRadius: 2 }} />
@@ -183,7 +197,7 @@ function HookSzene({ headline, value, label, teaserAb }: { headline: string; val
   const frame = useCurrentFrame()
   const { fps, durationInFrames } = useVideoConfig()
   const einschlag = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 9 })
-  const zaehlen = interpolate(frame, [0, 16], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+  const zaehlen = interpolate(frame, [0, 16], [0.45, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
   const schub = interpolate(frame, [0, durationInFrames], [1, 1.05], { easing: Easing.out(Easing.quad), extrapolateRight: 'clamp' })
   const teaser = teaserAb == null ? 0 : interpolate(frame, [teaserAb, teaserAb + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   const headlineGroesse = headline.length <= 55 ? 78 : headline.length <= 85 ? 66 : 56
@@ -217,9 +231,9 @@ function BusinessSzene({ ticker, name, logoUrl }: { ticker: string; name: string
     <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingBottom: 300 }}>
       <div
         style={{
-          width: 260,
-          height: 260,
-          borderRadius: 64,
+          width: 340,
+          height: 340,
+          borderRadius: 72,
           background: logoUrl && !logoKaputt ? '#FFFFFF' : BRAND,
           display: 'flex',
           alignItems: 'center',
@@ -231,7 +245,11 @@ function BusinessSzene({ ticker, name, logoUrl }: { ticker: string; name: string
         }}
       >
         {logoUrl && !logoKaputt ? (
-          <Img src={logoUrl} onError={() => setLogoKaputt(true)} style={{ width: 170, height: 170, objectFit: 'contain' }} />
+          <Img
+            src={logoSrc(logoUrl)}
+            onError={() => setLogoKaputt(true)}
+            style={{ width: 250, height: 250, objectFit: 'contain' }}
+          />
         ) : (
           <span style={{ fontSize: Math.min(100, Math.floor(300 / Math.max(1, ticker.length))), fontWeight: 900, color: BG, letterSpacing: -2 }}>{ticker}</span>
         )}

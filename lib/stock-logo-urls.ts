@@ -18,6 +18,7 @@ export function finnhubLogoUrls(symbol: string): string[] {
   }
   push(basis)
   if (t.includes('.')) {
+    push(t)
     push(t.replace(/\./g, '-'))
     push(t.replace(/\./g, ''))
   }
@@ -67,17 +68,37 @@ export function clearbitLogoUrls(domains: string[]): string[] {
   return urls
 }
 
-/** Lokales Logo zuerst, dann Finnhub + optional Clearbit-Fallback. */
+export function marketcapLogoUrls(symbol: string): string[] {
+  const basis = basisTickerAusSymbol(symbol)
+  if (!basis) return []
+  return [
+    `https://companiesmarketcap.com/img/company-logos/512/${encodeURIComponent(basis)}.png`,
+    `https://companiesmarketcap.com/img/company-logos/256/${encodeURIComponent(basis)}.png`,
+  ]
+}
+
+export function fmpLogoUrls(symbol: string): string[] {
+  const basis = basisTickerAusSymbol(symbol)
+  if (!basis) return []
+  return [`https://financialmodelingprep.com/image-stock/${encodeURIComponent(basis)}.png`]
+}
+
+/** Lokales Logo zuerst, dann Finnhub, MarketCap, FMP, optional Clearbit. */
 export function alleLogoUrls(
   symbol: string,
   opts?: { finnhubSlug?: string; clearbitDomains?: string[]; localPath?: string },
 ): string[] {
   const slug = opts?.finnhubSlug?.trim() || symbol
-  const finnhub = finnhubLogoUrls(slug)
-  const clearbit = clearbitLogoUrls(opts?.clearbitDomains ?? [])
+  const remote = [
+    ...finnhubLogoUrls(slug),
+    ...finnhubLogoUrls(symbol),
+    ...marketcapLogoUrls(symbol),
+    ...fmpLogoUrls(symbol),
+    ...clearbitLogoUrls(opts?.clearbitDomains ?? []),
+  ]
   const out: string[] = []
   if (opts?.localPath) out.push(opts.localPath)
-  for (const u of [...finnhub, ...clearbit]) {
+  for (const u of remote) {
     if (!out.includes(u)) out.push(u)
   }
   return out

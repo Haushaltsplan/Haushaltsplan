@@ -63,7 +63,7 @@ export type MoatShortTimeline = {
 export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
   ticker: 'ASML',
   firmenname: 'ASML Holding',
-  logoUrl: null,
+  logoUrl: 'portfolio-logos/asml.png',
   hook: 'At 51.3% gross margin, ASML sells machines nobody else can build.',
   hookLoop: 'But one thing could still break it.',
   metricValue: '51.3%',

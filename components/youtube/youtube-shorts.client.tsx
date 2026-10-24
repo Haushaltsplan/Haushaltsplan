@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -20,8 +20,6 @@ const MoatShortPreview = dynamic(() => import('@/components/youtube/moat-short-p
   ssr: false,
   loading: () => <div className="aspect-[9/16] w-full animate-pulse rounded-[18px] bg-[var(--app-surface-muted)]" />,
 })
-
-const keinAbo = () => () => {}
 
 type Eingabe = { paket: FundamentaldatenPaket; isin: string | null }
 
@@ -43,13 +41,17 @@ function leseExport(text: string): Eingabe | string {
   }
 }
 
+function logoHref(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : `/${url.replace(/^\/+/, '')}`
+}
+
 function pruefeLogo(url: string | null): Promise<string | null> {
   if (!url) return Promise.resolve(null)
   return new Promise((resolve) => {
     const img = new Image()
-    img.onload = () => resolve(img.naturalWidth >= 64 ? url : null)
+    img.onload = () => resolve(img.naturalWidth >= 96 ? url : null)
     img.onerror = () => resolve(null)
-    img.src = url
+    img.src = logoHref(url)
   })
 }
 
@@ -68,17 +70,16 @@ export function YoutubeShortsClient() {
   const [tracks, setTracks] = useState<string[]>(MOAT_SHORT_KATALOG_PFADE)
   const [musikWahl, setMusikWahl] = useState<string>('auto')
   const [sfx, setSfx] = useState(true)
-  const lokal = useSyncExternalStore(
-    keinAbo,
-    () => ['localhost', '127.0.0.1'].includes(window.location.hostname),
-    () => false,
-  )
+  const [exportLokal, setExportLokal] = useState<boolean | null>(null)
 
   useEffect(() => {
     void fetch('/api/youtube/musik')
       .then((r) => r.json() as Promise<{ tracks?: string[] }>)
       .then((j) => setTracks(sortiereTracks([...new Set([...MOAT_SHORT_KATALOG_PFADE, ...(j.tracks ?? [])])])))
       .catch(() => undefined)
+    void fetch('/api/youtube/render')
+      .then((r) => setExportLokal(r.ok))
+      .catch(() => setExportLokal(false))
   }, [])
 
   const automatisch = trackZumUrteil(props?.verdict, tracks)
@@ -173,9 +174,13 @@ export function YoutubeShortsClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ props: fertig }),
       })
-      const startJson = (await start.json().catch(() => ({}))) as { dateiname?: string; fehler?: string }
+      const startJson = (await start.json().catch(() => ({}))) as {
+        dateiname?: string
+        fehler?: string
+        error?: string
+      }
       if (!start.ok || !startJson.dateiname) {
-        toast.error(startJson.fehler || `Renderstart fehlgeschlagen (HTTP ${start.status})`)
+        toast.error(startJson.fehler || startJson.error || `Renderstart fehlgeschlagen (HTTP ${start.status})`)
         return
       }
       const dateiname = startJson.dateiname
@@ -263,6 +268,27 @@ export function YoutubeShortsClient() {
               </span>
             </div>
             <div className="space-y-4 px-4 py-3 sm:px-5 sm:py-4">
+              <div className="flex items-center gap-3">
+                {props.logoUrl ? (
+                  <img
+                    src={logoHref(props.logoUrl)}
+                    alt=""
+                    className="h-12 w-12 rounded-lg border border-[var(--app-border)] bg-white object-contain p-1"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[var(--app-surface-muted)] text-[10px] font-bold uppercase text-[var(--app-text-muted)]">
+                    {props.ticker}
+                  </div>
+                )}
+                <div>
+                  <p className="font-medium text-[var(--app-text)]">{props.firmenname}</p>
+                  <p className="text-xs text-[var(--app-text-muted)]">
+                    ${props.ticker}
+                    {props.logoUrl ? ' · echtes Firmenlogo' : ' · kein Logo gefunden'}
+                  </p>
+                </div>
+              </div>
+
               {ergebnis.warnungen.length ? (
                 <ul className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-200">
                   {ergebnis.warnungen.map((w) => (
@@ -414,7 +440,7 @@ export function YoutubeShortsClient() {
               </label>
               <button
                 type="button"
-                disabled={!lokal || rendert || !fertig}
+                disabled={rendert || !fertig}
                 onClick={() => void mp4Exportieren()}
                 className="w-full rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
               >
@@ -427,12 +453,13 @@ export function YoutubeShortsClient() {
                   {rendert ? 'läuft' : 'fertig'}: <code>out/youtube/{renderDatei}</code>
                 </p>
               ) : null}
-              {!lokal ? (
-                <p className="text-xs text-[var(--app-text-muted)]">MP4-Export nur, wenn die App lokal läuft (npm run dev).</p>
+              {exportLokal === false ? (
+                <p className="text-xs text-[var(--app-text-muted)]">
+                  Export braucht die lokale App (<code>npm run dev</code>). Auf Vercel gibt es kein Remotion.
+                </p>
               ) : (
                 <p className="text-xs text-[var(--app-text-muted)]">
-                  Lokal 1080×1920, mit Musik und Effekten. Dauert ein bis drei Minuten. Datei landet unter{' '}
-                  <code>out/youtube/</code>.
+                  Ein bis drei Minuten. Die Datei wird heruntergeladen und liegt unter <code>out/youtube/</code>.
                 </p>
               )}
             </div>

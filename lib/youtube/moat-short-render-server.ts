@@ -2,12 +2,25 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { promises as fs } from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import type { MoatShortProps } from '@/remotion/moat-short-types'
 
-export const MOAT_SHORT_RENDER_PORT = 3939
 export const MOAT_SHORT_OUT_ORDNER = path.join(process.cwd(), 'out', 'youtube')
+
+function freierPort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const s = net.createServer()
+    s.unref()
+    s.on('error', reject)
+    s.listen(0, '127.0.0.1', () => {
+      const addr = s.address()
+      const port = typeof addr === 'object' && addr ? addr.port : 0
+      s.close((err) => (err ? reject(err) : resolve(port)))
+    })
+  })
+}
 
 const DATEINAME = /^[A-Z0-9]{1,16}-\d{12,14}\.mp4$/
 const RENDER_TIMEOUT_MS = 8 * 60 * 1000
@@ -119,6 +132,7 @@ export async function starteMoatShortRender(props: MoatShortProps): Promise<{ da
   await fs.mkdir(MOAT_SHORT_OUT_ORDNER, { recursive: true })
   await fs.writeFile(propsDatei, JSON.stringify(fertig), 'utf8')
   await schreibeJob({ status: 'laeuft', dateiname, gestartet: Date.now() })
+  const port = await freierPort()
 
   const kind = spawn(
     process.execPath,
@@ -129,7 +143,7 @@ export async function starteMoatShortRender(props: MoatShortProps): Promise<{ da
       'MoatShort',
       ziel,
       `--props=${propsDatei}`,
-      `--port=${MOAT_SHORT_RENDER_PORT}`,
+      `--port=${port}`,
       '--overwrite',
     ],
     { cwd: process.cwd(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },

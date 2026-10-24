@@ -12,6 +12,7 @@ import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentald
 import { generiereMoatKiBewertung, ladeMoatKiCache } from '@/lib/portfolio-analyse/moat-ki-server'
 import type { MoatKiBewertung, MoatPfeilerId } from '@/lib/portfolio-analyse/moat-ki-types'
 import type { MoatShortErgebnis, MoatShortHookVariante, MoatShortMetrik } from '@/lib/youtube/moat-short-types'
+import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
 import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
 
@@ -35,16 +36,6 @@ function verdictAusUrteil(urteil: MoatKiBewertung['urteil']): MoatShortVerdict {
   if (urteil === 'tief') return 'wide'
   if (urteil === 'moderat') return 'narrow'
   return 'none'
-}
-
-function logoUrlAusWebsite(website: string | null): string | null {
-  if (!website?.trim()) return null
-  try {
-    const host = new URL(website.includes('://') ? website : `https://${website}`).hostname.replace(/^www\./, '')
-    return host ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=256` : null
-  } catch {
-    return null
-  }
 }
 
 function woerter(text: string): number {
@@ -235,10 +226,17 @@ export async function generiereMoatShort(opts: {
   const startMetrik = metriken.find((m) => m.id === start.metrikId) ?? hookMetriken[0]!
 
   const verdict = verdictAusUrteil(moat.urteil)
+  const logoUrl = await findeMoatShortLogo({
+    ticker,
+    firmenname: paket.firmenname,
+    isin,
+    website: paket.website,
+    symbolYahoo: paket.symbolYahoo,
+  })
   const props: MoatShortProps = {
     ticker,
     firmenname: paket.firmenname,
-    logoUrl: logoUrlAusWebsite(paket.website),
+    logoUrl,
     hook: start.claim,
     hookLoop: start.loop,
     metricValue: startMetrik.value,
@@ -273,6 +271,7 @@ export async function generiereMoatShort(opts: {
   const gesamt = gesprochen.map(woerter).reduce((a, b) => a + b, 0)
   if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — das Video wird länger als 45 Sekunden.`)
   if (zeilen.size < 4) warnungen.push('Nicht alle vier Pfeiler haben einen eigenen Satz bekommen.')
+  if (!logoUrl) warnungen.push('Kein drucktaugliches Firmenlogo gefunden — die Business-Szene zeigt nur den Ticker.')
 
   return {
     props,
