@@ -43,7 +43,21 @@ const VERBOTENE_WOERTER = [
 ]
 
 const SATZ_MIN_WOERTER = 7
-const SATZ_MAX_WOERTER = 20
+const SATZ_MAX_WOERTER = 14
+
+const FALLBACK_SPANNUNG = 'One thing could still break that lock.'
+
+const STOPWÖRTER = new Set(
+  'a an the and or but if of to in on for with as is it that this those these be was are were not no so just still could would can cannot because'.split(
+    ' ',
+  ),
+)
+
+const BEDROHUNG_LEAK =
+  /\b(regulator|regulatory|regulation|cap|caps|export|control|controls|rival|rivals|china|ban|antitrust|interchange|lawsuit|sanction|sanctions|war|tariff|fee cap)\b/i
+
+const AUFLÖSUNG_LEAK =
+  /\b(because|cannot leave|can't leave|can not leave|no second|only shop|banks (can't|cannot|still pay)|merchants can't)\b/i
 
 function woerter(text: string): string[] {
   return text
@@ -66,6 +80,32 @@ export function ohneKiBindestrich(text: string): string {
 /** Kein Schluss-Punkt: sonst hängt TTS eine Pause an und der Loop stockt. */
 export function oeffneSprechende(text: string): string {
   return text.replace(/[.!?…]+$/u, '').replace(/,+$/g, '').trim()
+}
+
+function inhaltsWörter(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9%\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOPWÖRTER.has(w)),
+  )
+}
+
+export function istSpannungOhneSpoiler(loop: string, crack: string): boolean {
+  const t = ohneKiBindestrich(loop)
+  if (!t || ABSCHIED.test(t) || BEDROHUNG_LEAK.test(t) || AUFLÖSUNG_LEAK.test(t)) return false
+  if (!crack.trim()) return true
+  const a = inhaltsWörter(t)
+  const b = inhaltsWörter(crack)
+  let treffer = 0
+  for (const w of a) if (b.has(w)) treffer += 1
+  return treffer < 2
+}
+
+export function saubererHookLoop(loop: string, crack: string): string {
+  const t = ohneKiBindestrich(loop)
+  return istSpannungOhneSpoiler(t, crack) ? t : FALLBACK_SPANNUNG
 }
 
 export function fallbackLand(verdict: MoatShortVerdict, _value?: string): string {
@@ -176,4 +216,10 @@ export function scriptLoopWarnungen(hook: string, land: string, value: string): 
     w.push(`Loop prüfen: „${loopSatz(land, hook)}“ muss als ein Satz klingen.`)
   }
   return w
+}
+
+export function scriptStoryWarnungen(hookLoop: string, crack: string): string[] {
+  if (!crack.trim()) return []
+  if (istSpannungOhneSpoiler(hookLoop, crack)) return []
+  return ['Der Spannungssatz spoilt die Bedrohung. Erst Hook und Säulen, dann der Crack.']
 }

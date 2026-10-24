@@ -9,7 +9,7 @@ import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from 
 import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
-import { scriptLoopWarnungen } from '@/lib/youtube/moat-short-script'
+import { scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
 import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
@@ -200,7 +200,9 @@ export function YoutubeShortsClient() {
         )
       : []
   const zahlenWarnung = fremd.length ? `Zahlen ohne Quelle im Export: ${fremd.join(', ')}` : null
-  const loopWarnung = props ? scriptLoopWarnungen(props.hook, props.closing, props.metricValue) : []
+  const loopWarnung = props
+    ? [...scriptLoopWarnungen(props.hook, props.closing, props.metricValue), ...scriptStoryWarnungen(props.hookLoop, props.crack)]
+    : []
 
   useEffect(() => {
     if (!ergebnis) return
@@ -533,7 +535,9 @@ export function YoutubeShortsClient() {
 
                 <label className="block pt-1 text-xs font-medium text-[var(--app-text-muted)]">Behauptung (steht als Überschrift im Bild)</label>
                 <textarea value={props.hook} onChange={(e) => setze('hook', e.target.value)} rows={2} className={feldKlasse} />
-                <label className="block text-xs font-medium text-[var(--app-text-muted)]">Spannungssatz (wird erst beim Crack aufgelöst)</label>
+                <label className="block text-xs font-medium text-[var(--app-text-muted)]">
+                  Spannungssatz, noch ohne Bedrohung. Der Crack kommt nach den Säulen.
+                </label>
                 <input value={props.hookLoop} onChange={(e) => setze('hookLoop', e.target.value)} className={feldKlasse} />
                 <select
                   value={ergebnis.metriken.find((m) => m.value === props.metricValue && m.label === props.metricLabel)?.id ?? ''}

@@ -19,8 +19,10 @@ import {
   kommentarFuerUpload,
   istOffeneBruecke,
   ohneKiBindestrich,
+  saubererHookLoop,
   saubererLand,
   scriptLoopWarnungen,
+  scriptStoryWarnungen,
   scriptTonWarnungen,
   titelFuerUpload,
 } from '@/lib/youtube/moat-short-script'
@@ -41,7 +43,7 @@ const VERDICT_SATZ: Record<MoatShortVerdict, string> = {
 }
 
 const KEINE_METRIK = 'none'
-const MAX_WOERTER_GESAMT = 120
+const MAX_WOERTER_GESAMT = 95
 
 function verdictAusUrteil(urteil: MoatKiBewertung['urteil']): MoatShortVerdict {
   if (urteil === 'tief') return 'wide'
@@ -98,14 +100,15 @@ const SYSTEM = `You write the spoken voiceover for "Moat Check", a YouTube Short
 Persona: a grounded, sharp equity analyst talking to another investor over coffee. Complete sentences. Direct. Dry. Specific. You are not a presenter, not a marketer, and not a slogan writer.
 
 ## Voice
-Every spoken line is a normal human sentence: subject, verb, and a finished thought. 10 to 18 words. A comma is fine. Two clauses in one breath are fine.
+Every spoken line is a normal human sentence: subject, verb, one thought. 8 to 14 words. A comma is fine. Subtitles must fit on 2 or 3 lines, never 4.
 
-Good: "Mastercard prints a 58% margin without taking a dollar of credit risk."
-Good: "They sell the lithography tools that print the smallest chips on earth."
-Bad: "Mastercard prints cash." (slogan, no information)
-Bad: "Look at the margins." / "The ones that print chips." / "Lock-in." (fragments)
+Good: "Mastercard prints a 58% margin without taking credit risk."
+Good: "They sell the lithography tools that print the smallest chips."
+Bad: "Mastercard prints cash." (slogan)
+Bad: "Look at the margins." / "Lock-in." (fragments)
+Bad: a 18-word clause that wraps to four subtitle lines.
 
-Do not bark 3 to 6 word punches. If a line could be a billboard, rewrite it as something you would actually say across the table.
+Do not bark 3 to 6 word punches. Do not write a paragraph.
 
 - Active voice. Concrete nouns. The number has to mean something.
 - Metaphors stay ordinary: "global tollbooth", "only shop in town". Never "integrated settlement network".
@@ -123,7 +126,7 @@ Good pair (read land then claim out loud, no pause):
 - claim: "Mastercard prints a 58% margin without taking credit risk."
 - Heard loop: "...which is why Mastercard prints a 58% margin without taking credit risk."
 
-- land: "There is simply no second shop that can print these chips, which is why"
+- land: "There is no second shop that can print these chips, which is why"
 - claim: "ASML prints a 51.3% margin selling machines nobody else can build."
 
 Bad land
@@ -134,20 +137,30 @@ Bad land
 - Any land that ends with a period or a finished thought
 
 Land rules
-- 8-16 words, a real clause with a subject, NO metric value.
+- 8-12 words, a real clause with a subject, NO metric value.
 - End on "which is why" or "that's why". Never end with . ! ? and never with a dash.
-- After land, speech restarts instantly on claim. Zero trailing silence.
 
 Claim rules
-- 12-18 words. One complete sentence. No dashes. No second slogan after a period.
+- 10-14 words. One complete sentence. No dashes.
 - MUST start with the company name or ticker, then a verb. Never start with "At 51.3%" or a question.
 - Contains the chosen metric value exactly as written.
-- The number must mean something.
+
+## Story order, do not skip ahead
+1. claim (the number)
+2. loop (curiosity ONLY)
+3. business
+4. four pillars
+5. crack (FIRST time we name the threat)
+6. land (bridge back into claim)
+
+The loop is spoken at second 5, while the hook number is still on screen. It must NOT name the threat, the regulator, a rival, a cap, or why the moat holds. It must NOT say "because" or "banks cannot leave".
+Good loop: "One thing could still break that lock."
+Bad loop: "Regulatory caps threaten the business, but banks cannot leave the network because..."
 
 ## Each hook
 Write THREE hooks. Each has four fields:
 1. claim, see above.
-2. loop (10-16 words): a complete sentence spoken next. Opens a gap the single crack later fills. Same threat, three phrasings.
+2. loop (8-12 words): one complete sentence of curiosity. Same gap in three phrasings. Never the crack.
 3. land, unfinished bridge into THAT claim. No number.
 4. metricId, hook metric whose exact value appears in claim only.
 
@@ -157,9 +170,9 @@ Angles
 - stakes: what breaks if this company vanishes, anchored by the number.
 
 ## Rest of the script
-- business: 12-18 words, one complete sentence, what they sell and to whom. A metaphor is fine if it is earned.
-- pillarLines: one per pillar, 10-16 words, one complete sentence, match the score (high = strength, low = weakness). At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none".
-- crack: 12-20 words, ONE concrete threat in one or two complete sentences. It answers all three loop lines. No sign-off.
+- business: 10-14 words, one complete sentence, what they sell and to whom.
+- pillarLines: one per pillar, 10-14 words, one complete sentence, match the score. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none".
+- crack: 10-16 words, ONE concrete threat. This is the first time the threat is named. It answers the loop. No sign-off.
 
 ## Hard rules
 - Use ONLY facts and numbers from the data provided. Never invent numbers, customers, market shares, years or events.
@@ -167,7 +180,7 @@ Angles
 - Never open a claim with a question, "Did you know", "In this video", "Let's talk about".
 - No buy/sell/hold advice, no price targets, no emojis, no hashtags in spoken text.
 - Do not speak the score as "X out of 10".
-- Whole spoken script stays under 120 words.
+- Whole spoken script stays under 95 words so the Short lands near 32 seconds.
 
 Also return
 - title: 30-50 characters, ticker or company first, curiosity without ALL-CAPS or !!. If a YouTube search suggestion fits, prefer it. Examples: "ASML: why nobody can copy it" / "Visa's 67.4% problem".
@@ -273,6 +286,7 @@ export async function generiereMoatShort(opts: {
   if (!roh) throw new Error('Script-KI lieferte kein gültiges JSON — bitte erneut versuchen.')
 
   const verdict = verdictAusUrteil(moat.urteil)
+  const crack = sprechtext(roh.crack)
   const hookVarianten: MoatShortHookVariante[] = objekte(roh.hooks)
     .map((h) => {
       const metrikId = hookMetriken.some((m) => m.id === h.metricId) ? text(h.metricId) : hookMetriken[0]!.id
@@ -280,7 +294,7 @@ export async function generiereMoatShort(opts: {
       return {
         winkel: text(h.angle),
         claim: sprechtext(h.claim),
-        loop: sprechtext(h.loop),
+        loop: saubererHookLoop(sprechtext(h.loop), crack),
         land: saubererLand(sprechtext(h.land), verdict, wert),
         metrikId,
       }
@@ -317,7 +331,7 @@ export async function generiereMoatShort(opts: {
     firmenname: paket.firmenname,
     logoUrl,
     hook: start.claim,
-    hookLoop: start.loop,
+    hookLoop: saubererHookLoop(start.loop, crack),
     metricValue: startMetrik.value,
     metricLabel: startMetrik.label,
     business: sprechtext(roh.business),
@@ -332,7 +346,7 @@ export async function generiereMoatShort(opts: {
         stat: stat ? { value: stat.value, label: stat.label } : null,
       }
     }),
-    crack: sprechtext(roh.crack),
+    crack,
     verdict,
     score: moat.score,
     closing: start.land,
@@ -344,6 +358,7 @@ export async function generiereMoatShort(opts: {
 
   const warnungen: string[] = []
   warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue))
+  warnungen.push(...scriptStoryWarnungen(props.hookLoop, props.crack))
   const gesprochen = [props.hook, props.hookLoop, props.business, ...props.pillars.map((p) => p.line), props.crack, props.closing]
   warnungen.push(...scriptTonWarnungen(gesprochen))
   const fremd = fremdeZahlen(gesprochen.join(' '), metriken, scores)

@@ -86,7 +86,7 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
   const crackEnde = crack.from + crack.duration
   const loopFrom = loop?.from ?? durationInFrames - MOAT_SHORT_LOOP_FRAMES
   const loopDauer = loop?.duration ?? MOAT_SHORT_LOOP_FRAMES
-  const loopBlend = interpolate(frame, [loopFrom, loopFrom + 10], [0, 1], {
+  const loopBlend = interpolate(frame, [loopFrom, loopFrom + 18], [0, 1], {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   })
@@ -164,8 +164,7 @@ function Ton({
   const crack = beats.find((b) => b.id === 'crack')
   const cues: { from: number; src: string; volume: number }[] = []
   for (const b of beats) {
-    if (b.id === 'hook') cues.push({ from: b.from + 4, src: whip, volume: 0.35 })
-    if (b.id === 'business') cues.push({ from: Math.max(0, b.from - 4), src: whoosh, volume: 0.35 })
+    if (b.id === 'business') cues.push({ from: Math.max(0, b.from - 4), src: whoosh, volume: 0.28 })
     if (b.id.startsWith('pillar')) cues.push({ from: b.from, src: uiSwitch, volume: 0.25 })
     if (b.id === 'crack') cues.push({ from: b.from + 2, src: whip, volume: 0.4 })
     if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: 1 })

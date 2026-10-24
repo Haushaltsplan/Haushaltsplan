@@ -8,26 +8,26 @@ import {
 } from './moat-short-types'
 
 /** Shorts-Tempo: lieber knapp als tot — Guides wollen einen Beat alle 2–3 Sekunden. */
-const WOERTER_PRO_SEKUNDE = 3
-const PAUSE_SEKUNDEN = 0.16
+const WOERTER_PRO_SEKUNDE = 3.25
+const PAUSE_SEKUNDEN = 0.1
 const MIN_SEKUNDEN: Record<Exclude<MoatShortBeatId, 'loop'>, number> = {
   hook: 2,
-  teaser: 1,
-  business: 1.8,
-  pillar0: 1.5,
-  pillar1: 1.5,
-  pillar2: 1.5,
-  pillar3: 1.5,
-  crack: 2.1,
-  verdict: 2,
+  teaser: 1.1,
+  business: 1.5,
+  pillar0: 1.3,
+  pillar1: 1.3,
+  pillar2: 1.3,
+  pillar3: 1.3,
+  crack: 1.8,
+  verdict: 1.6,
 }
-/** Letzte Frames: Hook-Ruhepose, damit YouTube unsichtbar neu startet. */
-export const MOAT_SHORT_LOOP_FRAMES = 16
+/** Letzte Frames: Hook-Ruhepose, weicher Join in den YouTube-Restart. */
+export const MOAT_SHORT_LOOP_FRAMES = 22
 /** Untertitel müssen vor dem Join weg sein — sonst sieht man den Cut. */
 const CAPTION_ENDE_VOR_LOOP = 8
 /** Der Hook steht als Überschrift im Bild — doppelte Untertitel wären nur Lärm. */
 const OHNE_CAPTIONS = new Set<MoatShortBeatId>(['hook', 'loop'])
-const CAPTION_MAX_WOERTER = 16
+const CAPTION_MAX_WOERTER = 10
 
 function woerter(text: string): string[] {
   return text.trim().split(/\s+/).filter(Boolean)
@@ -58,7 +58,23 @@ function captionChunks(text: string): string[] {
     }
     if (aktuell.length) chunks.push(aktuell.join(' '))
   }
-  return chunks.filter(Boolean)
+  const roh = chunks.filter(Boolean)
+  const fein: string[] = []
+  for (const chunk of roh) {
+    const w = woerter(chunk)
+    if (w.length <= CAPTION_MAX_WOERTER) {
+      fein.push(chunk)
+      continue
+    }
+    for (let i = 0; i < w.length; i += CAPTION_MAX_WOERTER) {
+      fein.push(w.slice(i, i + CAPTION_MAX_WOERTER).join(' '))
+    }
+  }
+  const letzter = fein[fein.length - 1]
+  if (fein.length > 1 && letzter && woerter(letzter).length <= 3) {
+    fein.splice(-2, 2, `${fein[fein.length - 2]} ${letzter}`)
+  }
+  return fein
 }
 
 export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimeline {
