@@ -46,7 +46,8 @@ const CONTENT_SIDE = 88
 const CAPTION_SIDE = 88
 const PILLAR_BOTTOM_PAD = MOAT_SHORT_HEIGHT - (CAPTION_TOP - 32)
 const CAPTION_YELLOW = '#FFC700'
-const CAPTION_SIZE = 58
+const CAPTION_SIZE = 54
+const CAPTION_LINE = 1.28
 
 function saubereProps(p: MoatShortProps): MoatShortProps {
   return {
@@ -82,16 +83,17 @@ function Wortzeile({
         display: 'flex',
         flexWrap: 'wrap',
         justifyContent: 'center',
-        columnGap: '0.32em',
-        rowGap: 0,
-        width: '100%',
+        columnGap: '0.28em',
+        rowGap: '0.22em',
+        maxWidth: '100%',
+        lineHeight: CAPTION_LINE,
       }}
     >
       {text
         .trim()
         .split(/\s+/)
         .map((w, i) => (
-          <span key={i} style={{ color: farbeFuer?.(w, i), fontWeight: gewichtFuer?.(w, i) }}>
+          <span key={i} style={{ color: farbeFuer?.(w, i), fontWeight: gewichtFuer?.(w, i), lineHeight: CAPTION_LINE }}>
             {w}
           </span>
         ))}
@@ -554,8 +556,8 @@ function Caption({ text }: { text: string }) {
           background: 'rgba(0, 0, 0, 0.65)',
           backdropFilter: 'blur(4px)',
           WebkitBackdropFilter: 'blur(4px)',
-          padding: '12px 28px',
-          borderRadius: 12,
+          padding: '18px 36px 26px',
+          borderRadius: 16,
           opacity: rein,
           transform: `translateY(${interpolate(rein, [0, 1], [16, 0])}px) scale(${interpolate(punch, [0, 1], [1.08, 1])})`,
         }}
@@ -568,7 +570,7 @@ function Caption({ text }: { text: string }) {
             fontSize: CAPTION_SIZE,
             fontWeight: 700,
             letterSpacing: 0,
-            lineHeight: 1.22,
+            lineHeight: CAPTION_LINE,
             textAlign: 'center',
           }}
         >
