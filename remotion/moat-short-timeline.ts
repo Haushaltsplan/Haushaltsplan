@@ -11,7 +11,8 @@ import {
 const WOERTER_PRO_SEKUNDE = 2.6
 const PAUSE_SEKUNDEN = 0.3
 const MIN_SEKUNDEN: Record<MoatShortBeatId, number> = {
-  hook: 2.8,
+  hook: 2.6,
+  teaser: 1.4,
   business: 2.4,
   pillar0: 2.2,
   pillar1: 2.2,
@@ -20,6 +21,8 @@ const MIN_SEKUNDEN: Record<MoatShortBeatId, number> = {
   crack: 3,
   verdict: 3.6,
 }
+/** Der Hook steht als Überschrift im Bild — doppelte Untertitel wären nur Lärm. */
+const OHNE_CAPTIONS = new Set<MoatShortBeatId>(['hook'])
 const CAPTION_MAX_WOERTER = 3
 
 function woerter(text: string): string[] {
@@ -47,6 +50,7 @@ function captionChunks(text: string): string[] {
 export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimeline {
   const texte: [MoatShortBeatId, string][] = [
     ['hook', props.hook],
+    ['teaser', props.hookLoop],
     ['business', props.business],
     ...props.pillars.slice(0, 4).map((p, i) => [`pillar${i}` as MoatShortBeatId, p.line] as [MoatShortBeatId, string]),
     ['crack', props.crack],
@@ -58,23 +62,26 @@ export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimel
   let cursor = 0
 
   for (const [id, text] of texte) {
+    if (!text.trim()) continue
     const sprechSek = woerter(text).length / WOERTER_PRO_SEKUNDE
     const sek = Math.max(MIN_SEKUNDEN[id], sprechSek + PAUSE_SEKUNDEN)
     const duration = Math.round(sek * MOAT_SHORT_FPS)
     beats.push({ id, text, from: cursor, duration })
 
-    const chunks = captionChunks(text)
-    const sprechFrames = Math.max(1, Math.round(sprechSek * MOAT_SHORT_FPS))
-    const zeichenGesamt = chunks.reduce((s, c) => s + c.length, 0) || 1
-    let c = cursor
-    chunks.forEach((chunk, i) => {
-      const len =
-        i === chunks.length - 1
-          ? Math.max(6, cursor + sprechFrames - c)
-          : Math.max(6, Math.round((chunk.length / zeichenGesamt) * sprechFrames))
-      captions.push({ text: chunk, from: c, duration: len })
-      c += len
-    })
+    if (!OHNE_CAPTIONS.has(id)) {
+      const chunks = captionChunks(text)
+      const sprechFrames = Math.max(1, Math.round(sprechSek * MOAT_SHORT_FPS))
+      const zeichenGesamt = chunks.reduce((s, c) => s + c.length, 0) || 1
+      let c = cursor
+      chunks.forEach((chunk, i) => {
+        const len =
+          i === chunks.length - 1
+            ? Math.max(6, cursor + sprechFrames - c)
+            : Math.max(6, Math.round((chunk.length / zeichenGesamt) * sprechFrames))
+        captions.push({ text: chunk, from: c, duration: len })
+        c += len
+      })
+    }
 
     cursor += duration
   }

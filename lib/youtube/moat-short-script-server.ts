@@ -11,18 +11,9 @@ import {
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { generiereMoatKiBewertung, ladeMoatKiCache } from '@/lib/portfolio-analyse/moat-ki-server'
 import type { MoatKiBewertung, MoatPfeilerId } from '@/lib/portfolio-analyse/moat-ki-types'
-import type { MoatShortErgebnis, MoatShortMetrik } from '@/lib/youtube/moat-short-types'
+import type { MoatShortErgebnis, MoatShortHookVariante, MoatShortMetrik } from '@/lib/youtube/moat-short-types'
+import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
-
-const HOOK_METRIKEN: { id: string; label: string }[] = [
-  { id: 'ltm_brutto', label: 'Gross margin' },
-  { id: 'ltm_ebit', label: 'Operating margin' },
-  { id: 'ltm_roic', label: 'Return on capital' },
-  { id: 'roic_5y_avg', label: '5-year avg. ROIC' },
-  { id: 'fcf_conversion', label: 'FCF conversion' },
-  { id: 'nrr', label: 'Net revenue retention' },
-  { id: 'rev_cagr_5y', label: 'Revenue growth, 5y CAGR' },
-]
 
 const PFEILER_LABEL: Record<MoatPfeilerId, string> = {
   preissetzungsmacht: 'Pricing power',
@@ -37,27 +28,13 @@ const VERDICT_SATZ: Record<MoatShortVerdict, string> = {
   none: 'No real moat.',
 }
 
+const KEINE_METRIK = 'none'
 const MAX_WOERTER_GESAMT = 125
 
 function verdictAusUrteil(urteil: MoatKiBewertung['urteil']): MoatShortVerdict {
   if (urteil === 'tief') return 'wide'
   if (urteil === 'moderat') return 'narrow'
   return 'none'
-}
-
-function formatProzent(zahl: number): string {
-  const gerundet = Math.abs(zahl) >= 100 ? Math.round(zahl) : Math.round(zahl * 10) / 10
-  return `${gerundet}%`
-}
-
-export function hookMetrikenAusPaket(paket: FundamentaldatenPaket): MoatShortMetrik[] {
-  const out: MoatShortMetrik[] = []
-  for (const { id, label } of HOOK_METRIKEN) {
-    const m = paket.keyMetrics.find((k) => k.id === id)
-    if (m?.zahl == null || !Number.isFinite(m.zahl)) continue
-    out.push({ id, label, value: formatProzent(m.zahl) })
-  }
-  return out
 }
 
 function logoUrlAusWebsite(website: string | null): string | null {
@@ -74,12 +51,23 @@ function woerter(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length
 }
 
-function baueSchema(metrikIds: string[]) {
+function baueSchema(hookIds: string[], alleIds: string[]) {
   return {
     type: 'object',
     properties: {
-      hook: { type: 'string' },
-      hookMetricId: { type: 'string', enum: metrikIds },
+      hooks: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            angle: { type: 'string', enum: ['number_shock', 'contrast', 'stakes'] },
+            claim: { type: 'string' },
+            loop: { type: 'string' },
+            metricId: { type: 'string', enum: hookIds },
+          },
+          required: ['angle', 'claim', 'loop', 'metricId'],
+        },
+      },
       business: { type: 'string' },
       pillarLines: {
         type: 'array',
@@ -88,15 +76,16 @@ function baueSchema(metrikIds: string[]) {
           properties: {
             id: { type: 'string', enum: Object.keys(PFEILER_LABEL) },
             line: { type: 'string' },
+            metricId: { type: 'string', enum: [...alleIds, KEINE_METRIK] },
           },
-          required: ['id', 'line'],
+          required: ['id', 'line', 'metricId'],
         },
       },
       crack: { type: 'string' },
       title: { type: 'string' },
       description: { type: 'string' },
     },
-    required: ['hook', 'hookMetricId', 'business', 'pillarLines', 'crack', 'title', 'description'],
+    required: ['hooks', 'business', 'pillarLines', 'crack', 'title', 'description'],
   } as const
 }
 
@@ -104,31 +93,41 @@ const SYSTEM = `You write voiceover scripts for "Moat Check", a YouTube Shorts s
 
 Voice: a sharp, calm analyst talking to a smart friend. Plain spoken English. Short sentences. Concrete nouns. No hype.
 
-Hard rules
-- Use ONLY facts from the data provided. Never invent numbers, customers, market shares or events.
-- The hook must contain the chosen metric value exactly as written (e.g. "71.2%") and make one specific claim about why this company is hard to compete with (or why it is not).
-- Never open with a question, "Did you know", "In this video", "Let's talk about", or the company name followed by "is a company".
+## The first two seconds decide everything
+A viewer swipes away unless the opening creates a gap they need closed. Every hook has two parts:
+
+1. claim (8-13 words, shown on screen as a headline): contains the chosen metric value exactly as written and makes ONE specific, surprising claim. The number must mean something: say what it implies, not just what it is.
+2. loop (4-9 words, spoken right after): opens a question that only "the crack" later in the video answers. It must promise a payoff, e.g. "But one thing could still break it." / "Here is what nobody prices in." / "And that is exactly the problem."
+
+Write THREE hooks with different angles:
+- number_shock: the number itself is absurd for this industry, and you say why.
+- contrast: the expected story vs. the real one ("Everyone thinks X. The 71.2% says Y.").
+- stakes: what the world would lose if this company vanished tomorrow, anchored by the number.
+
+Good claims
+- "Visa keeps 67.4% of every dollar as profit, and banks pay it gladly."
+- "At 51.3% gross margin, ASML sells machines nobody else can build."
+- "Everyone calls Costco a retailer. Its 12.6% margin says it sells memberships."
+Bad claims
+- "Is ASML the most important company in the world?" (question, no number)
+- "Today we look at Visa's incredible moat." (announces instead of claiming)
+- "Visa has a gross margin of 80%." (number with no meaning)
+
+## Rest of the script
+- business: 10-16 words, what they sell and to whom.
+- pillarLines: one per pillar, 7-12 words, must match the score (high = name the strength, low = name the weakness). Give at most TWO pillars a metricId when a number genuinely proves the point, and then put that exact value into the line. Otherwise metricId "none".
+- crack: 12-18 words, the single most concrete threat from the scenarios. It must pay off the loop.
+
+## Hard rules
+- Use ONLY facts and numbers from the data provided. Never invent numbers, customers, market shares, years or events.
+- Write numbers exactly as given (e.g. "28.4%", "2.1 pts", "0.4x").
+- Never open a claim with a question, "Did you know", "In this video", "Let's talk about".
 - Banned words: game-changer, revolutionary, insane, crazy, massive, juggernaut, powerhouse, unstoppable, secret.
-- No buy/sell/hold advice, no price targets, no emojis, no hashtags in the spoken text.
-- Pillar lines must match the score: a high score explains the strength, a low score names the weakness. One sentence each.
-- The crack: the single most concrete threat from the scenarios, said plainly.
-
-Word limits (spoken)
-- hook: 10-16 words
-- business: 10-16 words, what they sell and to whom
-- each pillar line: 7-12 words
-- crack: 12-18 words
-
-Good hooks
-- "A 71.2% gross margin on chips means nobody else can make this machine."
-- "Visa keeps 67.4% of revenue as profit because every bank already runs on it."
-Bad hooks
-- "Is ASML the most important company in the world?"
-- "Today we look at the incredible moat of Visa."
+- No buy/sell/hold advice, no price targets, no emojis, no hashtags in spoken text.
 
 Also return
-- title: max 60 characters, no clickbait caps, format like "ASML's moat in 45 seconds" or a sharper variant.
-- description: 2 short sentences in English plus the line "Not investment advice." Then "#shorts #investing #stocks #moat".
+- title: max 60 characters, curiosity without clickbait caps, e.g. "Why nobody can copy ASML" or "Visa's 67.4% problem".
+- description: 2 short sentences in English, then "Not investment advice.", then "#shorts #investing #stocks #moat".
 
 The input data is partly in German. Write everything in English.`
 
@@ -148,8 +147,8 @@ function baueUserPrompt(paket: FundamentaldatenPaket, moat: MoatKiBewertung, met
     'Destruction scenarios (German):',
     ...moat.zerstoerungsszenarien.map((s) => `- ${s}`),
     '',
-    'Metrics available for the hook (pick one id, use the value exactly):',
-    ...metriken.map((m) => `- ${m.id}: ${m.label} = ${m.value}`),
+    'Metrics (id: label = exact value). Hook metrics are marked [hook]:',
+    ...metriken.map((m) => `- ${m.id}: ${m.label} = ${m.value}${m.hook ? ' [hook]' : ''}`),
   ]
     .filter((z) => z != null)
     .join('\n')
@@ -170,6 +169,10 @@ function text(v: unknown): string {
   return String(v ?? '').replace(/\s+/g, ' ').trim()
 }
 
+function objekte(v: unknown): Record<string, unknown>[] {
+  return Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => Boolean(x) && typeof x === 'object') : []
+}
+
 export async function generiereMoatShort(opts: {
   paket: FundamentaldatenPaket
   isin: string | null
@@ -182,8 +185,9 @@ export async function generiereMoatShort(opts: {
   const moatAusCache = moat != null
   if (!moat) moat = await generiereMoatKiBewertung(paket, isin)
 
-  const metriken = hookMetrikenAusPaket(paket)
-  if (!metriken.length) {
+  const metriken = metrikenAusPaket(paket)
+  const hookMetriken = metriken.filter((m) => m.hook)
+  if (!hookMetriken.length) {
     throw new Error('Im Export fehlen Margen- und Rendite-Kennzahlen (z. B. Bruttomarge, ROIC) für die Hook-Zahl.')
   }
 
@@ -198,8 +202,8 @@ export async function generiereMoatShort(opts: {
     {
       geminiModels: geminiFreeTierFlashModelKandidaten(),
       geminiForceFreeApiKey: true,
-      jsonResponse: { schema: baueSchema(metriken.map((m) => m.id)) },
-      maxOutputTokens: 4096,
+      jsonResponse: { schema: baueSchema(hookMetriken.map((m) => m.id), metriken.map((m) => m.id)) },
+      maxOutputTokens: 6144,
       timeoutMs: 90_000,
       geminiTotalBudgetMs: 120_000,
     },
@@ -209,46 +213,71 @@ export async function generiereMoatShort(opts: {
   const roh = parseJson(result.reply)
   if (!roh) throw new Error('Script-KI lieferte kein gültiges JSON — bitte erneut versuchen.')
 
-  const metrik = metriken.find((m) => m.id === roh.hookMetricId) ?? metriken[0]!
-  const zeilen = new Map<string, string>()
-  if (Array.isArray(roh.pillarLines)) {
-    for (const r of roh.pillarLines) {
-      if (r && typeof r === 'object') zeilen.set(text((r as Record<string, unknown>).id), text((r as Record<string, unknown>).line))
-    }
-  }
+  const hookVarianten: MoatShortHookVariante[] = objekte(roh.hooks)
+    .map((h) => ({
+      winkel: text(h.angle),
+      claim: text(h.claim),
+      loop: text(h.loop),
+      metrikId: hookMetriken.some((m) => m.id === h.metricId) ? text(h.metricId) : hookMetriken[0]!.id,
+    }))
+    .filter((h) => h.claim)
+  if (!hookVarianten.length) throw new Error('Script-KI lieferte keinen Hook — bitte erneut versuchen.')
+
+  const zeilen = new Map(objekte(roh.pillarLines).map((r) => [text(r.id), r]))
+  const scores = [moat.score, ...moat.pfeiler.map((p) => p.score)]
+
+  // Bevorzugt die erste Variante, deren Claim die Zahl wörtlich trägt und keine fremden Zahlen enthält.
+  const start =
+    hookVarianten.find((h) => {
+      const m = metriken.find((x) => x.id === h.metrikId)
+      return m && h.claim.includes(m.value) && !fremdeZahlen(`${h.claim} ${h.loop}`, metriken, scores).length
+    }) ?? hookVarianten[0]!
+  const startMetrik = metriken.find((m) => m.id === start.metrikId) ?? hookMetriken[0]!
 
   const verdict = verdictAusUrteil(moat.urteil)
   const props: MoatShortProps = {
     ticker,
     firmenname: paket.firmenname,
     logoUrl: logoUrlAusWebsite(paket.website),
-    hook: text(roh.hook),
-    metricValue: metrik.value,
-    metricLabel: metrik.label,
+    hook: start.claim,
+    hookLoop: start.loop,
+    metricValue: startMetrik.value,
+    metricLabel: startMetrik.label,
     business: text(roh.business),
-    pillars: moat.pfeiler.map((p) => ({
-      id: p.id,
-      label: PFEILER_LABEL[p.id],
-      score: p.score,
-      line: zeilen.get(p.id) || `${PFEILER_LABEL[p.id]}: ${p.score} out of 10.`,
-    })),
+    pillars: moat.pfeiler.map((p) => {
+      const z = zeilen.get(p.id)
+      const stat = metriken.find((m) => m.id === z?.metricId)
+      return {
+        id: p.id,
+        label: PFEILER_LABEL[p.id],
+        score: p.score,
+        line: text(z?.line) || `${PFEILER_LABEL[p.id]}: ${p.score} out of 10.`,
+        stat: stat ? { value: stat.value, label: stat.label } : null,
+      }
+    }),
     crack: text(roh.crack),
     verdict,
     score: moat.score,
     closing: `${VERDICT_SATZ[verdict]} ${moat.score} out of 10.`,
+    musicSrc: null,
+    musicGain: 0.5,
+    musicTrim: 0,
+    sfx: true,
   }
 
   const warnungen: string[] = []
-  if (!props.hook.includes(metrik.value)) warnungen.push(`Der Hook nennt die Zahl ${metrik.value} nicht wörtlich.`)
-  const gesamt = [props.hook, props.business, ...props.pillars.map((p) => p.line), props.crack, props.closing]
-    .map(woerter)
-    .reduce((a, b) => a + b, 0)
+  if (!props.hook.includes(props.metricValue)) warnungen.push(`Der Hook nennt die Zahl ${props.metricValue} nicht wörtlich.`)
+  const gesprochen = [props.hook, props.hookLoop, props.business, ...props.pillars.map((p) => p.line), props.crack, props.closing]
+  const fremd = fremdeZahlen(gesprochen.join(' '), metriken, scores)
+  if (fremd.length) warnungen.push(`Zahlen ohne Quelle im Export: ${fremd.join(', ')} — bitte prüfen oder streichen.`)
+  const gesamt = gesprochen.map(woerter).reduce((a, b) => a + b, 0)
   if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — das Video wird länger als 45 Sekunden.`)
   if (zeilen.size < 4) warnungen.push('Nicht alle vier Pfeiler haben einen eigenen Satz bekommen.')
 
   return {
     props,
     metriken,
+    hookVarianten,
     moat,
     moatAusCache,
     title: text(roh.title).slice(0, 100),

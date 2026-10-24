@@ -1,14 +1,17 @@
 import { loadFont as loadInterTight } from '@remotion/google-fonts/InterTight'
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono'
+import { shutterModern, uiSwitch, whip, whoosh } from '@remotion/sfx'
 import { useMemo, useState } from 'react'
 import {
   AbsoluteFill,
+  Audio,
   Easing,
   Img,
   Sequence,
   interpolate,
   interpolateColors,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion'
@@ -25,6 +28,7 @@ const MUTED = 'rgba(243, 241, 236, 0.52)'
 const BRAND = '#E9B44C'
 const VERDICT_FARBE: Record<MoatShortVerdict, string> = { wide: '#6FD39A', narrow: '#E9B44C', none: '#EF6A5A' }
 const VERDICT_LABEL: Record<MoatShortVerdict, string> = { wide: 'Wide moat', narrow: 'Narrow moat', none: 'No moat' }
+const STEMPEL_AUFPRALL = 9
 
 function scoreFarbe(score: number): string {
   if (score >= 8) return VERDICT_FARBE.wide
@@ -42,6 +46,7 @@ export const MoatShort: React.FC<MoatShortProps> = (props) => {
   const { beats, captions, durationInFrames } = timeline
 
   const hook = beat(beats, 'hook')
+  const teaser = beats.find((b) => b.id === 'teaser')
   const business = beat(beats, 'business')
   const p0 = beat(beats, 'pillar0')
   const p3 = beat(beats, 'pillar3')
@@ -57,8 +62,8 @@ export const MoatShort: React.FC<MoatShortProps> = (props) => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: bg, color: TEXT, fontFamily: DISPLAY }}>
-      <Sequence from={hook.from} durationInFrames={hook.duration} layout="none">
-        <HookSzene value={props.metricValue} label={props.metricLabel} />
+      <Sequence from={hook.from} durationInFrames={hook.duration + (teaser?.duration ?? 0)} layout="none">
+        <HookSzene headline={props.hook} value={props.metricValue} label={props.metricLabel} teaserAb={teaser ? teaser.from - hook.from : null} />
       </Sequence>
       <Sequence from={business.from} durationInFrames={business.duration} layout="none">
         <BusinessSzene ticker={props.ticker} name={props.firmenname} logoUrl={props.logoUrl} />
@@ -81,7 +86,70 @@ export const MoatShort: React.FC<MoatShortProps> = (props) => {
 
       <Kopfzeile ticker={props.ticker} fortschritt={frame / Math.max(1, durationInFrames - 1)} />
       <Koernung />
+      <Ton
+        musicSrc={props.musicSrc}
+        musicGain={props.musicGain}
+        musicTrim={props.musicTrim ?? 0}
+        sfx={props.sfx}
+        beats={beats}
+        dauer={durationInFrames}
+      />
     </AbsoluteFill>
+  )
+}
+
+function Ton({
+  musicSrc,
+  musicGain,
+  musicTrim,
+  sfx,
+  beats,
+  dauer,
+}: {
+  musicSrc: string | null
+  musicGain: number
+  musicTrim: number
+  sfx: boolean
+  beats: MoatShortBeat[]
+  dauer: number
+}) {
+  const crack = beats.find((b) => b.id === 'crack')
+  const cues: { from: number; src: string; volume: number }[] = []
+  for (const b of beats) {
+    if (b.id === 'hook') cues.push({ from: b.from, src: whip, volume: 0.35 })
+    if (b.id === 'business') cues.push({ from: Math.max(0, b.from - 4), src: whoosh, volume: 0.35 })
+    if (b.id.startsWith('pillar')) cues.push({ from: b.from, src: uiSwitch, volume: 0.25 })
+    if (b.id === 'crack') cues.push({ from: b.from + 2, src: whip, volume: 0.4 })
+    if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: 1 })
+  }
+
+  const musikVolume = (f: number) => {
+    const rein = interpolate(f, [0, 6], [0, 1], { extrapolateRight: 'clamp' })
+    const raus = interpolate(f, [dauer - 30, dauer - 1], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+    const crackEnde = crack ? crack.from + crack.duration : 0
+    const duck =
+      crack && crack.from >= 4
+        ? interpolate(f, [crack.from - 4, crack.from + 6, crackEnde - 6, crackEnde + 4], [1, 0.35, 0.35, 1], {
+            extrapolateLeft: 'clamp',
+            extrapolateRight: 'clamp',
+          })
+        : 1
+    return Math.min(1, musicGain) * rein * raus * duck
+  }
+
+  return (
+    <>
+      {musicSrc ? (
+        <Audio src={staticFile(musicSrc)} loop volume={musikVolume} trimBefore={musicTrim > 0 ? musicTrim : undefined} />
+      ) : null}
+      {sfx
+        ? cues.map((c, i) => (
+            <Sequence key={i} from={c.from} durationInFrames={60} layout="none">
+              <Audio src={c.src} volume={c.volume} />
+            </Sequence>
+          ))
+        : null}
+    </>
   )
 }
 
@@ -102,19 +170,38 @@ function Kopfzeile({ ticker, fortschritt }: { ticker: string; fortschritt: numbe
   )
 }
 
-function HookSzene({ value, label }: { value: string; label: string }) {
+/** Zählt die Ziffern hoch, Präfix/Suffix bleiben stehen — am Ende exakt der Originalstring. */
+function zaehleHoch(value: string, t: number): string {
+  if (t >= 1) return value
+  const m = /^(.*?)(-?\d+(?:\.\d+)?)(.*)$/.exec(value)
+  if (!m) return value
+  const nachkomma = (m[2]!.split('.')[1] ?? '').length
+  return `${m[1]}${(Number(m[2]) * t).toFixed(nachkomma)}${m[3]}`
+}
+
+function HookSzene({ headline, value, label, teaserAb }: { headline: string; value: string; label: string; teaserAb: number | null }) {
   const frame = useCurrentFrame()
   const { fps, durationInFrames } = useVideoConfig()
   const einschlag = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 9 })
-  const schub = interpolate(frame, [0, durationInFrames], [1, 1.06], { easing: Easing.out(Easing.quad), extrapolateRight: 'clamp' })
-  const scale = interpolate(einschlag, [0, 1], [1.2, 1]) * schub
+  const zaehlen = interpolate(frame, [0, 16], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
+  const schub = interpolate(frame, [0, durationInFrames], [1, 1.05], { easing: Easing.out(Easing.quad), extrapolateRight: 'clamp' })
+  const teaser = teaserAb == null ? 0 : interpolate(frame, [teaserAb, teaserAb + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const headlineGroesse = headline.length <= 55 ? 78 : headline.length <= 85 ? 66 : 56
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingBottom: 260 }}>
-      <div style={{ transform: `scale(${scale})`, opacity: interpolate(frame, [0, 4], [0, 1], { extrapolateRight: 'clamp' }), textAlign: 'center' }}>
-        <div style={{ fontSize: value.length > 7 ? 190 : 250, fontWeight: 900, letterSpacing: -8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-          {value}
+    <AbsoluteFill style={{ alignItems: 'center', padding: '300px 90px 0', transform: `scale(${schub})` }}>
+      <div style={{ fontSize: headlineGroesse, fontWeight: 800, letterSpacing: -2, lineHeight: 1.08, textAlign: 'center', opacity: 1 - 0.6 * teaser }}>
+        {headline.split(' ').map((w, i) => (
+          <span key={i} style={{ color: /\d/.test(w) ? BRAND : TEXT }}>
+            {i > 0 ? ' ' : ''}
+            {w}
+          </span>
+        ))}
+      </div>
+      <div style={{ marginTop: 110, textAlign: 'center', transform: `scale(${interpolate(einschlag, [0, 1], [1.15, 1])})` }}>
+        <div style={{ fontSize: value.length > 7 ? 180 : 230, fontWeight: 900, letterSpacing: -8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          {zaehleHoch(value, zaehlen)}
         </div>
-        <div style={{ marginTop: 34, fontFamily: MONO, fontSize: 34, letterSpacing: 7, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
+        <div style={{ marginTop: 30, fontFamily: MONO, fontSize: 32, letterSpacing: 7, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
       </div>
     </AbsoluteFill>
   )
@@ -162,9 +249,10 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
   const { fps } = useVideoConfig()
   const aktiv = starts.reduce((a, s, i) => (frame >= s ? i : a), 0)
   const eintritt = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 10 })
+  const mitStats = pillars.some((p) => p.stat)
   return (
-    <AbsoluteFill style={{ padding: '330px 90px 0', opacity: eintritt }}>
-      <div style={{ fontFamily: MONO, fontSize: 30, letterSpacing: 7, color: MUTED, marginBottom: 54 }}>FOUR PILLARS</div>
+    <AbsoluteFill style={{ padding: '310px 90px 0', opacity: eintritt }}>
+      <div style={{ fontFamily: MONO, fontSize: 30, letterSpacing: 7, color: MUTED, marginBottom: mitStats ? 40 : 54 }}>FOUR PILLARS</div>
       {pillars.slice(0, 4).map((p, i) => {
         const lokal = frame - (starts[i] ?? 0)
         const fuell = spring({ frame: lokal, fps, config: { damping: 22, mass: 0.7 }, durationInFrames: 18 })
@@ -173,7 +261,7 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
         const farbe = scoreFarbe(p.score)
         const anzeige = gestartet ? Math.round(p.score * Math.min(1, fuell)) : 0
         return (
-          <div key={p.id} style={{ marginBottom: 58, opacity }}>
+          <div key={p.id} style={{ marginBottom: mitStats ? 40 : 58, opacity }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
               <span style={{ fontSize: 58, fontWeight: 800, letterSpacing: -1.5 }}>{p.label}</span>
               <span style={{ fontFamily: MONO, fontSize: 46, fontWeight: 700, color: gestartet ? farbe : MUTED, fontVariantNumeric: 'tabular-nums' }}>
@@ -184,6 +272,21 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
             <div style={{ marginTop: 20, height: 18, borderRadius: 9, background: 'rgba(243,241,236,0.09)', overflow: 'hidden' }}>
               <div style={{ width: `${gestartet ? (p.score / 10) * fuell * 100 : 0}%`, height: '100%', borderRadius: 9, background: farbe }} />
             </div>
+            {mitStats ? (
+              <div
+                style={{
+                  marginTop: 14,
+                  height: 34,
+                  fontFamily: MONO,
+                  fontSize: 28,
+                  letterSpacing: 1,
+                  opacity: p.stat && gestartet ? interpolate(lokal, [6, 12], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' }) : 0,
+                }}
+              >
+                <span style={{ color: farbe, fontWeight: 700 }}>{p.stat?.value}</span>
+                <span style={{ color: MUTED }}> · {p.stat?.label}</span>
+              </div>
+            ) : null}
           </div>
         )
       })}
@@ -217,7 +320,7 @@ function VerdictSzene({ verdict, score }: { verdict: MoatShortVerdict; score: nu
   const frame = useCurrentFrame()
   const { fps } = useVideoConfig()
   const stempel = spring({ frame: frame - 3, fps, config: { damping: 11, mass: 0.6, stiffness: 180 } })
-  const aufprall = Math.max(0, 1 - Math.abs(frame - 9) / 4)
+  const aufprall = Math.max(0, 1 - Math.abs(frame - STEMPEL_AUFPRALL) / 4)
   const wackeln = aufprall * Math.sin(frame * 2.3) * 7
   const farbe = VERDICT_FARBE[verdict]
   return (

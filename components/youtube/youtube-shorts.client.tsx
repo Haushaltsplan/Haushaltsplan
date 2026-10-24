@@ -1,12 +1,20 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import toast from 'react-hot-toast'
 import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import type { MoatShortAntwort, MoatShortErgebnis } from '@/lib/youtube/moat-short-types'
-import type { MoatShortProps } from '@/remotion/moat-short-types'
+import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
+import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
+import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
+import { MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
+
+const WINKEL_LABEL: Record<string, string> = {
+  number_shock: 'Zahl schockt',
+  contrast: 'Kontrast',
+  stakes: 'Was auf dem Spiel steht',
+}
 
 const MoatShortPreview = dynamic(() => import('@/components/youtube/moat-short-preview.client'), {
   ssr: false,
@@ -53,13 +61,59 @@ export function YoutubeShortsClient() {
   const [moatNeu, setMoatNeu] = useState(false)
   const [laedt, setLaedt] = useState(false)
   const [rendert, setRendert] = useState(false)
+  const [renderSekunden, setRenderSekunden] = useState(0)
+  const [renderDatei, setRenderDatei] = useState<string | null>(null)
   const [ergebnis, setErgebnis] = useState<MoatShortErgebnis | null>(null)
   const [props, setProps] = useState<MoatShortProps | null>(null)
+  const [tracks, setTracks] = useState<string[]>(MOAT_SHORT_KATALOG_PFADE)
+  const [musikWahl, setMusikWahl] = useState<string>('auto')
+  const [sfx, setSfx] = useState(true)
   const lokal = useSyncExternalStore(
     keinAbo,
     () => ['localhost', '127.0.0.1'].includes(window.location.hostname),
     () => false,
   )
+
+  useEffect(() => {
+    void fetch('/api/youtube/musik')
+      .then((r) => r.json() as Promise<{ tracks?: string[] }>)
+      .then((j) => setTracks(sortiereTracks([...new Set([...MOAT_SHORT_KATALOG_PFADE, ...(j.tracks ?? [])])])))
+      .catch(() => undefined)
+  }, [])
+
+  const automatisch = trackZumUrteil(props?.verdict, tracks)
+  const musik = musikWahl === 'auto' ? automatisch : musikWahl || null
+  const track = musik ? musikTrack(musik) : null
+  const fertig = props
+    ? {
+        ...props,
+        musicSrc: musik,
+        musicGain: track?.gain ?? 0.5,
+        musicTrim: Math.round((track?.startSekunden ?? 0) * MOAT_SHORT_FPS),
+        sfx,
+      }
+    : null
+  const beschreibung = ergebnis
+    ? track?.credit
+      ? `${ergebnis.description}\n\n${track.credit}`
+      : ergebnis.description
+    : ''
+  const fremd =
+    props && ergebnis
+      ? fremdeZahlen(
+          [props.hook, props.hookLoop, props.business, ...props.pillars.map((p) => p.line), props.crack].join(' '),
+          ergebnis.metriken,
+          [ergebnis.moat.score, ...props.pillars.map((p) => p.score)],
+        )
+      : []
+  const zahlenWarnung = fremd.length ? `Zahlen ohne Quelle im Export: ${fremd.join(', ')}` : null
+
+  function waehleHook(h: MoatShortHookVariante) {
+    const m = ergebnis?.metriken.find((x) => x.id === h.metrikId)
+    setProps((p) =>
+      p ? { ...p, hook: h.claim, hookLoop: h.loop, ...(m ? { metricValue: m.value, metricLabel: m.label } : {}) } : p,
+    )
+  }
 
   async function dateiGewaehlt(datei: File | undefined) {
     if (datei) setRohText(await datei.text())
@@ -93,29 +147,62 @@ export function YoutubeShortsClient() {
     }
   }
 
+  async function ladeMp4(dateiname: string) {
+    const res = await fetch(`/api/youtube/render?datei=${encodeURIComponent(dateiname)}&download=1`)
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { fehler?: string }
+      throw new Error(j.fehler || `Download fehlgeschlagen (HTTP ${res.status})`)
+    }
+    const url = URL.createObjectURL(await res.blob())
+    const a = document.createElement('a')
+    a.href = url
+    a.download = dateiname
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   async function mp4Exportieren() {
-    if (!props) return
+    if (!fertig) return
     setRendert(true)
+    setRenderSekunden(0)
+    setRenderDatei(null)
+    const uhr = window.setInterval(() => setRenderSekunden((s) => s + 1), 1000)
     try {
-      const res = await fetch('/api/youtube/render', {
+      const start = await fetch('/api/youtube/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ props }),
+        body: JSON.stringify({ props: fertig }),
       })
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { fehler?: string }
-        toast.error(j.fehler || `Render fehlgeschlagen (HTTP ${res.status})`)
+      const startJson = (await start.json().catch(() => ({}))) as { dateiname?: string; fehler?: string }
+      if (!start.ok || !startJson.dateiname) {
+        toast.error(startJson.fehler || `Renderstart fehlgeschlagen (HTTP ${start.status})`)
         return
       }
-      const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? `${props.ticker}.mp4`
-      const url = URL.createObjectURL(await res.blob())
-      const a = document.createElement('a')
-      a.href = url
-      a.download = name
-      a.click()
-      URL.revokeObjectURL(url)
-      toast.success(`${name} gespeichert (auch unter out/youtube/).`)
+      const dateiname = startJson.dateiname
+      setRenderDatei(dateiname)
+      for (;;) {
+        await new Promise((r) => window.setTimeout(r, 2000))
+        const st = await fetch(`/api/youtube/render?datei=${encodeURIComponent(dateiname)}`)
+        const j = (await st.json().catch(() => ({}))) as {
+          status?: string
+          fehler?: string
+          sekunden?: number
+        }
+        if (typeof j.sekunden === 'number') setRenderSekunden(j.sekunden)
+        if (j.status === 'fertig') {
+          await ladeMp4(dateiname)
+          toast.success(`${dateiname} liegt unter out/youtube/`)
+          return
+        }
+        if (j.status === 'fehler' || !st.ok) {
+          toast.error(j.fehler || 'Render fehlgeschlagen.')
+          return
+        }
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Render fehlgeschlagen.')
     } finally {
+      window.clearInterval(uhr)
       setRendert(false)
     }
   }
@@ -184,23 +271,54 @@ export function YoutubeShortsClient() {
                 </ul>
               ) : null}
 
-              <div>
-                <label className="text-xs font-medium text-[var(--app-text-muted)]">Hook — einmal lesen, notfalls schärfer machen</label>
-                <textarea value={props.hook} onChange={(e) => setze('hook', e.target.value)} rows={2} className={`${feldKlasse} mt-1`} />
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-[var(--app-text-muted)]">Hook — die ersten zwei Sekunden entscheiden</p>
+                {ergebnis.hookVarianten.map((h, i) => {
+                  const aktiv = h.claim === props.hook
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => waehleHook(h)}
+                      className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
+                        aktiv
+                          ? 'border-red-500/60 bg-red-500/10'
+                          : 'border-[var(--app-border)] bg-[var(--app-surface)] hover:bg-[var(--app-surface-muted)]'
+                      }`}
+                    >
+                      <span className="text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">
+                        {WINKEL_LABEL[h.winkel] ?? h.winkel}
+                      </span>
+                      <span className="mt-0.5 block font-medium text-[var(--app-text)]">{h.claim}</span>
+                      <span className="block text-[var(--app-text-muted)]">{h.loop}</span>
+                    </button>
+                  )
+                })}
+
+                <label className="block pt-1 text-xs font-medium text-[var(--app-text-muted)]">Behauptung (steht als Überschrift im Bild)</label>
+                <textarea value={props.hook} onChange={(e) => setze('hook', e.target.value)} rows={2} className={feldKlasse} />
+                <label className="block text-xs font-medium text-[var(--app-text-muted)]">Spannungssatz (wird erst beim Crack aufgelöst)</label>
+                <input value={props.hookLoop} onChange={(e) => setze('hookLoop', e.target.value)} className={feldKlasse} />
                 <select
                   value={ergebnis.metriken.find((m) => m.value === props.metricValue && m.label === props.metricLabel)?.id ?? ''}
                   onChange={(e) => {
                     const m = ergebnis.metriken.find((x) => x.id === e.target.value)
                     if (m) setProps((p) => (p ? { ...p, metricValue: m.value, metricLabel: m.label } : p))
                   }}
-                  className={`${feldKlasse} mt-2`}
+                  className={feldKlasse}
                 >
-                  {ergebnis.metriken.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      Große Zahl: {m.label} · {m.value}
-                    </option>
-                  ))}
+                  {ergebnis.metriken
+                    .filter((m) => m.hook)
+                    .map((m) => (
+                      <option key={m.id} value={m.id}>
+                        Große Zahl: {m.label} · {m.value}
+                      </option>
+                    ))}
                 </select>
+                {!props.hook.includes(props.metricValue) ? (
+                  <p className="text-xs text-amber-300">Die Behauptung nennt {props.metricValue} nicht wörtlich.</p>
+                ) : null}
+                {zahlenWarnung ? <p className="text-xs text-amber-300">{zahlenWarnung}</p> : null}
               </div>
 
               <div>
@@ -223,6 +341,24 @@ export function YoutubeShortsClient() {
                     }
                     className={`${feldKlasse} mt-1`}
                   />
+                  <select
+                    value={ergebnis.metriken.find((m) => m.value === p.stat?.value && m.label === p.stat?.label)?.id ?? ''}
+                    onChange={(e) => {
+                      const m = ergebnis.metriken.find((x) => x.id === e.target.value)
+                      setze(
+                        'pillars',
+                        props.pillars.map((x, j) => (j === i ? { ...x, stat: m ? { value: m.value, label: m.label } : null } : x)),
+                      )
+                    }}
+                    className={`${feldKlasse} mt-1 text-xs`}
+                  >
+                    <option value="">Kein Zahlen-Schild</option>
+                    {ergebnis.metriken.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        Schild: {m.label} · {m.value}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               ))}
 
@@ -234,10 +370,10 @@ export function YoutubeShortsClient() {
               <div className="rounded-xl border border-[var(--app-border)] p-3 text-sm">
                 <p className="text-xs font-medium text-[var(--app-text-muted)]">Titel & Beschreibung für YouTube</p>
                 <p className="mt-1 font-medium text-[var(--app-text)]">{ergebnis.title}</p>
-                <p className="mt-1 whitespace-pre-line text-[var(--app-text-muted)]">{ergebnis.description}</p>
+                <p className="mt-1 whitespace-pre-line text-[var(--app-text-muted)]">{beschreibung}</p>
                 <button
                   type="button"
-                  onClick={() => void navigator.clipboard.writeText(`${ergebnis.title}\n\n${ergebnis.description}`).then(() => toast.success('Kopiert'))}
+                  onClick={() => void navigator.clipboard.writeText(`${ergebnis.title}\n\n${beschreibung}`).then(() => toast.success('Kopiert'))}
                   className="mt-2 rounded-lg border border-[var(--app-border)] px-3 py-1 text-xs text-[var(--app-text-muted)]"
                 >
                   Kopieren
@@ -251,18 +387,54 @@ export function YoutubeShortsClient() {
               <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">3 · Vorschau</h2>
             </div>
             <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
-              <MoatShortPreview props={props} />
+              {fertig ? <MoatShortPreview props={fertig} /> : null}
+              <select value={musikWahl} onChange={(e) => setMusikWahl(e.target.value)} className={`${feldKlasse} text-xs`}>
+                <option value="auto">
+                  Automatisch
+                  {automatisch ? ` · ${musikTrack(automatisch).titel} (${musikTrack(automatisch).stimmung})` : ''}
+                </option>
+                <option value="">Keine Musik</option>
+                {tracks.map((t) => (
+                  <option key={t} value={t}>
+                    ♪ {musikTrack(t).titel} – {musikTrack(t).stimmung}
+                  </option>
+                ))}
+              </select>
+              {track?.credit ? (
+                <p className="text-xs text-[var(--app-text-muted)]">
+                  Passend zum Urteil, Pegel angeglichen. Lizenz CC BY 4.0 – Namensnennung steht in der Beschreibung oben.
+                </p>
+              ) : null}
+              {!tracks.length ? (
+                <p className="text-xs text-[var(--app-text-muted)]">Musik wird beim ersten Laden heruntergeladen. Seite ggf. neu laden.</p>
+              ) : null}
+              <label className="flex items-center gap-2 text-xs text-[var(--app-text-muted)]">
+                <input type="checkbox" checked={sfx} onChange={(e) => setSfx(e.target.checked)} />
+                Soundeffekte (Schnitte, Balken, Stempel)
+              </label>
               <button
                 type="button"
-                disabled={!lokal || rendert}
+                disabled={!lokal || rendert || !fertig}
                 onClick={() => void mp4Exportieren()}
                 className="w-full rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
               >
-                {rendert ? 'MP4 wird gerendert… (1–2 Min.)' : 'MP4 exportieren'}
+                {rendert
+                  ? `MP4 wird gerendert… ${Math.floor(renderSekunden / 60)}:${String(renderSekunden % 60).padStart(2, '0')}`
+                  : 'MP4 exportieren'}
               </button>
+              {renderDatei ? (
+                <p className="text-xs text-[var(--app-text-muted)]">
+                  {rendert ? 'läuft' : 'fertig'}: <code>out/youtube/{renderDatei}</code>
+                </p>
+              ) : null}
               {!lokal ? (
                 <p className="text-xs text-[var(--app-text-muted)]">MP4-Export nur, wenn die App lokal läuft (npm run dev).</p>
-              ) : null}
+              ) : (
+                <p className="text-xs text-[var(--app-text-muted)]">
+                  Lokal 1080×1920, mit Musik und Effekten. Dauert ein bis drei Minuten. Datei landet unter{' '}
+                  <code>out/youtube/</code>.
+                </p>
+              )}
             </div>
           </section>
         </div>

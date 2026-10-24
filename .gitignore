@@ -53,6 +53,10 @@ next-env.d.ts
 .vercel
 .env*
 
+# Musik für YouTube-Shorts: lizenziert für Videos, nicht zur Weitergabe über Repo/Vercel
+/public/youtube-music/*
+!/public/youtube-music/.gitkeep
+
 # Lokale Debug-APK (sideload, nicht committen)
 *.apk
 Omnia-debug.apk
