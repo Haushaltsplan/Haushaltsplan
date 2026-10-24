@@ -193,7 +193,7 @@ export function scriptTonWarnungen(texte: string[]): string[] {
       return n > 0 && n < SATZ_MIN_WOERTER && !/[?]$/.test(s) && !BRUECKE_ENDE.test(oeffneSprechende(s))
     })
   if (fetzen.length) w.push(`Zu kurz, klingt nach Slogan: „${fetzen[0]}“`)
-  const vierZeilen = texte.find((t) => t.replace(/\s+/g, ' ').trim().length > 66)
+  const vierZeilen = texte.find((t) => t.replace(/\s+/g, ' ').trim().length > 90)
   if (vierZeilen) w.push(`Untertitel droht 4 Zeilen: „${vierZeilen}“`)
   return w
 }

@@ -27,37 +27,16 @@ export const MOAT_SHORT_LOOP_FRAMES = 22
 const CAPTION_ENDE_VOR_LOOP = 8
 /** Der Hook steht als Überschrift im Bild — doppelte Untertitel wären nur Lärm. */
 const OHNE_CAPTIONS = new Set<MoatShortBeatId>(['hook', 'loop'])
-const CAPTION_MAX_WOERTER = 9
-const CAPTION_MAX_ZEILEN = 3
-/** Lange Wörter + 54px: mehr als ~22 Zeichen pro Zeile wird die 4. Zeile. */
-const CAPTION_ZEICHEN_PRO_ZEILE = 22
-const CAPTION_MAX_ZEICHEN = CAPTION_ZEICHEN_PRO_ZEILE * CAPTION_MAX_ZEILEN
-
-function geschaetzteZeilen(text: string): number {
-  let zeilen = 1
-  let len = 0
-  for (const wort of woerter(text)) {
-    const next = len === 0 ? wort.length : len + 1 + wort.length
-    if (len > 0 && next > CAPTION_ZEICHEN_PRO_ZEILE) {
-      zeilen += 1
-      len = wort.length
-    } else {
-      len = next
-    }
-  }
-  return zeilen
-}
+const CAPTION_MAX_WOERTER = 12
+/** Nur echte Ausreißer splitten. Normale Sätze bleiben ein Block. */
+const CAPTION_MAX_ZEICHEN = 90
 
 function woerter(text: string): string[] {
   return text.trim().split(/\s+/).filter(Boolean)
 }
 
 function passtInPill(text: string): boolean {
-  return (
-    woerter(text).length <= CAPTION_MAX_WOERTER &&
-    text.length <= CAPTION_MAX_ZEICHEN &&
-    geschaetzteZeilen(text) <= CAPTION_MAX_ZEILEN
-  )
+  return woerter(text).length <= CAPTION_MAX_WOERTER && text.length <= CAPTION_MAX_ZEICHEN
 }
 
 function teileNachLaenge(text: string): string[] {
