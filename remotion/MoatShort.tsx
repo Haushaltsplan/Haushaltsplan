@@ -41,11 +41,12 @@ const SAFE_RIGHT = 200
 const SAFE_BOTTOM = 360
 /** Untertitel im unteren Drittel, unter der großen Zahl, über der YouTube-Leiste. */
 const CAPTION_TOP = 1200
-/** Gleicher Rand links und rechts, sonst hängt die Pill optisch links. */
+/** Gleicher Rand links und rechts, sonst hängt Schrift und Pill optisch links. */
+const CONTENT_SIDE = 88
 const CAPTION_SIDE = 88
 const PILLAR_BOTTOM_PAD = MOAT_SHORT_HEIGHT - (CAPTION_TOP - 32)
 const CAPTION_YELLOW = '#FFC700'
-const CAPTION_SIZE = 62
+const CAPTION_SIZE = 58
 
 function saubereProps(p: MoatShortProps): MoatShortProps {
   return {
@@ -63,6 +64,39 @@ function scoreFarbe(score: number): string {
   if (score >= 8) return VERDICT_FARBE.wide
   if (score >= 6) return VERDICT_FARBE.narrow
   return VERDICT_FARBE.none
+}
+
+/** Flex-Wrap: sichtbarer Abstand, echter Umbruch, zentrierte Zeilen. */
+function Wortzeile({
+  text,
+  farbeFuer,
+  gewichtFuer,
+}: {
+  text: string
+  farbeFuer?: (wort: string, i: number) => string
+  gewichtFuer?: (wort: string, i: number) => number
+}) {
+  return (
+    <span
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        columnGap: '0.32em',
+        rowGap: 0,
+        width: '100%',
+      }}
+    >
+      {text
+        .trim()
+        .split(/\s+/)
+        .map((w, i) => (
+          <span key={i} style={{ color: farbeFuer?.(w, i), fontWeight: gewichtFuer?.(w, i) }}>
+            {w}
+          </span>
+        ))}
+    </span>
+  )
 }
 
 function beat(beats: MoatShortBeat[], id: MoatShortBeat['id']): MoatShortBeat {
@@ -284,19 +318,28 @@ function HookSzene({
       style={{
         alignItems: 'center',
         justifyContent: 'center',
-        padding: `${SAFE_TOP + 40}px ${SAFE_RIGHT}px ${SAFE_BOTTOM}px ${SAFE_LEFT}px`,
+        padding: `${SAFE_TOP + 40}px ${CONTENT_SIDE}px ${SAFE_BOTTOM}px ${CONTENT_SIDE}px`,
+        boxSizing: 'border-box',
         transform: `scale(${schub})`,
+        transformOrigin: 'center center',
       }}
     >
-      <div style={{ fontSize: headlineGroesse, fontWeight: 800, letterSpacing: -2, lineHeight: 1.08, textAlign: 'center', opacity: 1 - 0.6 * teaser }}>
-        {headline.split(' ').map((w, i) => (
-          <span key={i} style={{ color: /\d/.test(w) ? BRAND : TEXT }}>
-            {i > 0 ? ' ' : ''}
-            {w}
-          </span>
-        ))}
+      <div
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          fontSize: headlineGroesse,
+          fontWeight: 800,
+          letterSpacing: -0.4,
+          wordSpacing: '0.06em',
+          lineHeight: 1.12,
+          textAlign: 'center',
+          opacity: 1 - 0.6 * teaser,
+        }}
+      >
+        <Wortzeile text={headline} farbeFuer={(w) => (/\d/.test(w) ? BRAND : TEXT)} />
       </div>
-      <div style={{ marginTop: 90, textAlign: 'center', transform: `scale(${interpolate(einschlag, [0, 1], [1.15, 1])})` }}>
+      <div style={{ width: '100%', marginTop: 90, textAlign: 'center', transform: `scale(${interpolate(einschlag, [0, 1], [1.15, 1])})` }}>
         <div style={{ fontSize: value.length > 7 ? 180 : 230, fontWeight: 900, letterSpacing: -8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
           {zaehleHoch(value, 1)}
         </div>
@@ -354,7 +397,7 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
   const eintritt = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 10 })
   const mitStats = pillars.some((p) => p.stat)
   return (
-    <AbsoluteFill style={{ padding: `${SAFE_TOP + 130}px ${SAFE_RIGHT}px ${PILLAR_BOTTOM_PAD}px ${SAFE_LEFT}px`, opacity: eintritt }}>
+    <AbsoluteFill style={{ padding: `${SAFE_TOP + 130}px ${CONTENT_SIDE}px ${PILLAR_BOTTOM_PAD}px ${CONTENT_SIDE}px`, opacity: eintritt }}>
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
         <div style={{ fontFamily: MONO, fontSize: 28, letterSpacing: 7, color: MUTED, marginBottom: mitStats ? 18 : 22, flexShrink: 0 }}>
           FOUR PILLARS
@@ -369,7 +412,7 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
           return (
             <div key={p.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 0, opacity }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                <span style={{ fontSize: 50, fontWeight: 800, letterSpacing: -1.5 }}>{p.label}</span>
+                <span style={{ fontSize: 50, fontWeight: 800, letterSpacing: -0.4 }}>{p.label}</span>
                 <span style={{ fontFamily: MONO, fontSize: 40, fontWeight: 700, color: gestartet ? farbe : MUTED, fontVariantNumeric: 'tabular-nums' }}>
                   {anzeige}
                   <span style={{ color: MUTED, fontSize: 26 }}>/10</span>
@@ -482,7 +525,6 @@ function Caption({ text }: { text: string }) {
   const { fps, durationInFrames } = useVideoConfig()
   const rein = interpolate(frame, [0, 3], [0, 1], { extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
   const punch = spring({ frame, fps, config: { damping: 14, mass: 0.55, stiffness: 180 } })
-  const woerter = text.trim().split(/\s+/).filter(Boolean)
   const aktiv = gesprochnesWortIndex(text, frame, durationInFrames)
   return (
     <div
@@ -525,17 +567,16 @@ function Caption({ text }: { text: string }) {
             fontFamily: SANS,
             fontSize: CAPTION_SIZE,
             fontWeight: 700,
-            letterSpacing: -0.6,
+            letterSpacing: 0,
             lineHeight: 1.22,
             textAlign: 'center',
           }}
         >
-          {woerter.map((w, i) => (
-            <span key={i} style={{ color: i === aktiv ? CAPTION_YELLOW : TEXT, fontWeight: i === aktiv ? 700 : 600 }}>
-              {i > 0 ? ' ' : ''}
-              {w}
-            </span>
-          ))}
+          <Wortzeile
+            text={text}
+            farbeFuer={(_w, i) => (i === aktiv ? CAPTION_YELLOW : TEXT)}
+            gewichtFuer={(_w, i) => (i === aktiv ? 700 : 600)}
+          />
         </span>
       </div>
     </div>

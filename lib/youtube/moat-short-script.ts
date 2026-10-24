@@ -43,7 +43,29 @@ const VERBOTENE_WOERTER = [
 ]
 
 const SATZ_MIN_WOERTER = 7
-const SATZ_MAX_WOERTER = 14
+const SATZ_MAX_WOERTER = 12
+
+const FIRMENSPRECH = [
+  'operational complexity',
+  'capital investment',
+  'this ecosystem',
+  'the ecosystem',
+  'competing global',
+  'requires decades of',
+  'financial institutions',
+  'significant barriers',
+  'durable competitive',
+  'value proposition',
+  'go-to-market',
+  'highly differentiated',
+  'when leaving this',
+  'dominant market position',
+  'sustained pricing power',
+]
+
+function memoTreffer(satz: string): number {
+  return satz.match(/\b(complexity|infrastructure|institutions|ecosystem|proposition|differentiated|operationally|significantly)\b/gi)?.length ?? 0
+}
 
 const FALLBACK_SPANNUNG = 'One thing could still break that lock.'
 
@@ -157,6 +179,10 @@ export function scriptTonWarnungen(texte: string[]): string[] {
   const alles = texte.filter(Boolean).join(' ')
   const verboten = verboteneWoerterIn(alles)
   if (verboten.length) w.push(`KI-Ton im Script: ${verboten.join(', ')}. Ersetzen.`)
+  const kauder = FIRMENSPRECH.filter((p) => alles.toLowerCase().includes(p))
+  if (kauder.length) w.push(`Firmensprech: „${kauder[0]}“. Sag es wie am Tisch, nicht wie im Memo.`)
+  const memo = texte.flatMap((t) => saetze(t)).find((s) => memoTreffer(s) >= 2)
+  if (memo && !kauder.length) w.push(`Memo-Satz, keine Tischsprache: „${memo}“`)
   if (/[—–]|\s-\s/.test(alles)) w.push('Gedankenstriche im Script. Komma oder ganzer Satz, kein Bindestrich.')
   const lang = texte.flatMap((t) => zuLangeSaetze(t))
   if (lang.length) w.push(`Sätze über ${SATZ_MAX_WOERTER} Wörter: „${lang[0]}“`)
@@ -167,6 +193,8 @@ export function scriptTonWarnungen(texte: string[]): string[] {
       return n > 0 && n < SATZ_MIN_WOERTER && !/[?]$/.test(s) && !BRUECKE_ENDE.test(oeffneSprechende(s))
     })
   if (fetzen.length) w.push(`Zu kurz, klingt nach Slogan: „${fetzen[0]}“`)
+  const vierZeilen = texte.find((t) => t.replace(/\s+/g, ' ').trim().length > 78)
+  if (vierZeilen) w.push(`Untertitel droht 4 Zeilen: „${vierZeilen}“`)
   return w
 }
 

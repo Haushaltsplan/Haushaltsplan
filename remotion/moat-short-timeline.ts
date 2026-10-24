@@ -27,21 +27,44 @@ export const MOAT_SHORT_LOOP_FRAMES = 22
 const CAPTION_ENDE_VOR_LOOP = 8
 /** Der Hook steht als Überschrift im Bild — doppelte Untertitel wären nur Lärm. */
 const OHNE_CAPTIONS = new Set<MoatShortBeatId>(['hook', 'loop'])
-const CAPTION_MAX_WOERTER = 10
+const CAPTION_MAX_WOERTER = 12
+/** Bei 58px in der Pill: über ~78 Zeichen werden 4 Zeilen. */
+const CAPTION_MAX_ZEICHEN = 78
 
 function woerter(text: string): string[] {
   return text.trim().split(/\s+/).filter(Boolean)
 }
 
-function captionChunks(text: string): string[] {
+function passtInPill(text: string): boolean {
+  return woerter(text).length <= CAPTION_MAX_WOERTER && text.length <= CAPTION_MAX_ZEICHEN
+}
+
+function teileNachLaenge(text: string): string[] {
+  const w = woerter(text)
+  if (passtInPill(text)) return [text]
+  const out: string[] = []
+  let aktuell: string[] = []
+  for (const wort of w) {
+    const next = [...aktuell, wort]
+    if (aktuell.length && !passtInPill(next.join(' '))) {
+      out.push(aktuell.join(' '))
+      aktuell = [wort]
+    } else {
+      aktuell = next
+    }
+  }
+  if (aktuell.length) out.push(aktuell.join(' '))
+  return out
+}
+
+export function captionChunks(text: string): string[] {
   const saetze = text
     .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
     .filter(Boolean)
   const chunks: string[] = []
   for (const satz of saetze.length ? saetze : [text.trim()]) {
-    const w = woerter(satz)
-    if (w.length <= CAPTION_MAX_WOERTER) {
+    if (passtInPill(satz)) {
       chunks.push(satz)
       continue
     }
@@ -49,7 +72,7 @@ function captionChunks(text: string): string[] {
     let aktuell: string[] = []
     for (const teil of teile) {
       const next = [...aktuell, teil]
-      if (woerter(next.join(' ')).length > CAPTION_MAX_WOERTER && aktuell.length) {
+      if (aktuell.length && !passtInPill(next.join(' '))) {
         chunks.push(aktuell.join(' '))
         aktuell = [teil]
       } else {
@@ -58,21 +81,11 @@ function captionChunks(text: string): string[] {
     }
     if (aktuell.length) chunks.push(aktuell.join(' '))
   }
-  const roh = chunks.filter(Boolean)
-  const fein: string[] = []
-  for (const chunk of roh) {
-    const w = woerter(chunk)
-    if (w.length <= CAPTION_MAX_WOERTER) {
-      fein.push(chunk)
-      continue
-    }
-    for (let i = 0; i < w.length; i += CAPTION_MAX_WOERTER) {
-      fein.push(w.slice(i, i + CAPTION_MAX_WOERTER).join(' '))
-    }
-  }
+  const fein = chunks.filter(Boolean).flatMap(teileNachLaenge)
   const letzter = fein[fein.length - 1]
   if (fein.length > 1 && letzter && woerter(letzter).length <= 3) {
-    fein.splice(-2, 2, `${fein[fein.length - 2]} ${letzter}`)
+    const merged = `${fein[fein.length - 2]} ${letzter}`
+    if (passtInPill(merged)) fein.splice(-2, 2, merged)
   }
   return fein
 }
