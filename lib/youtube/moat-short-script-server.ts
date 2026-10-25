@@ -379,6 +379,8 @@ export async function generiereMoatShort(opts: {
     musicGain: 0.5,
     musicTrim: 0,
     sfx: true,
+    voiceSrc: null,
+    voiceAlignment: null,
   }
 
   const warnungen: string[] = []

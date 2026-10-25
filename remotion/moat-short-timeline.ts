@@ -1,3 +1,4 @@
+import { moatShortSprechzeilen, sprechzeilenMitZeiten } from '@/lib/youtube/moat-short-voice'
 import {
   MOAT_SHORT_FPS,
   type MoatShortBeat,
@@ -5,6 +6,7 @@ import {
   type MoatShortCaption,
   type MoatShortProps,
   type MoatShortTimeline,
+  type MoatShortVoiceWort,
 } from './moat-short-types'
 
 /** Shorts-Tempo: lieber knapp als tot — Guides wollen einen Beat alle 2–3 Sekunden. */
@@ -98,53 +100,107 @@ export function captionChunks(text: string): string[] {
   return fein
 }
 
-export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimeline {
-  const texte: [Exclude<MoatShortBeatId, 'loop'>, string][] = [
-    ['hook', props.hook],
-    ['teaser', props.hookLoop],
-    ['business', props.business],
-    ...props.pillars.slice(0, 4).map((p, i) => [`pillar${i}` as Exclude<MoatShortBeatId, 'loop'>, p.line] as [Exclude<MoatShortBeatId, 'loop'>, string]),
-    ['crack', props.crack],
-    ['verdict', props.closing],
-  ]
+function msZuFrame(ms: number): number {
+  return Math.max(0, Math.round((ms / 1000) * MOAT_SHORT_FPS))
+}
 
+function captionsFuerBeat(
+  id: MoatShortBeatId,
+  text: string,
+  beatFrom: number,
+  woerterDerZeile: MoatShortVoiceWort[] | null,
+): MoatShortCaption[] {
+  if (OHNE_CAPTIONS.has(id) || !text.trim()) return []
+  const ganz = text.trim()
+  const chunks = id === 'verdict' && ganz.length <= LAND_EINE_SEITE ? [ganz] : captionChunks(text)
+  if (woerterDerZeile?.length) {
+    const out: MoatShortCaption[] = []
+    let i = 0
+    for (const chunk of chunks) {
+      const n = Math.max(1, woerter(chunk).length)
+      const teil = woerterDerZeile.slice(i, i + n)
+      i += n
+      const quelle = teil.length ? teil : woerterDerZeile
+      const from = msZuFrame(quelle[0]!.startMs)
+      const ende = msZuFrame(quelle[quelle.length - 1]!.endMs)
+      out.push({ text: chunk, from, duration: Math.max(6, ende - from) })
+    }
+    return out
+  }
+  const sprechSek = woerter(text).length / WOERTER_PRO_SEKUNDE
+  const sprechFrames = Math.max(1, Math.round(sprechSek * MOAT_SHORT_FPS))
+  const zeichenGesamt = chunks.reduce((s, c) => s + c.length, 0) || 1
+  const out: MoatShortCaption[] = []
+  let c = beatFrom
+  chunks.forEach((chunk, i) => {
+    const len =
+      i === chunks.length - 1
+        ? Math.max(6, beatFrom + sprechFrames - c)
+        : Math.max(6, Math.round((chunk.length / zeichenGesamt) * sprechFrames))
+    out.push({ text: chunk, from: c, duration: len })
+    c += len
+  })
+  return out
+}
+
+function timelineAusAlignment(props: MoatShortProps): MoatShortTimeline | null {
+  const alignment = props.voiceAlignment
+  if (!alignment?.length) return null
+  const zeilen = moatShortSprechzeilen(props)
+  const map = sprechzeilenMitZeiten(zeilen, alignment)
+  if (!map) return null
+
+  const beats: MoatShortBeat[] = []
+  const captions: MoatShortCaption[] = []
+  const starts = zeilen.map((z, i) => {
+    const w = map.get(z.id)!
+    return i === 0 ? 0 : msZuFrame(w[0]!.startMs)
+  })
+  const letzte = map.get(zeilen[zeilen.length - 1]!.id)!
+  const sprechEnde = msZuFrame(letzte[letzte.length - 1]!.endMs) + Math.round(0.12 * MOAT_SHORT_FPS)
+
+  for (let i = 0; i < zeilen.length; i++) {
+    const z = zeilen[i]!
+    const from = starts[i]!
+    const next = starts[i + 1] ?? sprechEnde
+    const duration = Math.max(6, next - from)
+    beats.push({ id: z.id, text: z.text, from, duration })
+    captions.push(...captionsFuerBeat(z.id, z.text, from, map.get(z.id) ?? null))
+  }
+
+  const cursor = beats[beats.length - 1]!.from + beats[beats.length - 1]!.duration
+  return schliesseTimeline(beats, captions, cursor)
+}
+
+function timelineGeschaetzt(props: MoatShortProps): MoatShortTimeline {
+  const zeilen = moatShortSprechzeilen(props)
   const beats: MoatShortBeat[] = []
   const captions: MoatShortCaption[] = []
   let cursor = 0
 
-  for (const [id, text] of texte) {
-    if (!text.trim()) continue
-    const sprechSek = woerter(text).length / WOERTER_PRO_SEKUNDE
-    const pause = id === 'verdict' ? 0 : PAUSE_SEKUNDEN
-    const sek = Math.max(MIN_SEKUNDEN[id], sprechSek + pause)
+  for (const z of zeilen) {
+    const sprechSek = woerter(z.text).length / WOERTER_PRO_SEKUNDE
+    const pause = z.id === 'verdict' ? 0 : PAUSE_SEKUNDEN
+    const sek = Math.max(MIN_SEKUNDEN[z.id], sprechSek + pause)
     const duration = Math.round(sek * MOAT_SHORT_FPS)
-    beats.push({ id, text, from: cursor, duration })
-
-    if (!OHNE_CAPTIONS.has(id)) {
-      const ganz = text.trim()
-      const chunks = id === 'verdict' && ganz.length <= LAND_EINE_SEITE ? [ganz] : captionChunks(text)
-      const sprechFrames = Math.max(1, Math.round(sprechSek * MOAT_SHORT_FPS))
-      const zeichenGesamt = chunks.reduce((s, c) => s + c.length, 0) || 1
-      let c = cursor
-      chunks.forEach((chunk, i) => {
-        const len =
-          i === chunks.length - 1
-            ? Math.max(6, cursor + sprechFrames - c)
-            : Math.max(6, Math.round((chunk.length / zeichenGesamt) * sprechFrames))
-        captions.push({ text: chunk, from: c, duration: len })
-        c += len
-      })
-    }
-
+    beats.push({ id: z.id, text: z.text, from: cursor, duration })
+    captions.push(...captionsFuerBeat(z.id, z.text, cursor, null))
     cursor += duration
   }
 
+  return schliesseTimeline(beats, captions, cursor)
+}
+
+function schliesseTimeline(beats: MoatShortBeat[], captions: MoatShortCaption[], cursor: number): MoatShortTimeline {
   beats.push({ id: 'loop', text: '', from: cursor, duration: MOAT_SHORT_LOOP_FRAMES })
   const durationInFrames = cursor + MOAT_SHORT_LOOP_FRAMES
   const captionEnde = durationInFrames - CAPTION_ENDE_VOR_LOOP
   const saubereCaptions = captions
     .map((c) => ({ ...c, duration: Math.min(c.duration, captionEnde - c.from) }))
     .filter((c) => c.duration >= 6)
-
   return { beats, captions: saubereCaptions, durationInFrames }
+}
+
+export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimeline {
+  return timelineAusAlignment(props) ?? timelineGeschaetzt(props)
 }

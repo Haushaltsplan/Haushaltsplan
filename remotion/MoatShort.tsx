@@ -183,6 +183,7 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
         musicGain={props.musicGain}
         musicTrim={props.musicTrim ?? 0}
         sfx={props.sfx}
+        voiceSrc={props.voiceSrc}
         beats={beats}
       />
     </AbsoluteFill>
@@ -194,12 +195,14 @@ function Ton({
   musicGain,
   musicTrim,
   sfx,
+  voiceSrc,
   beats,
 }: {
   musicSrc: string | null
   musicGain: number
   musicTrim: number
   sfx: boolean
+  voiceSrc: string | null
   beats: MoatShortBeat[]
 }) {
   const crack = beats.find((b) => b.id === 'crack')
@@ -224,7 +227,8 @@ function Ton({
             extrapolateRight: 'clamp',
           })
         : 1
-    return Math.max(0, Math.min(1, musicGain)) * duck
+    const stimme = voiceSrc ? 0.28 : 1
+    return Math.max(0, Math.min(1, musicGain)) * duck * stimme
   }
 
   return (
@@ -237,6 +241,7 @@ function Ton({
           trimBefore={musicTrim > 0 ? musicTrim : undefined}
         />
       ) : null}
+      {voiceSrc ? <Audio src={stimmeAudioSrc(voiceSrc)} volume={1} /> : null}
       {sfx
         ? cues.map((c, i) => (
             <Sequence key={i} from={c.from} durationInFrames={60} layout="none">
@@ -254,8 +259,13 @@ function logoSrc(url: string): string {
   return staticFile((play ?? url).replace(/^\/+/, ''))
 }
 
+function stimmeAudioSrc(src: string): string {
+  if (/^(blob:|data:|https?:)/i.test(src) || src.startsWith('/api/')) return src
+  return src
+}
+
 function musikAudioSrc(src: string): string {
-  if (/^https?:\/\//i.test(src) || src.startsWith('/api/')) return src
+  if (/^(blob:|data:|https?:)/i.test(src) || src.startsWith('/api/')) return src
   const datei = src.split('/').pop() ?? src
   if (typeof window !== 'undefined' && !('remotion_staticBase' in window && window.remotion_staticBase) && datei) {
     return `${window.location.origin}/api/youtube/musik/datei/${encodeURIComponent(datei)}`

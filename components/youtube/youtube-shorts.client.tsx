@@ -9,13 +9,23 @@ import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from 
 import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
+import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { ohneKennzahlId, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
+import { moatShortSprechFingerprint } from '@/lib/youtube/moat-short-voice'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
+import type { MoatShortVoiceWort } from '@/remotion/moat-short-types'
 import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
 
 type YtStatus = { configured: boolean; connected: boolean; channelTitle: string | null }
 type YtPrivacy = 'unlisted' | 'private' | 'public'
+
+function base64ZuMp3(b64: string): Blob {
+  const bin = atob(b64)
+  const arr = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i)
+  return new Blob([arr], { type: 'audio/mpeg' })
+}
 
 function tagsFuerUpload(beschreibung: string, suchphrasen: string[], ticker: string): string[] {
   const hashes = [...beschreibung.matchAll(/#([A-Za-z0-9_]+)/g)].map((m) => m[1])
@@ -165,6 +175,10 @@ export function YoutubeShortsClient() {
   const [uploadTitel, setUploadTitel] = useState('')
   const [uploadBeschreibung, setUploadBeschreibung] = useState('')
   const [uploadKommentar, setUploadKommentar] = useState('')
+  const [stimmeOk, setStimmeOk] = useState(false)
+  const [stimmeLaedt, setStimmeLaedt] = useState(false)
+  const [voiceUrl, setVoiceUrl] = useState<string | null>(null)
+  const [stimmeFp, setStimmeFp] = useState<string | null>(null)
 
   const ladeYtStatus = useCallback(async () => {
     try {
@@ -192,6 +206,10 @@ export function YoutubeShortsClient() {
       setMusikPegelCommit(v)
     }
     void ladeYtStatus()
+    void fetch('/api/youtube/voice')
+      .then((r) => r.json() as Promise<{ configured?: boolean }>)
+      .then((j) => setStimmeOk(Boolean(j.configured)))
+      .catch(() => setStimmeOk(false))
     const sp = new URLSearchParams(window.location.search)
     if (sp.get('yt') === 'connected') {
       toast.success('YouTube verbunden.')
@@ -208,6 +226,8 @@ export function YoutubeShortsClient() {
   const automatisch = trackZumUrteil(props?.verdict, tracks)
   const musik = musikWahl === 'auto' ? automatisch : musikWahl || null
   const track = musik ? musikTrack(musik) : null
+  const sprechFp = props ? moatShortSprechFingerprint(props) : ''
+  const stimmePasst = Boolean(props?.voiceSrc && stimmeFp === sprechFp)
   const fertig = props
     ? {
         ...props,
@@ -216,6 +236,8 @@ export function YoutubeShortsClient() {
         musicGain: (track?.gain ?? 0.5) * (musikPegel / 100),
         musicTrim: Math.round((track?.startSekunden ?? 0) * MOAT_SHORT_FPS),
         sfx,
+        voiceSrc: stimmePasst ? props.voiceSrc : null,
+        voiceAlignment: stimmePasst ? props.voiceAlignment : null,
       }
     : null
   const beschreibung = uploadBeschreibung
@@ -238,6 +260,50 @@ export function YoutubeShortsClient() {
     setUploadKommentar(ergebnis.kommentar)
     setUploadBeschreibung(track?.credit ? `${ergebnis.description}\n\n${track.credit}` : ergebnis.description)
   }, [ergebnis, track?.credit])
+
+  function leereStimme() {
+    setVoiceUrl((alt) => {
+      if (alt) URL.revokeObjectURL(alt)
+      return null
+    })
+    setStimmeFp(null)
+    setProps((p) => (p ? { ...p, voiceSrc: null, voiceAlignment: null } : p))
+  }
+
+  useEffect(() => {
+    if (!props?.voiceAlignment || !stimmeFp) return
+    if (stimmeFp === moatShortSprechFingerprint(props)) return
+    leereStimme()
+  }, [props, stimmeFp])
+
+  async function stimmeErzeugen() {
+    if (!props) return
+    setStimmeLaedt(true)
+    try {
+      const res = await fetch('/api/youtube/voice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ props }),
+      })
+      const j = (await res.json()) as { ok?: boolean; audioBase64?: string; woerter?: MoatShortVoiceWort[]; fehler?: string; error?: string }
+      if (!res.ok || !j.ok || !j.audioBase64 || !j.woerter?.length) {
+        toast.error(j.fehler || j.error || 'Stimme fehlgeschlagen.')
+        return
+      }
+      const url = URL.createObjectURL(base64ZuMp3(j.audioBase64))
+      setVoiceUrl((alt) => {
+        if (alt) URL.revokeObjectURL(alt)
+        return url
+      })
+      setStimmeFp(moatShortSprechFingerprint(props))
+      setProps((p) => (p ? { ...p, voiceSrc: url, voiceAlignment: j.woerter ?? null } : p))
+      toast.success('Stimme liegt auf der Timeline.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Stimme fehlgeschlagen.')
+    } finally {
+      setStimmeLaedt(false)
+    }
+  }
 
   async function youtubeVerbinden() {
     setYtLaedt(true)
@@ -361,9 +427,14 @@ export function YoutubeShortsClient() {
           land: ohneKennzahlId(h.land),
         })),
       })
-      setProps({ ...sauber, logoUrl })
+      setProps({ ...sauber, logoUrl, voiceSrc: null, voiceAlignment: null })
       setMp4Blob(null)
       setVideoId(null)
+      setVoiceUrl((alt) => {
+        if (alt) URL.revokeObjectURL(alt)
+        return null
+      })
+      setStimmeFp(null)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Netzwerkfehler')
     } finally {
@@ -484,6 +555,11 @@ export function YoutubeShortsClient() {
                 setProps(b.props)
                 setMp4Blob(null)
                 setVideoId(null)
+                setVoiceUrl((alt) => {
+                  if (alt) URL.revokeObjectURL(alt)
+                  return null
+                })
+                setStimmeFp(null)
               }}
               className="rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-sm text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]"
             >
@@ -764,6 +840,25 @@ export function YoutubeShortsClient() {
                 <input type="checkbox" checked={sfx} onChange={(e) => setSfx(e.target.checked)} />
                 Soundeffekte (Schnitte, Balken, Stempel)
               </label>
+              {!stimmeOk ? (
+                <p className="text-xs text-[var(--app-text-muted)]">
+                  Stimme: ELEVENLABS_API_KEY und ELEVENLABS_VOICE_ID in .env.local — Klon bleibt bei ElevenLabs.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={stimmeLaedt || !props}
+                  onClick={() => void stimmeErzeugen()}
+                  className="w-full rounded-xl border border-[var(--app-border)] px-4 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:opacity-50"
+                >
+                  {stimmeLaedt ? 'Stimme wird erzeugt…' : stimmePasst ? 'Stimme neu erzeugen' : 'Stimme erzeugen'}
+                </button>
+              )}
+              {stimmePasst ? (
+                <p className="text-xs text-[var(--app-text-muted)]">Untertitel und Schnitte folgen der Aufnahme. Script ändern = Stimme neu.</p>
+              ) : voiceUrl || props?.voiceAlignment ? (
+                <p className="text-xs text-amber-300">Script hat sich geändert — Stimme neu erzeugen, sonst bleibt die Schätzung.</p>
+              ) : null}
               <button
                 type="button"
                 disabled={rendert || !fertig}
@@ -807,6 +902,18 @@ export function YoutubeShortsClient() {
                   Short öffnen
                 </a>
               ) : null}
+              <div className="space-y-1.5 rounded-xl border border-[var(--app-border)] p-3">
+                <p className="text-xs font-medium text-[var(--app-text-muted)]">Ziele</p>
+                {PUBLISH_ZIELE.map((z) => (
+                  <label key={z.id} className="flex items-start gap-2 text-xs text-[var(--app-text-muted)]">
+                    <input type="checkbox" checked={z.id === 'youtube'} disabled={!z.aktiv} readOnly />
+                    <span>
+                      <span className="text-[var(--app-text)]">{z.label}</span>
+                      {z.hinweis ? ` — ${z.hinweis}` : ''}
+                    </span>
+                  </label>
+                ))}
+              </div>
               <p className="text-xs text-[var(--app-text-muted)]">
                 Läuft online in Chrome oder Edge, ein bis drei Minuten. Tab offen lassen. Das MP4 bleibt im Tab für den Upload — nicht über Vercel.
               </p>

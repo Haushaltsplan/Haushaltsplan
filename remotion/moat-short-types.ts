@@ -33,7 +33,13 @@ export type MoatShortProps = {
   /** Quell-Frames, die übersprungen werden (leises Intro). */
   musicTrim: number
   sfx: boolean
+  /** Blob-/Data-URL der ElevenLabs-Stimme; null = stumm, Timeline schätzt. */
+  voiceSrc: string | null
+  /** Wortzeiten zur Stimme — Bild und Captions folgen diesen Grenzen. */
+  voiceAlignment: MoatShortVoiceWort[] | null
 }
+
+export type MoatShortVoiceWort = { text: string; startMs: number; endMs: number }
 
 export type MoatShortBeatId =
   | 'hook'
@@ -97,4 +103,6 @@ export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
   musicGain: 0.5,
   musicTrim: 0,
   sfx: true,
+  voiceSrc: null,
+  voiceAlignment: null,
 }
