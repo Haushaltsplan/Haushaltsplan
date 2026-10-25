@@ -2,7 +2,7 @@ import { loadFont as loadInter } from '@remotion/google-fonts/Inter'
 import { loadFont as loadInterTight } from '@remotion/google-fonts/InterTight'
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono'
 import { Audio } from '@remotion/media'
-import { shutterModern, uiSwitch, whip, whoosh } from '@remotion/sfx'
+import { mouseClick, shutterModern, uiSwitch, whip, whoosh } from '@remotion/sfx'
 import { useMemo, useState } from 'react'
 import {
   AbsoluteFill,
@@ -48,6 +48,11 @@ const PILLAR_BOTTOM_PAD = MOAT_SHORT_HEIGHT - (CAPTION_TOP - 32)
 const CAPTION_YELLOW = '#FFC700'
 const CAPTION_SIZE = 58
 const CAPTION_LINE = 1.25
+/** Ab Frame 2, damit der Loop-Join auf der fertigen Zahl steht. Landung bei 0,4 s. */
+const HOOK_ZAHL_AB = 2
+const HOOK_ZAHL_FRAME = 12
+/** Balken-Feder ist bei Frame 15 angekommen. */
+const PILLAR_ZAHL_FRAME = 15
 
 function saubereProps(p: MoatShortProps): MoatShortProps {
   return {
@@ -131,8 +136,8 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
     beats.some((b) => b.id === 'crack') && crack.from > 0
       ? interpolateColors(
           frame,
-          [crack.from, crack.from + 6, crackEnde - 4, crackEnde],
-          [BG, BG_CRACK, BG_CRACK, BG],
+          [crack.from, crack.from + 2, crack.from + 6, crackEnde - 4, crackEnde],
+          [BG, '#6A2A24', BG_CRACK, BG_CRACK, BG],
         )
       : BG
 
@@ -200,8 +205,12 @@ function Ton({
   const crack = beats.find((b) => b.id === 'crack')
   const cues: { from: number; src: string; volume: number }[] = []
   for (const b of beats) {
+    if (b.id === 'hook') cues.push({ from: b.from + HOOK_ZAHL_FRAME, src: mouseClick, volume: 0.34 })
     if (b.id === 'business') cues.push({ from: Math.max(0, b.from - 4), src: whoosh, volume: 0.28 })
-    if (b.id.startsWith('pillar')) cues.push({ from: b.from, src: uiSwitch, volume: 0.25 })
+    if (b.id.startsWith('pillar')) {
+      cues.push({ from: b.from, src: uiSwitch, volume: 0.22 })
+      cues.push({ from: b.from + PILLAR_ZAHL_FRAME, src: mouseClick, volume: 0.2 })
+    }
     if (b.id === 'crack') cues.push({ from: b.from + 2, src: whip, volume: 0.4 })
     if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: 1 })
   }
@@ -310,8 +319,17 @@ function HookSzene({
 }) {
   const frame = useCurrentFrame()
   const { fps, durationInFrames } = useVideoConfig()
-  const amJoin = ruhe || frame < 2
-  const einschlag = amJoin ? 1 : spring({ frame: frame - 2, fps, config: { damping: 200 }, durationInFrames: 9 })
+  const amJoin = ruhe || frame < HOOK_ZAHL_AB
+  const pop = amJoin
+    ? 1
+    : spring({ frame: frame - HOOK_ZAHL_AB, fps, config: { damping: 10, mass: 0.35, stiffness: 240 }, durationInFrames: 14 })
+  const zahlT = amJoin
+    ? 1
+    : interpolate(frame, [HOOK_ZAHL_AB, HOOK_ZAHL_FRAME], [0, 1], {
+        extrapolateLeft: 'clamp',
+        extrapolateRight: 'clamp',
+        easing: Easing.out(Easing.cubic),
+      })
   const schub = amJoin ? 1 : interpolate(frame, [2, durationInFrames], [1, 1.04], { easing: Easing.out(Easing.quad), extrapolateRight: 'clamp' })
   const teaser = teaserAb == null || ruhe ? 0 : interpolate(frame, [teaserAb, teaserAb + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   const headlineGroesse = headline.length <= 55 ? 78 : headline.length <= 85 ? 66 : 56
@@ -341,9 +359,9 @@ function HookSzene({
       >
         <Wortzeile text={headline} farbeFuer={(w) => (/\d/.test(w) ? BRAND : TEXT)} />
       </div>
-      <div style={{ width: '100%', marginTop: 90, textAlign: 'center', transform: `scale(${interpolate(einschlag, [0, 1], [1.15, 1])})` }}>
+      <div style={{ width: '100%', marginTop: 90, textAlign: 'center', transform: `scale(${amJoin ? 1 : 1 + (1 - pop) * 0.2})` }}>
         <div style={{ fontSize: value.length > 7 ? 180 : 230, fontWeight: 900, letterSpacing: -8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-          {zaehleHoch(value, 1)}
+          {zaehleHoch(value, zahlT)}
         </div>
         <div style={{ marginTop: 30, fontFamily: MONO, fontSize: 32, letterSpacing: 7, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
       </div>
@@ -411,8 +429,27 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
           const opacity = !gestartet ? 0.22 : i === aktiv ? 1 : 0.5
           const farbe = scoreFarbe(p.score)
           const anzeige = gestartet ? Math.round(p.score * Math.min(1, fuell)) : 0
+          const atem = spring({
+            frame: Math.max(0, lokal - PILLAR_ZAHL_FRAME),
+            fps,
+            config: { damping: 200 },
+            durationInFrames: 40,
+          })
+          const scale = lokal >= PILLAR_ZAHL_FRAME ? 1 + 0.02 * atem : 1
           return (
-            <div key={p.id} style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: 0, opacity }}>
+            <div
+              key={p.id}
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                minHeight: 0,
+                opacity,
+                transform: `scale(${scale})`,
+                transformOrigin: 'center center',
+              }}
+            >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
                 <span style={{ fontSize: 50, fontWeight: 800, letterSpacing: -0.4 }}>{p.label}</span>
                 <span style={{ fontFamily: MONO, fontSize: 40, fontWeight: 700, color: gestartet ? farbe : MUTED, fontVariantNumeric: 'tabular-nums' }}>
