@@ -1,7 +1,7 @@
 /**
- * Musik-Katalog für Moat-Shorts (Dateien liegen lokal in public/youtube-music/).
- * gain gleicht die Tracks auf ca. −21 dB RMS an; mit Voiceover später um ~8 dB senken.
- * startSekunden überspringt leise Intros, damit der Short sofort Musik hat.
+ * Musik-Katalog für Moat-Shorts (Dateien in public/youtube-music/).
+ * gain ist nur Relativlautstärke zwischen Tracks (1 = am Deckel).
+ * Renderer: mit Stimme −24 dB, ohne Stimme −18 dB; Slider 50 % = Deckel.
  */
 
 import type { MoatShortVerdict } from '@/remotion/moat-short-types'
@@ -31,15 +31,12 @@ function kevinMacLeodUrl(titel: string): string {
 }
 
 const KATALOG: Omit<MoatShortTrack, 'credit'>[] = [
-  { datei: 'ouroboros.mp3', titel: 'Ouroboros', stimmung: 'treibend', urteil: 'wide', gain: 0.52, startSekunden: 0 },
-  { datei: 'inspired.mp3', titel: 'Inspired', stimmung: 'optimistisch', urteil: 'wide', gain: 0.46, startSekunden: 0 },
-  { datei: 'the-complex.mp3', titel: 'The Complex', stimmung: 'angespannt', urteil: 'narrow', gain: 0.75, startSekunden: 0 },
-  { datei: 'impact-prelude.mp3', titel: 'Impact Prelude', stimmung: 'dramatisch', urteil: 'narrow', gain: 0.95, startSekunden: 0 },
-  { datei: 'darkest-child.mp3', titel: 'Darkest Child', stimmung: 'düster', urteil: 'none', gain: 0.82, startSekunden: 0 },
-  { datei: 'volatile-reaction.mp3', titel: 'Volatile Reaction', stimmung: 'intensiv', urteil: 'none', gain: 0.31, startSekunden: 0 },
+  { datei: 'chase-pulse.mp3', titel: 'Chase Pulse', stimmung: 'dark tech pulse', urteil: 'wide', gain: 1, startSekunden: 0 },
+  { datei: 'night-break.mp3', titel: 'Night Break', stimmung: 'cinematic tick', urteil: 'narrow', gain: 1, startSekunden: 0 },
+  { datei: 'basement-floor.mp3', titel: 'Basement Floor', stimmung: 'tech minimal', urteil: 'none', gain: 0.9, startSekunden: 0 },
 ]
 
-const STANDARD_GAIN = 0.5
+const STANDARD_GAIN = 1
 
 export const MOAT_SHORT_MUSIK_QUELLEN: MoatShortTrackQuelle[] = KATALOG.map((t) => ({
   datei: t.datei,
@@ -64,7 +61,7 @@ export function musikTrack(pfad: string): MoatShortTrack {
   }
 }
 
-/** Erster Katalog-Track zum Urteil, sonst erster vorhandener. */
+/** Erster Katalog-Track zum Urteil, sonst erster vorhandener (Chase Pulse). */
 export function trackZumUrteil(urteil: MoatShortVerdict | undefined, pfade: string[]): string | null {
   if (!pfade.length) return null
   const dateien = new Set(pfade.map((p) => p.split('/').pop()))

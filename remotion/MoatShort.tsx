@@ -206,29 +206,33 @@ function Ton({
   beats: MoatShortBeat[]
 }) {
   const crack = beats.find((b) => b.id === 'crack')
+  /** SFX ca. −13 dB; Stempel nicht mehr bei 1.0. */
+  const sfxPegel = 0.21
   const cues: { from: number; src: string; volume: number }[] = []
   for (const b of beats) {
-    if (b.id === 'hook') cues.push({ from: b.from + HOOK_ZAHL_FRAME, src: mouseClick, volume: 0.34 })
-    if (b.id === 'business') cues.push({ from: Math.max(0, b.from - 4), src: whoosh, volume: 0.28 })
+    if (b.id === 'hook') cues.push({ from: b.from + HOOK_ZAHL_FRAME, src: mouseClick, volume: sfxPegel })
+    if (b.id === 'business') cues.push({ from: Math.max(0, b.from - 4), src: whoosh, volume: sfxPegel })
     if (b.id.startsWith('pillar')) {
-      cues.push({ from: b.from, src: uiSwitch, volume: 0.22 })
-      cues.push({ from: b.from + PILLAR_ZAHL_FRAME, src: mouseClick, volume: 0.2 })
+      cues.push({ from: b.from, src: uiSwitch, volume: sfxPegel })
+      cues.push({ from: b.from + PILLAR_ZAHL_FRAME, src: mouseClick, volume: sfxPegel })
     }
-    if (b.id === 'crack') cues.push({ from: b.from + 2, src: whip, volume: 0.4 })
-    if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: 1 })
+    if (b.id === 'crack') cues.push({ from: b.from + 2, src: whip, volume: sfxPegel })
+    if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: sfxPegel })
   }
 
   const musikVolume = (f: number) => {
     const crackEnde = crack ? crack.from + crack.duration : 0
     const duck =
       crack && crack.from >= 4
-        ? interpolate(f, [crack.from - 4, crack.from + 6, crackEnde - 6, crackEnde + 4], [1, 0.35, 0.35, 1], {
+        ? interpolate(f, [crack.from - 4, crack.from + 6, crackEnde - 6, crackEnde + 4], [1, 0.7, 0.7, 1], {
             extrapolateLeft: 'clamp',
             extrapolateRight: 'clamp',
           })
         : 1
-    const stimme = voiceSrc ? 0.28 : 1
-    return Math.max(0, Math.min(1, musicGain)) * duck * stimme
+    // Slider 50 % + Katalog-gain 1 = Deckel. Mit Stimme −24 dB, ohne −18 dB.
+    const deckel = voiceSrc ? 0.063 : 0.126
+    const relativ = Math.max(0, musicGain) / 0.5
+    return Math.max(0, Math.min(1, deckel * relativ * duck))
   }
 
   return (

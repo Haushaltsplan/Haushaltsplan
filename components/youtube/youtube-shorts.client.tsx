@@ -234,7 +234,7 @@ export function YoutubeShortsClient() {
         ...props,
         musicSrc: musikPlaySrc(musik),
         logoUrl: logoPlaySrc(props.logoUrl),
-        musicGain: (track?.gain ?? 0.5) * (musikPegel / 100),
+        musicGain: (track?.gain ?? 1) * (musikPegel / 100),
         musicTrim: Math.round((track?.startSekunden ?? 0) * MOAT_SHORT_FPS),
         sfx,
         voiceSrc: stimmePasst ? props.voiceSrc : null,
@@ -833,7 +833,7 @@ export function YoutubeShortsClient() {
               ) : null}
               {track?.credit ? (
                 <p className="text-xs text-[var(--app-text-muted)]">
-                  Passend zum Urteil. Tracks sind untereinander angeglichen — der Regler sitzt darüber. Lizenz CC BY 4.0, Namensnennung in der Beschreibung.
+                  Auto: Pulse zum Urteil (wide = Chase Pulse). 50 % = −24 dB unter der Stimme. Lizenz CC BY 4.0, Namensnennung in der Beschreibung.
                 </p>
               ) : null}
               {!tracks.length ? (

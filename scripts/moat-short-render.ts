@@ -8,7 +8,7 @@ function mitMusik(props: MoatShortProps): MoatShortProps {
   return {
     ...props,
     musicSrc: src,
-    musicGain: track?.gain ?? props.musicGain ?? 0.5,
+    musicGain: props.musicSrc ? props.musicGain : (track?.gain ?? 1) * 0.5,
     musicTrim: Math.round((track?.startSekunden ?? 0) * MOAT_SHORT_FPS),
     sfx: props.sfx !== false,
   }
