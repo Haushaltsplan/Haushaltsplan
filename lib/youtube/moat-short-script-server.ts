@@ -207,8 +207,8 @@ Same move for every company: name the threat and stop. Do not explain the mechan
 - Whole spoken script stays under 95 words so the Short lands near 32 seconds.
 
 Also return
-- title: 30-50 characters, ticker or company first, curiosity without ALL-CAPS or !!. If a YouTube search suggestion fits, prefer it. Examples: "ASML: why nobody can copy it" / "Visa's 67.4% problem".
-- description: two short English sentences, verdict plus the hook number. We add the first search line, disclaimer and hashtags.
+- title: 28-58 characters. First words = ticker or the YouTube search phrase. Curiosity + the hook number if it fits. No ALL-CAPS, no !!, no hashtags. Good: "ASML: why nobody can copy it" / "Visa's 67.4% problem" / "ASML moat in one number".
+- description: two English sentences that expand the title (do not repeat it). Verdict + the hook number. We add the first search line, #Shorts and the disclaimer.
 - comment: one pinned-comment question, 10-16 words, debatable, no subscribe/follow/like.
 
 The input data is partly in German. Write everything in English.`
@@ -395,14 +395,22 @@ export async function generiereMoatShort(opts: {
   if (zeilen.size < 4) warnungen.push('Nicht alle vier Pfeiler haben einen eigenen Satz bekommen.')
   if (!logoUrl) warnungen.push('Kein drucktaugliches Firmenlogo gefunden — die Business-Szene zeigt nur den Ticker.')
 
+  const titel = titelFuerUpload(text(roh.title), ticker, startMetrik.value, suchphrasen)
   return {
     props,
     metriken,
     hookVarianten,
     moat,
     moatAusCache,
-    title: titelFuerUpload(text(roh.title), ticker, startMetrik.value),
-    description: beschreibungFuerUpload(String(roh.description ?? ''), paket.firmenname, ticker, startMetrik.value),
+    title: titel,
+    description: beschreibungFuerUpload(
+      String(roh.description ?? ''),
+      paket.firmenname,
+      ticker,
+      startMetrik.value,
+      titel,
+      suchphrasen,
+    ),
     kommentar: kommentarFuerUpload(text(roh.comment), verdict, ticker),
     suchphrasen,
     warnungen,

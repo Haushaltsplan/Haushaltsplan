@@ -248,24 +248,88 @@ export function hashtagTicker(ticker: string): string {
   return t || 'STOCKS'
 }
 
-export function titelFuerUpload(roh: string, ticker: string, metrik: string): string {
-  let t = roh.replace(/\s+/g, ' ').replace(/!{2,}|\?{2,}/g, '!').trim()
+const TITEL_MIN = 28
+const TITEL_MAX = 58
+
+function saubererTitelKern(roh: string): string {
+  let t = roh.replace(/#\w+/g, ' ').replace(/\s+/g, ' ').replace(/!{2,}/g, '').replace(/\?{2,}/g, '?').trim()
   if (t.length > 8 && t === t.toUpperCase()) t = `${t.charAt(0)}${t.slice(1).toLowerCase()}`
-  if (!t.toLowerCase().includes(ticker.toLowerCase())) t = `${ticker} ${t}`
-  if (t.length > 50) t = t.slice(0, 50).replace(/\s+\S*$/, '').trim()
-  if (t.length < 24) t = `${ticker}: ${metrik} moat`.slice(0, 50)
   return t
 }
 
-export function beschreibungFuerUpload(roh: string, firmenname: string, ticker: string, metrik: string): string {
-  const kern =
-    roh
-      .replace(/#\w+/g, ' ')
-      .replace(/not investment advice\.?/gi, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 220) || `${ticker} moat in one number.`
-  return `${firmenname} (${ticker}): ${metrik} moat check.\n\n${kern}\n\nNot investment advice.\n#${hashtagTicker(ticker)} #investing #moat`
+function kuerzeTitel(t: string): string {
+  if (t.length <= TITEL_MAX) return t
+  return t.slice(0, TITEL_MAX).replace(/\s+\S*$/, '').replace(/[-–:,]+$/u, '').trim()
+}
+
+function titelScore(t: string, ticker: string): number {
+  const low = t.toLowerCase()
+  const tk = ticker.toLowerCase()
+  let s = 0
+  if (low.includes(tk)) s += 4
+  if (/^\s*[A-Z0-9.]{1,8}\b/.test(t) && low.startsWith(tk)) s += 3
+  if (/\b(moat|why|nobody|copy|monopoly|only|rival|lock)\b/i.test(t)) s += 3
+  if (/\d/.test(t)) s += 2
+  if (t.length >= TITEL_MIN && t.length <= TITEL_MAX) s += 2
+  if (/\bstock price\b/i.test(t) || /\bbuy now\b/i.test(t)) s -= 4
+  if (/^(how to download|watch|official)/i.test(t)) s -= 6
+  return s
+}
+
+/** Shorts: Keyword vorne, 28–58 Zeichen, Suchphrase wenn sie besser ist als der KI-Titel. */
+export function titelFuerUpload(roh: string, ticker: string, metrik: string, suchphrasen: string[] = []): string {
+  const fallback = `${ticker}: why ${metrik} is the tell`
+  const rohKandidaten = [...suchphrasen, roh, fallback].map(saubererTitelKern).filter((t) => t.length >= 8)
+  let best = fallback
+  let bestScore = -99
+  for (const k of rohKandidaten) {
+    let t = k
+    if (!t.toLowerCase().includes(ticker.toLowerCase())) t = `${ticker} ${t}`
+    t = kuerzeTitel(t)
+    const sc = titelScore(t, ticker)
+    if (sc > bestScore) {
+      best = t
+      bestScore = sc
+    }
+  }
+  if (best.length < TITEL_MIN) best = kuerzeTitel(fallback)
+  return best
+}
+
+function satzeOhneMeta(roh: string): string[] {
+  return roh
+    .replace(/#\w+/g, ' ')
+    .replace(/not investment advice\.?/gi, ' ')
+    .replace(/altered or synthetic media\.?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 12)
+}
+
+/** Erste Zeile = Suche (sichtbar vor „mehr“). Dann Claim. Dann #Shorts + 3 Nischen-Tags. */
+export function beschreibungFuerUpload(
+  roh: string,
+  firmenname: string,
+  ticker: string,
+  metrik: string,
+  titel = '',
+  suchphrasen: string[] = [],
+): string {
+  const suche =
+    suchphrasen.find((p) => p.toLowerCase().includes(ticker.toLowerCase()) && p.length >= 8 && p.length <= 48) ??
+    `${ticker} moat`
+  const erste = `${firmenname} (${ticker}): ${metrik} — ${suche}.`
+  const titelNorm = titel.replace(/\s+/g, ' ').trim().toLowerCase()
+  const kern = satzeOhneMeta(roh)
+    .filter((s) => s.toLowerCase() !== titelNorm)
+    .slice(0, 2)
+    .join(' ')
+    .slice(0, 280)
+  const mitte = kern || `${ticker} in one number: ${metrik}.`
+  const hash = `#Shorts #${hashtagTicker(ticker)} #investing #moat`
+  return `${erste}\n\n${mitte}\n\nNot investment advice. Altered or synthetic media.\n${hash}`
 }
 
 export function kommentarFuerUpload(roh: string, verdict: MoatShortVerdict, ticker: string): string {

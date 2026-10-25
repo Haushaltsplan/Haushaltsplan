@@ -99,7 +99,8 @@ function beispielErgebnis(): MoatShortErgebnis {
     },
     moatAusCache: true,
     title: 'ASML: why nobody can copy it',
-    description: 'ASML Holding (ASML): 51.3% moat check.\n\nASML prints a 51.3% margin selling machines nobody else can build.\n\nNot investment advice.\n#ASML #investing #moat',
+    description:
+      'ASML Holding (ASML): 51.3% — ASML moat.\n\nAt 51.3% gross margin, ASML sells machines nobody else can build.\n\nNot investment advice. Altered or synthetic media.\n#Shorts #ASML #investing #moat',
     kommentar: 'Is ASML a wide moat, or just the only shop in town?',
     suchphrasen: ['ASML moat', 'ASML stock', 'ASML monopoly'],
     warnungen: [],
@@ -739,7 +740,9 @@ export function YoutubeShortsClient() {
                 <p className="text-xs font-medium text-[var(--app-text-muted)]">Upload — Titel, Beschreibung, Kommentar</p>
                 <label className="mt-2 block text-xs text-[var(--app-text-muted)]">Titel</label>
                 <input value={uploadTitel} onChange={(e) => setUploadTitel(e.target.value)} className={`${feldKlasse} mt-1`} />
-                <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">{uploadTitel.length} Zeichen · YouTube-Suche mag 30–50</p>
+                <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
+                  {uploadTitel.length} Zeichen · Keyword vorne, 28–58, kein # im Titel
+                </p>
                 {ergebnis.suchphrasen.length ? (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {ergebnis.suchphrasen.map((p) => (
