@@ -612,11 +612,7 @@ function Caption({ text }: { text: string }) {
             textAlign: 'center',
           }}
         >
-          <Wortzeile
-            text={text}
-            farbeFuer={(_w, i) => (i === aktiv ? CAPTION_YELLOW : TEXT)}
-            gewichtFuer={(_w, i) => (i === aktiv ? 700 : 600)}
-          />
+          <Wortzeile text={text} farbeFuer={(_w, i) => (i === aktiv ? CAPTION_YELLOW : TEXT)} gewichtFuer={() => 700} />
         </span>
       </div>
     </div>
