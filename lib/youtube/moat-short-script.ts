@@ -1,4 +1,5 @@
 import type { MoatShortVerdict } from '@/remotion/moat-short-types'
+import { firmenKurzname, phrasePasst } from '@/lib/youtube/youtube-keywords'
 
 const ABSCHIED =
   /\b(thanks for watching|thank you|thanks for|follow for|subscribe|see you|that's the video|watch next|hit like|link in|comment below)\b/i
@@ -262,38 +263,65 @@ function kuerzeTitel(t: string): string {
   return t.slice(0, TITEL_MAX).replace(/\s+\S*$/, '').replace(/[-–:,]+$/u, '').trim()
 }
 
-function titelScore(t: string, ticker: string): number {
-  const low = t.toLowerCase()
-  const tk = ticker.toLowerCase()
+const FLAUSCH =
+  /\b(unmatched|discover the|key numbers|game-changer|delve|in this video|ultimate|you won't believe|incredible|massive|the tell)\b/i
+
+function wortVorne(t: string, wort: string): boolean {
+  return t.toLowerCase().startsWith(wort.toLowerCase())
+}
+
+function titelScore(t: string, ticker: string, name: string): number {
   let s = 0
-  if (low.includes(tk)) s += 4
-  if (/^\s*[A-Z0-9.]{1,8}\b/.test(t) && low.startsWith(tk)) s += 3
-  if (/\b(moat|why|nobody|copy|monopoly|only|rival|lock)\b/i.test(t)) s += 3
+  if (name.length >= 4 && wortVorne(t, name)) s += 6
+  else if (wortVorne(t, ticker)) s += 2
+  if (/\b(moat|why|nobody|copy|monopoly|margin|lock)\b/i.test(t)) s += 3
   if (/\d/.test(t)) s += 2
-  if (t.length >= TITEL_MIN && t.length <= TITEL_MAX) s += 2
-  if (/\bstock price\b/i.test(t) || /\bbuy now\b/i.test(t)) s -= 4
+  if (t.length >= TITEL_MIN && t.length <= TITEL_MAX) s += 4
+  else s -= 6
+  if (FLAUSCH.test(t) || /\bstock price\b/i.test(t) || /\bbuy now\b/i.test(t)) s -= 8
   if (/^(how to download|watch|official)/i.test(t)) s -= 6
   return s
 }
 
-/** Shorts: Keyword vorne, 28–58 Zeichen, Suchphrase wenn sie besser ist als der KI-Titel. */
-export function titelFuerUpload(roh: string, ticker: string, metrik: string, suchphrasen: string[] = []): string {
-  const fallback = `${ticker}: why ${metrik} is the tell`
-  const rohKandidaten = [...suchphrasen, roh, fallback].map(saubererTitelKern).filter((t) => t.length >= 8)
-  let best = fallback
+function labelKurz(label: string): string {
+  return label.replace(/\b(ltm|ttm|trailing|last twelve months)\b/gi, ' ').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+/** „an eight / an eleven“, sonst „a“. */
+function artikelVorZahl(metrik: string): 'a' | 'an' {
+  const z = metrik.trim().replace(/^[^0-9]+/, '')
+  return /^(8|11|18)(\D|$)/.test(z) ? 'an' : 'a'
+}
+
+/** Shorts: Firmenname vorne, 28–58 Zeichen, ein korrekter Satzanfang. Suchqueries werden nicht zum Titel. */
+export function titelFuerUpload(
+  roh: string,
+  ticker: string,
+  metrik: string,
+  suchphrasen: string[] = [],
+  opts?: { firmenname?: string; metrikLabel?: string },
+): string {
+  const name = firmenKurzname(opts?.firmenname || '') || ticker
+  const label = labelKurz(opts?.metrikLabel || 'margin') || 'margin'
+  const gebaut = kuerzeTitel(`${name}: why ${artikelVorZahl(metrik)} ${metrik} ${label} is the moat`)
+  const zweiter = kuerzeTitel(`${name} moat in one number: ${metrik}`)
+  const ki = saubererTitelKern(roh)
+  const kandidaten = [ki, gebaut, zweiter].filter((t) => t.length >= 8)
+  for (const p of suchphrasen) {
+    const kern = saubererTitelKern(p)
+    if (kern.length >= TITEL_MIN && phrasePasst(kern, ticker, name)) kandidaten.push(kern)
+  }
+  let best = gebaut.length >= TITEL_MIN ? gebaut : zweiter
   let bestScore = -99
-  for (const k of rohKandidaten) {
-    let t = k
-    if (!t.toLowerCase().includes(ticker.toLowerCase())) t = `${ticker} ${t}`
-    t = kuerzeTitel(t)
-    const sc = titelScore(t, ticker)
+  for (const t of kandidaten.map(kuerzeTitel)) {
+    const sc = titelScore(t, ticker, name)
     if (sc > bestScore) {
       best = t
       bestScore = sc
     }
   }
-  if (best.length < TITEL_MIN) best = kuerzeTitel(fallback)
-  return best
+  if (best.length < TITEL_MIN) best = kuerzeTitel(`${name} moat: why ${metrik} still holds`)
+  return best.charAt(0).toUpperCase() + best.slice(1)
 }
 
 function satzeOhneMeta(roh: string): string[] {
@@ -308,7 +336,20 @@ function satzeOhneMeta(roh: string): string[] {
     .filter((s) => s.length > 12)
 }
 
-/** Erste Zeile = Suche (sichtbar vor „mehr“). Dann Claim. Dann #Shorts + 3 Nischen-Tags. */
+function satzGross(s: string): string {
+  const t = s.replace(/\s+[—–]\s+/g, ', ').replace(/\s+/g, ' ').trim()
+  if (!t) return t
+  const mitPunkt = /[.!?]$/.test(t) ? t : `${t}.`
+  return mitPunkt.charAt(0).toUpperCase() + mitPunkt.slice(1)
+}
+
+function saubereSaetze(roh: string): string[] {
+  return satzeOhneMeta(roh)
+    .map(satzGross)
+    .filter((s) => s.length > 12 && s.length < 180 && !FLAUSCH.test(s) && /^[A-Z0-9"']/.test(s))
+}
+
+/** Zeile 1 = echte Suchphrase. Danach zwei korrekte Sätze. Hashtags am Ende. */
 export function beschreibungFuerUpload(
   roh: string,
   firmenname: string,
@@ -316,18 +357,20 @@ export function beschreibungFuerUpload(
   metrik: string,
   titel = '',
   suchphrasen: string[] = [],
+  metrikLabel = 'margin',
 ): string {
+  const name = firmenKurzname(firmenname) || ticker
+  const label = labelKurz(metrikLabel) || 'margin'
   const suche =
-    suchphrasen.find((p) => p.toLowerCase().includes(ticker.toLowerCase()) && p.length >= 8 && p.length <= 48) ??
-    `${ticker} moat`
-  const erste = `${firmenname} (${ticker}): ${metrik} — ${suche}.`
+    suchphrasen.find((p) => phrasePasst(p, ticker, firmenname) && /\b(moat|stock|monopoly)\b/i.test(p)) ??
+    `${name} moat`
+  const erste = satzGross(`${suche} comes down to ${artikelVorZahl(metrik)} ${metrik} ${label}`)
   const titelNorm = titel.replace(/\s+/g, ' ').trim().toLowerCase()
-  const kern = satzeOhneMeta(roh)
-    .filter((s) => s.toLowerCase() !== titelNorm)
+  const kern = saubereSaetze(roh)
+    .filter((s) => s.toLowerCase() !== titelNorm && !s.toLowerCase().startsWith(suche.toLowerCase()))
     .slice(0, 2)
     .join(' ')
-    .slice(0, 280)
-  const mitte = kern || `${ticker} in one number: ${metrik}.`
+  const mitte = kern || satzGross(`The question is whether that ${label} is a moat or just a good year`)
   const hash = `#Shorts #${hashtagTicker(ticker)} #investing #moat`
   return `${erste}\n\n${mitte}\n\nNot investment advice. Altered or synthetic media.\n${hash}`
 }

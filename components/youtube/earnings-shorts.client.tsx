@@ -17,6 +17,7 @@ import { earningsLoopWarnungen } from '@/lib/youtube/earnings-short-script'
 import type { EarningsShortAntwort, EarningsShortErgebnis } from '@/lib/youtube/earnings-short-types'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { ohneKennzahlId } from '@/lib/youtube/moat-short-script'
+import { phrasePasst } from '@/lib/youtube/youtube-keywords'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import {
   EARNINGS_SHORT_DEFAULT_PROPS,
@@ -35,9 +36,12 @@ function base64ZuMp3(b64: string): Blob {
   return new Blob([arr], { type: 'audio/mpeg' })
 }
 
-function tagsFuerUpload(beschreibung: string, suchphrasen: string[], ticker: string): string[] {
+function tagsFuerUpload(beschreibung: string, suchphrasen: string[], ticker: string, firmenname: string): string[] {
   const hashes = [...beschreibung.matchAll(/#([A-Za-z0-9_]+)/g)].map((m) => m[1])
-  const extra = suchphrasen.map((s) => s.replace(/[^A-Za-z0-9 ]/g, '').trim()).filter(Boolean)
+  const extra = suchphrasen
+    .filter((s) => phrasePasst(s, ticker, firmenname))
+    .map((s) => s.replace(/[^A-Za-z0-9 ]/g, '').trim())
+    .filter(Boolean)
   const unique: string[] = []
   for (const t of [ticker, ...hashes, ...extra]) {
     const n = t.trim()
@@ -239,7 +243,12 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
         body: JSON.stringify({
           title: titel,
           description: uploadBeschreibung,
-          tags: tagsFuerUpload(uploadBeschreibung, ergebnis?.suchphrasen ?? [], props?.ticker ?? ''),
+          tags: tagsFuerUpload(
+            uploadBeschreibung,
+            ergebnis?.suchphrasen ?? [],
+            props?.ticker ?? '',
+            props?.firmenname ?? '',
+          ),
           privacy,
           dateigroesse: mp4Blob.size,
         }),

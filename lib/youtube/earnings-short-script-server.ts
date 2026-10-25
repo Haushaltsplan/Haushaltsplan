@@ -75,8 +75,8 @@ Good takeaway: "The call is about the backlog, not the print, which is why"
 Bad: "Solid quarter. That's the story."
 
 Also return
-- title: 28-58 characters. Ticker first. Curiosity + earnings, not ALL-CAPS.
-- description: two English sentences that expand the title. We add #Shorts and the disclaimer.
+- title: 28-58 characters. Company name first, not a two-letter ticker. One grammatical clause. No slang ("the tell"), no ALL-CAPS, no hashtags.
+- description: two grammatical English sentences. Name the print and one call topic. No "discover", "unmatched", "key numbers". No em dash. Correct spelling. We add the search line, #Shorts and the disclaimer.
 - comment: one pinned question, 10-16 words, no subscribe.
 
 The source text may be German. Write everything in English.`
@@ -121,7 +121,7 @@ export async function generiereEarningsShort(opts: {
   const provider = resolveGeminiFreeTierProvider()
   if (!provider) throw new Error('GEMINI_API_KEY_FREE fehlt — das Script nutzt den Free-Key.')
 
-  const suchphrasen = await sucheYoutubePhrasen(q.ticker, q.firmenname)
+  const suchphrasen = await sucheYoutubePhrasen(q.ticker, q.firmenname, 'earnings')
   if (!suchphrasen.some((p) => /earnings/i.test(p))) suchphrasen.unshift(`${q.ticker} earnings`)
 
   const shots: EarningsShortBild[] = bilderAusJson(opts.estimateBilder)
@@ -211,7 +211,7 @@ export async function generiereEarningsShort(opts: {
   if (!logoUrl) warnungen.push('Kein Firmenlogo gefunden — die Kopfzeile zeigt nur den Ticker.')
   if (!shots.length) warnungen.push('Kein Estimate-Screenshot — Konsens kommt nur aus dem Cache.')
 
-  const titel = earningsTitelFuerUpload(text(roh.title), q.ticker, q.metricValue, suchphrasen)
+  const titel = earningsTitelFuerUpload(text(roh.title), q.ticker, q.metricValue, suchphrasen, q.firmenname)
   return {
     ok: true,
     props,

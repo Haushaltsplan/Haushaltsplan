@@ -8,6 +8,7 @@ import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
 import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
+import { phrasePasst } from '@/lib/youtube/youtube-keywords'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
@@ -29,9 +30,12 @@ function base64ZuMp3(b64: string): Blob {
   return new Blob([arr], { type: 'audio/mpeg' })
 }
 
-function tagsFuerUpload(beschreibung: string, suchphrasen: string[], ticker: string): string[] {
+function tagsFuerUpload(beschreibung: string, suchphrasen: string[], ticker: string, firmenname: string): string[] {
   const hashes = [...beschreibung.matchAll(/#([A-Za-z0-9_]+)/g)].map((m) => m[1])
-  const extra = suchphrasen.map((s) => s.replace(/[^A-Za-z0-9 ]/g, '').trim()).filter(Boolean)
+  const extra = suchphrasen
+    .filter((s) => phrasePasst(s, ticker, firmenname))
+    .map((s) => s.replace(/[^A-Za-z0-9 ]/g, '').trim())
+    .filter(Boolean)
   const unique: string[] = []
   for (const t of [ticker, ...hashes, ...extra]) {
     const n = t.trim()
@@ -370,7 +374,7 @@ export function YoutubeShortsClient() {
         body: JSON.stringify({
           title: titel,
           description: uploadBeschreibung,
-          tags: tagsFuerUpload(uploadBeschreibung, ergebnis?.suchphrasen ?? [], props?.ticker ?? ''),
+          tags: tagsFuerUpload(uploadBeschreibung, ergebnis?.suchphrasen ?? [], props?.ticker ?? '', props?.firmenname ?? ''),
           privacy,
           dateigroesse: mp4Blob.size,
         }),
@@ -792,20 +796,21 @@ export function YoutubeShortsClient() {
                   {uploadTitel.length} Zeichen · Keyword vorne, 28–58, kein # im Titel
                 </p>
                 {ergebnis.suchphrasen.length ? (
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {ergebnis.suchphrasen.map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => setUploadTitel(p.slice(0, 50))}
-                        className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[11px] text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]"
-                      >
-                        {p}
-                      </button>
-                    ))}
+                  <div className="mt-2">
+                    <p className="text-[11px] text-[var(--app-text-muted)]">Suchbegriffe in der Beschreibung, nicht der Titel.</p>
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {ergebnis.suchphrasen.map((p) => (
+                        <span
+                          key={p}
+                          className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[11px] text-[var(--app-text-muted)]"
+                        >
+                          {p}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 ) : (
-                  <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">Keine YouTube-Suchvorschläge — Titel bleibt der Script-Vorschlag.</p>
+                  <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">Keine passenden YouTube-Suchbegriffe — Beschreibung nutzt den Firmennamen.</p>
                 )}
                 <label className="mt-3 block text-xs text-[var(--app-text-muted)]">Beschreibung</label>
                 <textarea value={uploadBeschreibung} onChange={(e) => setUploadBeschreibung(e.target.value)} rows={6} className={`${feldKlasse} mt-1 font-sans`} />

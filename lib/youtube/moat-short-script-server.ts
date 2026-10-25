@@ -207,9 +207,9 @@ Same move for every company: name the threat and stop. Do not explain the mechan
 - Whole spoken script stays under 95 words so the Short lands near 32 seconds.
 
 Also return
-- title: 28-58 characters. First words = ticker or the YouTube search phrase. Curiosity + the hook number if it fits. No ALL-CAPS, no !!, no hashtags. Good: "ASML: why nobody can copy it" / "Visa's 67.4% problem" / "ASML moat in one number".
-- description: two English sentences that expand the title (do not repeat it). Verdict + the hook number. We add the first search line, #Shorts and the disclaimer.
-- comment: one pinned-comment question, 10-16 words, debatable, no subscribe/follow/like.
+- title: 28-58 characters. Start with the company name, not a two-letter ticker. One grammatical clause plus the hook number. No slang ("the tell"), no ALL-CAPS, no hashtags. Good: "Mastercard: why a 58.3% margin is the moat".
+- description: two grammatical English sentences. Name the company, the number, and the moat or the one threat. No "discover", "unmatched", "key numbers", "in this video". No em dash. Correct spelling. We add the search line, #Shorts and the disclaimer.
+- comment: one grammatical question, 10-16 words, debatable, no subscribe/follow/like.
 
 The input data is partly in German. Write everything in English.`
 
@@ -395,7 +395,10 @@ export async function generiereMoatShort(opts: {
   if (zeilen.size < 4) warnungen.push('Nicht alle vier Pfeiler haben einen eigenen Satz bekommen.')
   if (!logoUrl) warnungen.push('Kein drucktaugliches Firmenlogo gefunden — die Business-Szene zeigt nur den Ticker.')
 
-  const titel = titelFuerUpload(text(roh.title), ticker, startMetrik.value, suchphrasen)
+  const titel = titelFuerUpload(text(roh.title), ticker, startMetrik.value, suchphrasen, {
+    firmenname: paket.firmenname,
+    metrikLabel: startMetrik.label,
+  })
   return {
     props,
     metriken,
@@ -410,6 +413,7 @@ export async function generiereMoatShort(opts: {
       startMetrik.value,
       titel,
       suchphrasen,
+      startMetrik.label,
     ),
     kommentar: kommentarFuerUpload(text(roh.comment), verdict, ticker),
     suchphrasen,
