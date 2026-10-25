@@ -3,6 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { EarningsShortsClient } from '@/components/youtube/earnings-shorts.client'
 import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
@@ -19,6 +20,7 @@ import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@
 
 type YtStatus = { configured: boolean; connected: boolean; channelTitle: string | null }
 type YtPrivacy = 'unlisted' | 'private' | 'public'
+type YoutubeModus = 'moat' | 'earnings'
 
 function base64ZuMp3(b64: string): Blob {
   const bin = atob(b64)
@@ -137,6 +139,7 @@ const feldKlasse =
   'w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] focus:outline-none focus:ring-2 focus:ring-red-500/40'
 
 export function YoutubeShortsClient() {
+  const [modus, setModus] = useState<YoutubeModus>('moat')
   const [rohText, setRohText] = useState('')
   const [moatNeu, setMoatNeu] = useState(false)
   const [laedt, setLaedt] = useState(false)
@@ -212,15 +215,20 @@ export function YoutubeShortsClient() {
       .then((j) => setStimmeOk(Boolean(j.configured)))
       .catch(() => setStimmeOk(false))
     const sp = new URLSearchParams(window.location.search)
+    if (sp.get('modus') === 'earnings') setModus('earnings')
     if (sp.get('yt') === 'connected') {
       toast.success('YouTube verbunden.')
-      window.history.replaceState({}, '', window.location.pathname)
+      const next = new URL(window.location.href)
+      next.searchParams.delete('yt')
+      window.history.replaceState({}, '', next.pathname + next.search)
       void ladeYtStatus()
     }
     const err = sp.get('yt_error')
     if (err) {
       toast.error(`YouTube: ${err}`)
-      window.history.replaceState({}, '', window.location.pathname)
+      const next = new URL(window.location.href)
+      next.searchParams.delete('yt_error')
+      window.history.replaceState({}, '', next.pathname + next.search)
     }
   }, [ladeYtStatus])
 
@@ -477,13 +485,49 @@ export function YoutubeShortsClient() {
     setProps((p) => (p ? { ...p, [key]: wert } : p))
   }
 
+  function wechsleModus(next: YoutubeModus) {
+    setModus(next)
+    const u = new URL(window.location.href)
+    if (next === 'earnings') u.searchParams.set('modus', 'earnings')
+    else u.searchParams.delete('modus')
+    window.history.replaceState({}, '', u.pathname + u.search)
+  }
+
   return (
     <PageChrome>
       <PageHero
         eyebrow="YouTube"
-        title="Moat Check Shorts"
-        description="Fundamentaldaten-Export einfügen. Daraus entstehen Moat-Urteil, englisches Script und ein Short, das unsichtbar in sich zurückläuft."
+        title={modus === 'earnings' ? 'Earnings Check Shorts' : 'Moat Check Shorts'}
+        description={
+          modus === 'earnings'
+            ? 'Ticker wählen. Daraus entstehen Beat/Miss, die wichtigen Call-Themen und ein längeres Short im gleichen Look.'
+            : 'Fundamentaldaten-Export einfügen. Daraus entstehen Moat-Urteil, englisches Script und ein Short, das unsichtbar in sich zurückläuft.'
+        }
       />
+      <div className="mb-4 flex gap-2 px-1">
+        <button
+          type="button"
+          onClick={() => wechsleModus('moat')}
+          className={`rounded-xl px-4 py-2 text-sm font-medium ${
+            modus === 'moat'
+              ? 'bg-red-600 text-white'
+              : 'border border-[var(--app-border)] text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]'
+          }`}
+        >
+          Moat Check
+        </button>
+        <button
+          type="button"
+          onClick={() => wechsleModus('earnings')}
+          className={`rounded-xl px-4 py-2 text-sm font-medium ${
+            modus === 'earnings'
+              ? 'bg-red-600 text-white'
+              : 'border border-[var(--app-border)] text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]'
+          }`}
+        >
+          Earnings Check
+        </button>
+      </div>
 
       <section className="app-section-shell">
         <div className="app-surface-card-header flex items-center justify-between px-4 py-2.5 sm:px-5">
@@ -530,6 +574,10 @@ export function YoutubeShortsClient() {
         </div>
       </section>
 
+      {modus === 'earnings' ? <EarningsShortsClient yt={yt} /> : null}
+
+      {modus === 'moat' ? (
+      <>
       <section className="app-section-shell">
         <div className="app-surface-card-header px-4 py-2.5 sm:px-5">
           <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">1 · Export einfügen</h2>
@@ -923,6 +971,8 @@ export function YoutubeShortsClient() {
             </div>
           </section>
         </div>
+      ) : null}
+      </>
       ) : null}
     </PageChrome>
   )

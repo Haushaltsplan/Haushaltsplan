@@ -3,7 +3,7 @@ import { YoutubeShortsClient } from '@/components/youtube/youtube-shorts.client'
 
 export const metadata: Metadata = {
   title: 'YouTube',
-  description: 'Moat-Check-Shorts aus dem Fundamentaldaten-Export erstellen.',
+  description: 'Moat Check und Earnings Check Shorts für YouTube.',
 }
 
 export default function YoutubePage() {

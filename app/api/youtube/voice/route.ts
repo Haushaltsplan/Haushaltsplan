@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
+import { earningsShortSprechzeilen } from '@/lib/youtube/earnings-short-voice'
 import { moatShortSprechzeilen } from '@/lib/youtube/moat-short-voice'
 import { elevenLabsKonfiguriert, erzeugeMoatShortStimme } from '@/lib/youtube/moat-short-voice-server'
+import type { EarningsShortProps } from '@/remotion/earnings-short-types'
 import type { MoatShortProps } from '@/remotion/moat-short-types'
 
 export const runtime = 'nodejs'
@@ -23,11 +25,15 @@ export async function POST(req: Request) {
     } catch {
       return { ok: false as const, fehler: 'Kein gültiges JSON.' }
     }
-    const props = body.props as MoatShortProps | undefined
-    if (!props || typeof props !== 'object' || !props.hook) {
+    const art = body.art === 'earnings' ? 'earnings' : 'moat'
+    const props = body.props
+    if (!props || typeof props !== 'object' || !('hook' in props)) {
       return { ok: false as const, fehler: 'Script-Props fehlen.' }
     }
-    const zeilen = moatShortSprechzeilen(props)
+    const zeilen =
+      art === 'earnings'
+        ? earningsShortSprechzeilen(props as EarningsShortProps)
+        : moatShortSprechzeilen(props as MoatShortProps)
     if (zeilen.length < 3) return { ok: false as const, fehler: 'Zu wenig Sprechtext.' }
     try {
       const stimme = await erzeugeMoatShortStimme(zeilen)

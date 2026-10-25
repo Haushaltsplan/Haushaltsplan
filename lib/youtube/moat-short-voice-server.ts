@@ -1,7 +1,7 @@
 /** ElevenLabs TTS mit Zeichen-Zeiten — eigener Key, nicht Gemini. */
 import 'server-only'
 
-import { moatShortSprechtext, woerterAusZeichen, type MoatShortSprechzeile } from '@/lib/youtube/moat-short-voice'
+import { moatShortSprechtext, woerterAusZeichen, type ShortSprechzeile } from '@/lib/youtube/moat-short-voice'
 import type { MoatShortVoiceWort } from '@/remotion/moat-short-types'
 
 const TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech'
@@ -10,7 +10,7 @@ export function elevenLabsKonfiguriert(): boolean {
   return Boolean(process.env.ELEVENLABS_API_KEY?.trim() && process.env.ELEVENLABS_VOICE_ID?.trim())
 }
 
-export async function erzeugeMoatShortStimme(zeilen: MoatShortSprechzeile[]): Promise<{
+export async function erzeugeMoatShortStimme(zeilen: ShortSprechzeile[]): Promise<{
   audioBase64: string
   woerter: MoatShortVoiceWort[]
 }> {

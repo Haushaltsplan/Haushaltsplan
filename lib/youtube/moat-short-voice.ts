@@ -4,6 +4,8 @@ import type { MoatShortBeatId, MoatShortProps, MoatShortVoiceWort } from '@/remo
 
 export type MoatShortSprechzeile = { id: Exclude<MoatShortBeatId, 'loop'>; text: string }
 
+export type ShortSprechzeile<T extends string = string> = { id: T; text: string }
+
 const PILLAR_IDS = ['pillar0', 'pillar1', 'pillar2', 'pillar3'] as const
 
 export function moatShortSprechzeilen(props: Pick<MoatShortProps, 'hook' | 'hookLoop' | 'business' | 'pillars' | 'crack' | 'closing'>): MoatShortSprechzeile[] {
@@ -21,7 +23,7 @@ export function moatShortSprechzeilen(props: Pick<MoatShortProps, 'hook' | 'hook
   return zeilen.filter((z) => z.text.trim())
 }
 
-export function moatShortSprechtext(zeilen: MoatShortSprechzeile[]): string {
+export function moatShortSprechtext(zeilen: ShortSprechzeile[]): string {
   return zeilen.map((z) => z.text.trim()).join('\n')
 }
 
@@ -64,12 +66,12 @@ function normWort(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9.%]/g, '')
 }
 
-export function sprechzeilenMitZeiten(
-  zeilen: MoatShortSprechzeile[],
+export function sprechzeilenMitZeiten<T extends string>(
+  zeilen: ShortSprechzeile<T>[],
   woerter: MoatShortVoiceWort[],
-): Map<MoatShortSprechzeile['id'], MoatShortVoiceWort[]> | null {
+): Map<T, MoatShortVoiceWort[]> | null {
   if (!woerter.length) return null
-  const map = new Map<MoatShortSprechzeile['id'], MoatShortVoiceWort[]>()
+  const map = new Map<T, MoatShortVoiceWort[]>()
   let i = 0
   for (const z of zeilen) {
     const erwartet = z.text.trim().split(/\s+/).filter(Boolean)
