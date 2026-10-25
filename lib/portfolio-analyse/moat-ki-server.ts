@@ -20,6 +20,7 @@ import {
   MOAT_KAUF_MIN_SCORE,
   MOAT_KAUF_MIN_STARKE_PFEILER,
   MOAT_KAUF_STARKE_SCHWELLE,
+  gesamtScoreAusPfeilern,
   type MoatKiBewertung,
   type MoatKiUrteil,
   type MoatPfeilerBewertung,
@@ -118,8 +119,7 @@ function disziplinAusPfeilern(pfeiler: MoatPfeilerBewertung[]): {
   score: number
 } {
   const scores = pfeiler.map((p) => p.score)
-  const avg = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0
-  const score = Math.round(avg * 10) / 10
+  const score = gesamtScoreAusPfeilern(scores)
   const minOk = scores.every((s) => s >= MOAT_KAUF_MIN_PFEILER)
   const starke = scores.filter((s) => s >= MOAT_KAUF_STARKE_SCHWELLE).length
   const kaufwuerdig =
@@ -179,15 +179,10 @@ function normalisiereBewertung(
   )
 
   const disziplin = disziplinAusPfeilern(pfeiler)
-  const kiScore = clampScore(roh.score)
-  // Regel-Disziplin ist maßgeblich; KI-Boolean kann zu streng sein (alte Prompt-Schwelle).
-  const score = kiScore != null ? Math.round(((kiScore + disziplin.score) / 2) * 10) / 10 : disziplin.score
+  const score = disziplin.score
   const kaufwuerdig = disziplin.kaufwuerdig && score >= MOAT_KAUF_MIN_SCORE
 
-  let urteil = (String(roh.urteil ?? '') as MoatKiUrteil)
-  if (!['tief', 'moderat', 'schwach', 'unklar'].includes(urteil)) {
-    urteil = urteilAusScore(score)
-  }
+  let urteil = urteilAusScore(score)
   if (!kaufwuerdig && urteil === 'tief') urteil = 'moderat'
 
   const szenarien = Array.isArray(roh.zerstoerungsszenarien)
@@ -246,8 +241,7 @@ function kennzahlenKontextAusPaket(paket: FundamentaldatenPaket): string {
 /** Alte Caches an aktuelle Kaufschwellen anpassen (ohne neuen KI-Lauf). */
 export function aktualisiereKaufdisziplin(b: MoatKiBewertung): MoatKiBewertung {
   const disziplin = disziplinAusPfeilern(b.pfeiler ?? [])
-  const score =
-    typeof b.score === 'number' && Number.isFinite(b.score) ? b.score : disziplin.score
+  const score = disziplin.score
   const kaufwuerdig = disziplin.kaufwuerdig && score >= MOAT_KAUF_MIN_SCORE
   let urteil = b.urteil
   if (!kaufwuerdig && urteil === 'tief') urteil = 'moderat'

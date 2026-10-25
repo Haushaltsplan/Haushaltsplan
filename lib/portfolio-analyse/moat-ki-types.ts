@@ -37,6 +37,14 @@ export type MoatKiBewertung = {
   kiModell: string | null
 }
 
+/** Gleich gewichtetes Mittel der vier Pfeiler, eine Nachkommastelle. Der KI-Gesamtscore zählt nicht. */
+export function gesamtScoreAusPfeilern(scores: number[]): number {
+  const werte = scores.filter((s) => Number.isFinite(s)).map((s) => Math.round(s))
+  if (!werte.length) return 0
+  const summe = werte.reduce((a, b) => a + b, 0)
+  return Math.round((summe / werte.length) * 10) / 10
+}
+
 /** Gesamtscore für Quality-Kauf — 7 reicht (skeptische KI straft CapEx/Investitionsphasen oft ab). */
 export const MOAT_KAUF_MIN_SCORE = 7
 export const MOAT_KAUF_MIN_PFEILER = 6

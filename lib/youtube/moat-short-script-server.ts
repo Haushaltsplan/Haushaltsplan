@@ -10,7 +10,7 @@ import {
 } from '@/lib/ki-coach-backend'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { generiereMoatKiBewertung, ladeMoatKiCache } from '@/lib/portfolio-analyse/moat-ki-server'
-import type { MoatKiBewertung, MoatPfeilerId } from '@/lib/portfolio-analyse/moat-ki-types'
+import { gesamtScoreAusPfeilern, type MoatKiBewertung, type MoatPfeilerId } from '@/lib/portfolio-analyse/moat-ki-types'
 import type { MoatShortErgebnis, MoatShortHookVariante, MoatShortMetrik } from '@/lib/youtube/moat-short-types'
 import { sucheYoutubePhrasen } from '@/lib/youtube/youtube-keywords'
 import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
@@ -373,7 +373,7 @@ export async function generiereMoatShort(opts: {
     }),
     crack,
     verdict,
-    score: moat.score,
+    score: gesamtScoreAusPfeilern(moat.pfeiler.map((p) => p.score)),
     closing: start.land,
     musicSrc: null,
     musicGain: 0.5,

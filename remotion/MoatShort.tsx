@@ -16,6 +16,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion'
+import { gesamtScoreAusPfeilern } from '../lib/portfolio-analyse/moat-ki-types'
 import { ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-script'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline, MOAT_SHORT_LOOP_FRAMES } from './moat-short-timeline'
@@ -156,7 +157,11 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
         <CrackSzene />
       </Sequence>
       <Sequence from={verdict.from} durationInFrames={verdict.duration + loopDauer} layout="none">
-        <VerdictSzene verdict={props.verdict} score={props.score} fadeOut={loopBlend} />
+        <VerdictSzene
+          verdict={props.verdict}
+          score={gesamtScoreAusPfeilern(props.pillars.map((p) => p.score))}
+          fadeOut={loopBlend}
+        />
       </Sequence>
       <Sequence from={loopFrom} durationInFrames={loopDauer} layout="none">
         <AbsoluteFill style={{ opacity: loopBlend }}>
@@ -309,13 +314,35 @@ function Kopfzeile({
   )
 }
 
-/** Zählt die Ziffern hoch, Präfix/Suffix bleiben stehen — am Ende exakt der Originalstring. */
-function zaehleHoch(value: string, t: number): string {
-  if (t >= 1) return value
+/** Gleich große Schritte in der angezeigten Genauigkeit. Cubic-Ease überspringt am Anfang viele Zehntel. */
+function zaehleHoch(value: string, schritt: number, schritte: number): string {
+  if (schritt >= schritte) return value
   const m = /^(.*?)(-?\d+(?:\.\d+)?)(.*)$/.exec(value)
   if (!m) return value
-  const nachkomma = (m[2]!.split('.')[1] ?? '').length
-  return `${m[1]}${(Number(m[2]) * t).toFixed(nachkomma)}${m[3]}`
+  const raw = m[2]!
+  const nachkomma = (raw.split('.')[1] ?? '').length
+  const faktor = 10 ** nachkomma
+  const ziel = Math.round(Number(raw) * faktor)
+  const aktuell = Math.round((ziel * Math.max(0, schritt)) / schritte)
+  return `${m[1]}${(aktuell / faktor).toFixed(nachkomma)}${m[3]}`
+}
+
+/** Zielbreite steht, Ziffern wachsen nach links — das Prozentzeichen hüpft nicht. */
+function GezaehlteZahl({ value, schritt, schritte }: { value: string; schritt: number; schritte: number }) {
+  const gezeigt = zaehleHoch(value, schritt, schritte)
+  const ziel = /^(.*?)(-?\d+(?:\.\d+)?)(.*)$/.exec(value)
+  const ist = /^(.*?)(-?\d+(?:\.\d+)?)(.*)$/.exec(gezeigt)
+  if (!ziel || !ist) return <>{gezeigt}</>
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'baseline', justifyContent: 'center', fontVariantNumeric: 'tabular-nums' }}>
+      {ziel[1] ? <span>{ziel[1]}</span> : null}
+      <span style={{ position: 'relative', display: 'inline-block' }}>
+        <span style={{ visibility: 'hidden' }}>{ziel[2]}</span>
+        <span style={{ position: 'absolute', right: 0, top: 0 }}>{ist[2]}</span>
+      </span>
+      {ziel[3] ? <span>{ziel[3]}</span> : null}
+    </span>
+  )
 }
 
 function HookSzene({
@@ -337,13 +364,8 @@ function HookSzene({
   const pop = amJoin
     ? 1
     : spring({ frame: frame - HOOK_ZAHL_AB, fps, config: { damping: 10, mass: 0.35, stiffness: 240 }, durationInFrames: 14 })
-  const zahlT = amJoin
-    ? 1
-    : interpolate(frame, [HOOK_ZAHL_AB, HOOK_ZAHL_FRAME], [0, 1], {
-        extrapolateLeft: 'clamp',
-        extrapolateRight: 'clamp',
-        easing: Easing.out(Easing.cubic),
-      })
+  const zahlSchritte = HOOK_ZAHL_FRAME - HOOK_ZAHL_AB
+  const zahlSchritt = amJoin ? zahlSchritte : Math.max(0, Math.min(zahlSchritte, frame - HOOK_ZAHL_AB))
   const schub = amJoin ? 1 : interpolate(frame, [2, durationInFrames], [1, 1.04], { easing: Easing.out(Easing.quad), extrapolateRight: 'clamp' })
   const teaser = teaserAb == null || ruhe ? 0 : interpolate(frame, [teaserAb, teaserAb + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   const headlineGroesse = headline.length <= 55 ? 78 : headline.length <= 85 ? 66 : 56
@@ -375,7 +397,7 @@ function HookSzene({
       </div>
       <div style={{ width: '100%', marginTop: 90, textAlign: 'center', transform: `scale(${amJoin ? 1 : 1 + (1 - pop) * 0.2})` }}>
         <div style={{ fontSize: value.length > 7 ? 180 : 230, fontWeight: 900, letterSpacing: -8, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-          {zaehleHoch(value, zahlT)}
+          <GezaehlteZahl value={value} schritt={zahlSchritt} schritte={zahlSchritte} />
         </div>
         <div style={{ marginTop: 30, fontFamily: MONO, fontSize: 32, letterSpacing: 7, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
       </div>
