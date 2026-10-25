@@ -18,6 +18,7 @@ import {
   beschreibungFuerUpload,
   kommentarFuerUpload,
   istOffeneBruecke,
+  ohneKennzahlId,
   ohneKiBindestrich,
   saubererHookLoop,
   saubererLand,
@@ -154,6 +155,7 @@ Claim rules
 - 10-14 words. One complete sentence. No dashes.
 - MUST start with the company name or ticker, then a verb. Never start with "At 51.3%" or a question.
 - Contains the chosen metric value exactly as written.
+- Name the metric in English: "a 58.3% operating margin". metricId is a machine key. Never say it. Never write "an ltm_ebit of 58.3%".
 
 ## Story order, do not skip ahead
 1. claim (the number)
@@ -233,8 +235,8 @@ function baueUserPrompt(
     'Destruction scenarios (German):',
     ...moat.zerstoerungsszenarien.map((s) => `- ${s}`),
     '',
-    'Metrics (id: label = exact value). Hook metrics are marked [hook]:',
-    ...metriken.map((m) => `- ${m.id}: ${m.label} = ${m.value}${m.hook ? ' [hook]' : ''}`),
+    'Metrics. metricId is a machine key and must never be spoken. Say the English name, number first:',
+    ...metriken.map((m) => `- ${m.label} = ${m.value} (metricId: ${m.id})${m.hook ? ' [hook]' : ''}`),
     suchphrasen.length
       ? `\nYouTube search suggestions (prefer one in the title if it fits): ${suchphrasen.join(' · ')}`
       : null,
@@ -259,7 +261,7 @@ function text(v: unknown): string {
 }
 
 function sprechtext(v: unknown): string {
-  return ohneKiBindestrich(text(v))
+  return ohneKennzahlId(ohneKiBindestrich(text(v)))
 }
 
 function objekte(v: unknown): Record<string, unknown>[] {

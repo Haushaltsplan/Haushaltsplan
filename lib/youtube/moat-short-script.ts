@@ -99,6 +99,49 @@ export function ohneKiBindestrich(text: string): string {
     .trim()
 }
 
+/** Interne Kennzahl-IDs. Gesprochen wird nur das englische Label. */
+const KENNZAHL_NAME: Record<string, string> = {
+  ltm_brutto: 'gross margin',
+  ltm_ebit: 'operating margin',
+  ltm_roic: 'return on capital',
+  roic_5y_avg: '5-year average ROIC',
+  incremental_roic: 'return on new capital',
+  fcf_conversion: 'FCF conversion',
+  nrr: 'net revenue retention',
+  rev_cagr_5y: '5-year revenue growth',
+  brutto_std_10y: '10-year margin swing',
+  net_debt_ebitda: 'net debt to EBITDA',
+  interest_coverage: 'interest coverage',
+  aktien_verwaesserung: 'share count change',
+  preissetzungsmacht: 'pricing power',
+  replikationsbarriere: 'hard to copy',
+  wechselkosten: 'switching costs',
+  marktdichte: 'market control',
+}
+
+function artikelVor(wert: string): string {
+  return /^(8|11|18)(?:\D|$)/.test(wert) ? 'an' : 'a'
+}
+
+/** „an ltm_ebit of 58.3%“ wird „a 58.3% operating margin“. Gilt für jede Kennzahl-ID. */
+export function ohneKennzahlId(text: string): string {
+  let t = text
+  const ids = Object.keys(KENNZAHL_NAME).sort((a, b) => b.length - a.length)
+  for (const id of ids) {
+    const name = KENNZAHL_NAME[id]!
+    const key = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    t = t.replace(new RegExp(`\\b(?:an?|the)\\s+${key}\\s+of\\s+([\\d.]+%|[\\d.]+\\s*pts|[\\d.]+x)`, 'gi'), (_, wert: string) => {
+      return `${artikelVor(wert)} ${wert} ${name}`
+    })
+    t = t.replace(new RegExp(`\\b${key}\\s+of\\s+([\\d.]+%|[\\d.]+\\s*pts|[\\d.]+x)`, 'gi'), (_, wert: string) => `${wert} ${name}`)
+    t = t.replace(new RegExp(`\\b${key}\\b`, 'gi'), (treffer, offset, ganz) => {
+      const satzanfang = offset === 0 || /[.!?]\s*$/.test(String(ganz).slice(0, Number(offset)))
+      return satzanfang ? name.charAt(0).toUpperCase() + name.slice(1) : name
+    })
+  }
+  return t.replace(/\s+/g, ' ').trim()
+}
+
 /** Kein Schluss-Punkt: sonst hängt TTS eine Pause an und der Loop stockt. */
 export function oeffneSprechende(text: string): string {
   return text.replace(/[.!?…]+$/u, '').replace(/,+$/g, '').trim()
@@ -195,6 +238,8 @@ export function scriptTonWarnungen(texte: string[]): string[] {
   if (fetzen.length) w.push(`Zu kurz, klingt nach Slogan: „${fetzen[0]}“`)
   const zuLang = texte.find((t) => t.replace(/\s+/g, ' ').trim().length > 78)
   if (zuLang) w.push(`Zu lang, der Untertitel bricht: „${zuLang}“`)
+  const feld = alles.match(/\b[a-z][a-z0-9]*_[a-z0-9_]+\b/)
+  if (feld) w.push(`Interner Feldname im Satz: „${feld[0]}“. Sag die Kennzahl auf Englisch.`)
   return w
 }
 

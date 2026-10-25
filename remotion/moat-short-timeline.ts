@@ -30,6 +30,8 @@ const OHNE_CAPTIONS = new Set<MoatShortBeatId>(['hook', 'loop'])
 const CAPTION_MAX_WOERTER = 12
 /** Nur echte Ausreißer splitten. Normale Sätze bleiben ein Block. */
 const CAPTION_MAX_ZEICHEN = 90
+/** Die Landung ist eine Seite, auch wenn „can not“ die Wortgrenze reißt. */
+const LAND_EINE_SEITE = 120
 
 function woerter(text: string): string[] {
   return text.trim().split(/\s+/).filter(Boolean)
@@ -57,7 +59,13 @@ function teileNachLaenge(text: string): string[] {
   return out
 }
 
+function istEinAtemzug(text: string): boolean {
+  return !/[.!?]/.test(text.replace(/[.!?…]+$/u, ''))
+}
+
 export function captionChunks(text: string): string[] {
+  const ganz = text.trim()
+  if (ganz && istEinAtemzug(ganz) && ganz.length <= CAPTION_MAX_ZEICHEN) return [ganz]
   const saetze = text
     .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
@@ -113,7 +121,8 @@ export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimel
     beats.push({ id, text, from: cursor, duration })
 
     if (!OHNE_CAPTIONS.has(id)) {
-      const chunks = captionChunks(text)
+      const ganz = text.trim()
+      const chunks = id === 'verdict' && ganz.length <= LAND_EINE_SEITE ? [ganz] : captionChunks(text)
       const sprechFrames = Math.max(1, Math.round(sprechSek * MOAT_SHORT_FPS))
       const zeichenGesamt = chunks.reduce((s, c) => s + c.length, 0) || 1
       let c = cursor

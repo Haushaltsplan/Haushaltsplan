@@ -9,7 +9,7 @@ import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from 
 import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
-import { scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
+import { ohneKennzahlId, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
 import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
@@ -110,6 +110,18 @@ function pruefeLogo(url: string | null): Promise<string | null> {
   })
 }
 
+function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
+  return {
+    ...p,
+    hook: ohneKennzahlId(p.hook),
+    hookLoop: ohneKennzahlId(p.hookLoop),
+    business: ohneKennzahlId(p.business),
+    crack: ohneKennzahlId(p.crack),
+    closing: ohneKennzahlId(p.closing),
+    pillars: p.pillars.map((x) => ({ ...x, line: ohneKennzahlId(x.line) })),
+  }
+}
+
 const feldKlasse =
   'w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] focus:outline-none focus:ring-2 focus:ring-red-500/40'
 
@@ -122,6 +134,22 @@ export function YoutubeShortsClient() {
   const [renderDatei, setRenderDatei] = useState<string | null>(null)
   const [ergebnis, setErgebnis] = useState<MoatShortErgebnis | null>(null)
   const [props, setProps] = useState<MoatShortProps | null>(null)
+  useEffect(() => {
+    if (!props) return
+    const next = gesprocheneZeilen(props)
+    const zeilenGleich = next.pillars.every((x, i) => x.line === props.pillars[i]?.line)
+    if (
+      next.hook === props.hook &&
+      next.hookLoop === props.hookLoop &&
+      next.business === props.business &&
+      next.crack === props.crack &&
+      next.closing === props.closing &&
+      zeilenGleich
+    ) {
+      return
+    }
+    setProps(next)
+  }, [props])
   const [tracks, setTracks] = useState<string[]>(MOAT_SHORT_KATALOG_PFADE)
   const [musikWahl, setMusikWahl] = useState<string>('auto')
   const [musikPegel, setMusikPegel] = useState(50)
@@ -322,8 +350,18 @@ export function YoutubeShortsClient() {
         return
       }
       const logoUrl = await pruefeLogo(j.props.logoUrl)
-      setErgebnis(j)
-      setProps({ ...j.props, logoUrl })
+      const sauber = gesprocheneZeilen(j.props)
+      setErgebnis({
+        ...j,
+        props: sauber,
+        hookVarianten: j.hookVarianten.map((h) => ({
+          ...h,
+          claim: ohneKennzahlId(h.claim),
+          loop: ohneKennzahlId(h.loop),
+          land: ohneKennzahlId(h.land),
+        })),
+      })
+      setProps({ ...sauber, logoUrl })
       setMp4Blob(null)
       setVideoId(null)
     } catch (e) {

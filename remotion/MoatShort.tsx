@@ -16,7 +16,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion'
-import { ohneKiBindestrich } from '../lib/youtube/moat-short-script'
+import { ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-script'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline, MOAT_SHORT_LOOP_FRAMES } from './moat-short-timeline'
 import { MOAT_SHORT_HEIGHT, type MoatShortBeat, type MoatShortProps, type MoatShortVerdict } from './moat-short-types'
@@ -57,12 +57,12 @@ const PILLAR_ZAHL_FRAME = 15
 function saubereProps(p: MoatShortProps): MoatShortProps {
   return {
     ...p,
-    hook: ohneKiBindestrich(p.hook),
-    hookLoop: ohneKiBindestrich(p.hookLoop),
-    business: ohneKiBindestrich(p.business),
-    crack: ohneKiBindestrich(p.crack),
-    closing: ohneKiBindestrich(p.closing),
-    pillars: p.pillars.map((x) => ({ ...x, line: ohneKiBindestrich(x.line) })),
+    hook: ohneKennzahlId(ohneKiBindestrich(p.hook)),
+    hookLoop: ohneKennzahlId(ohneKiBindestrich(p.hookLoop)),
+    business: ohneKennzahlId(ohneKiBindestrich(p.business)),
+    crack: ohneKennzahlId(ohneKiBindestrich(p.crack)),
+    closing: ohneKennzahlId(ohneKiBindestrich(p.closing)),
+    pillars: p.pillars.map((x) => ({ ...x, line: ohneKennzahlId(ohneKiBindestrich(x.line)) })),
   }
 }
 
