@@ -45,7 +45,7 @@ const VERDICT_SATZ: Record<MoatShortVerdict, string> = {
 }
 
 const KEINE_METRIK = 'none'
-const MAX_WOERTER_GESAMT = 95
+const MAX_WOERTER_GESAMT = 78
 
 function verdictAusUrteil(urteil: MoatKiBewertung['urteil']): MoatShortVerdict {
   if (urteil === 'tief') return 'wide'
@@ -75,7 +75,6 @@ function baueSchema(hookIds: string[], alleIds: string[]) {
           required: ['angle', 'claim', 'loop', 'land', 'metricId'],
         },
       },
-      business: { type: 'string' },
       pillarLines: {
         type: 'array',
         items: {
@@ -93,11 +92,11 @@ function baueSchema(hookIds: string[], alleIds: string[]) {
       description: { type: 'string' },
       comment: { type: 'string' },
     },
-    required: ['hooks', 'business', 'pillarLines', 'crack', 'title', 'description', 'comment'],
+    required: ['hooks', 'pillarLines', 'crack', 'title', 'description', 'comment'],
   } as const
 }
 
-const SYSTEM = `You write the spoken voiceover for "Moat Check", a YouTube Short that judges one company's moat in about 32 seconds.
+const SYSTEM = `You write the spoken voiceover for "Moat Check", a YouTube Short that judges one company's moat in 30 to 35 seconds.
 
 Persona: a grounded, sharp equity analyst talking to another investor over coffee. Complete sentences. Direct. Dry. Specific. You are not a presenter, not a marketer, and not a slogan writer.
 
@@ -149,8 +148,9 @@ Bad land
 - Any land that ends with a period or a finished thought
 
 Land rules
-- 8-12 words, a real clause with a subject, NO metric value.
+- 6-9 words. One clause, one subject, NO metric value, NO second sentence.
 - End on "which is why" or "that's why". Never end with . ! ? and never with a dash.
+- Do not say the score, "wide moat", "narrow moat", or recap the pillars. The stamp already shows the score. After this line the video loops.
 
 Claim rules
 - 10-14 words. One complete sentence. No dashes.
@@ -159,12 +159,12 @@ Claim rules
 - Name the metric in English: "a 58.3% operating margin". metricId is a machine key. Never say it. Never write "an ltm_ebit of 58.3%".
 
 ## Story order, do not skip ahead
+There is no "what they sell" line. Do not describe the business model as its own beat.
 1. claim (the number)
 2. loop (curiosity ONLY)
-3. business
-4. four pillars
-5. crack (FIRST time we name the threat)
-6. land (bridge back into claim)
+3. four pillars
+4. crack (FIRST time we name the threat)
+5. land (one short bridge back into the claim, then stop)
 
 The loop is spoken at second 5, while the hook number is still on screen. It must NOT name the threat, the regulator, a rival, a cap, or why the moat holds. It must NOT say "because" or "banks cannot leave".
 Good loop: "One thing could still break that lock."
@@ -173,7 +173,7 @@ Bad loop: "Regulatory caps threaten the business, but banks cannot leave the net
 ## Each hook
 Write THREE hooks. Each has four fields:
 1. claim, see above.
-2. loop (8-12 words): one complete sentence of curiosity. Same gap in three phrasings. Never the crack.
+2. loop (6-9 words): one complete sentence of curiosity. Same gap in three phrasings. Never the crack.
 3. land, unfinished bridge into THAT claim. No number.
 4. metricId, hook metric whose exact value appears in claim only.
 
@@ -185,19 +185,13 @@ Angles
 ## Rest of the script
 Length is part of the voice. One verb, then stop. A third clause is what forces the line break.
 
-Business, what they sell
-Good: "Mastercard routes digital payments between banks and merchants."
-Bad: "Mastercard operates a global digital payments network connecting banks, merchants, and consumers."
-Same move for every company: one verb, who it is for. Do not add "connecting A, B, and C".
-
 Crack, the one threat
 Good: "Government fee caps and instant payments threaten margins."
 Bad: "Stricter government fee caps and direct account to account payment rails could compress margins."
 Same move for every company: name the threat and stop. Do not explain the mechanism in the same sentence.
 
-- business: 8-11 words, under 70 characters, one complete sentence.
-- pillarLines: one per pillar, 8-11 words, under 75 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none".
-- crack: 8-11 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. It answers the loop. No sign-off.
+- pillarLines: one per pillar, 8-10 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none".
+- crack: 8-10 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. It answers the loop. No sign-off.
 
 ## Hard rules
 - Use ONLY facts and numbers from the data provided. Never invent numbers, customers, market shares, years or events.
@@ -205,7 +199,7 @@ Same move for every company: name the threat and stop. Do not explain the mechan
 - Never open a claim with a question, "Did you know", "In this video", "Let's talk about".
 - No buy/sell/hold advice, no price targets, no emojis, no hashtags in spoken text.
 - Do not speak the score as "X out of 10".
-- Whole spoken script stays under 95 words so the Short lands near 32 seconds.
+- Whole spoken script stays under 78 words. With a slightly brisk voice the Short lands at 30 to 35 seconds.
 
 Also return
 - title: 28-58 characters. Start with the company name, not a two-letter ticker. One grammatical clause plus the hook number. No slang ("the tell"), no ALL-CAPS, no hashtags. Good: "Mastercard: why a 58.3% margin is the moat".
@@ -372,7 +366,7 @@ export async function generiereMoatShort(opts: {
     hookLoop: saubererHookLoop(start.loop, crack),
     metricValue: startMetrik.value,
     metricLabel: startMetrik.label,
-    business: sprechtext(roh.business),
+    business: '',
     pillars: moat.pfeiler.map((p) => {
       const z = zeilen.get(p.id)
       const stat = metriken.find((m) => m.id === z?.metricId)
@@ -399,12 +393,12 @@ export async function generiereMoatShort(opts: {
   const warnungen: string[] = []
   warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue))
   warnungen.push(...scriptStoryWarnungen(props.hookLoop, props.crack))
-  const gesprochen = [props.hook, props.hookLoop, props.business, ...props.pillars.map((p) => p.line), props.crack, props.closing]
+  const gesprochen = [props.hook, props.hookLoop, ...props.pillars.map((p) => p.line), props.crack, props.closing]
   warnungen.push(...scriptTonWarnungen(gesprochen))
   const fremd = fremdeZahlen(gesprochen.join(' '), metriken, scores)
   if (fremd.length) warnungen.push(`Zahlen ohne Quelle im Export: ${fremd.join(', ')} — bitte prüfen oder streichen.`)
   const gesamt = gesprochen.map(woerter).reduce((a, b) => a + b, 0)
-  if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — zu lang für einen Loop unter 30 Sekunden.`)
+  if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — zu lang für 30–35 Sekunden.`)
   if (zeilen.size < 4) warnungen.push('Nicht alle vier Pfeiler haben einen eigenen Satz bekommen.')
   if (!logoUrl) warnungen.push('Kein drucktaugliches Firmenlogo gefunden — die Business-Szene zeigt nur den Ticker.')
 

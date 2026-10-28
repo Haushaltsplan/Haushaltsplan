@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { earningsShortSprechzeilen } from '@/lib/youtube/earnings-short-voice'
 import { moatShortSprechzeilen } from '@/lib/youtube/moat-short-voice'
-import { elevenLabsKonfiguriert, erzeugeMoatShortStimme } from '@/lib/youtube/moat-short-voice-server'
+import { elevenLabsKonfiguriert, erzeugeMoatShortStimme, MOAT_STIMME_SPEED } from '@/lib/youtube/moat-short-voice-server'
 import type { EarningsShortProps } from '@/remotion/earnings-short-types'
 import type { MoatShortProps } from '@/remotion/moat-short-types'
 
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
         : moatShortSprechzeilen(props as MoatShortProps)
     if (zeilen.length < 3) return { ok: false as const, fehler: 'Zu wenig Sprechtext.' }
     try {
-      const stimme = await erzeugeMoatShortStimme(zeilen)
+      const stimme = await erzeugeMoatShortStimme(zeilen, art === 'moat' ? MOAT_STIMME_SPEED : 1)
       return { ok: true as const, ...stimme }
     } catch (e) {
       return { ok: false as const, fehler: e instanceof Error ? e.message : 'Stimme fehlgeschlagen' }

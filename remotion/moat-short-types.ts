@@ -44,7 +44,6 @@ export type MoatShortVoiceWort = { text: string; startMs: number; endMs: number 
 export type MoatShortBeatId =
   | 'hook'
   | 'teaser'
-  | 'business'
   | 'pillar0'
   | 'pillar1'
   | 'pillar2'
@@ -76,7 +75,7 @@ export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
   hookLoop: 'The problem is that one thing could still break that lock.',
   metricValue: '51.3%',
   metricLabel: 'Gross margin',
-  business: 'They sell the lithography tools that print the smallest chips.',
+  business: '',
   pillars: [
     {
       id: 'preissetzungsmacht',
@@ -98,7 +97,7 @@ export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
   crack: 'The real risk is export controls cutting off its biggest customers.',
   verdict: 'wide',
   score: 9,
-  closing: 'There is no second shop that can print these chips, which is why',
+  closing: 'Nobody else can print these chips, which is why',
   musicSrc: null,
   musicGain: 0.5,
   musicTrim: 0,

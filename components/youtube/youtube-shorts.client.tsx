@@ -261,7 +261,7 @@ export function YoutubeShortsClient() {
   const fremd =
     props && ergebnis
       ? fremdeZahlen(
-          [props.hook, props.hookLoop, props.business, ...props.pillars.map((p) => p.line), props.crack, props.closing].join(' '),
+          [props.hook, props.hookLoop, ...props.pillars.map((p) => p.line), props.crack, props.closing].join(' '),
           ergebnis.metriken,
           [ergebnis.moat.score, ...props.pillars.map((p) => p.score)],
         )
@@ -821,11 +821,6 @@ export function YoutubeShortsClient() {
                   </p>
                 ))}
                 {zahlenWarnung ? <p className="text-xs text-amber-300">{zahlenWarnung}</p> : null}
-              </div>
-
-              <div>
-                <label className="text-xs font-medium text-[var(--app-text-muted)]">What they sell</label>
-                <textarea value={props.business} onChange={(e) => setze('business', e.target.value)} rows={2} className={`${feldKlasse} mt-1`} />
               </div>
 
               {props.pillars.map((p, i) => (

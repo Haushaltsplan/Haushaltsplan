@@ -9,19 +9,18 @@ import {
   type MoatShortVoiceWort,
 } from './moat-short-types'
 
-/** Shorts-Tempo: lieber knapp als tot — Guides wollen einen Beat alle 2–3 Sekunden. */
-const WOERTER_PRO_SEKUNDE = 3.25
-const PAUSE_SEKUNDEN = 0.1
+/** Schätzung vor der Stimme: diese Stimme liegt bei ~2,3 Wörtern/s, mal speed 1,15. Mit Wortzeiten gilt die Audiodauer. */
+const WOERTER_PRO_SEKUNDE = 2.6
+const PAUSE_SEKUNDEN = 0.08
 const MIN_SEKUNDEN: Record<Exclude<MoatShortBeatId, 'loop'>, number> = {
-  hook: 2,
-  teaser: 1.1,
-  business: 1.5,
-  pillar0: 1.3,
-  pillar1: 1.3,
-  pillar2: 1.3,
-  pillar3: 1.3,
-  crack: 1.8,
-  verdict: 1.6,
+  hook: 1.6,
+  teaser: 0.9,
+  pillar0: 1.1,
+  pillar1: 1.1,
+  pillar2: 1.1,
+  pillar3: 1.1,
+  crack: 1.4,
+  verdict: 1.1,
 }
 /** Letzte Frames: Hook-Ruhepose, weicher Join in den YouTube-Restart. */
 export const MOAT_SHORT_LOOP_FRAMES = 22

@@ -3,7 +3,7 @@ import { loadFont as loadInterTight } from '@remotion/google-fonts/InterTight'
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono'
 import { Audio } from '@remotion/media'
 import { mouseClick, shutterModern, uiSwitch, whip, whoosh } from '@remotion/sfx'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import {
   AbsoluteFill,
   Easing,
@@ -119,7 +119,6 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
 
   const hook = beat(beats, 'hook')
   const teaser = beats.find((b) => b.id === 'teaser')
-  const business = beat(beats, 'business')
   const p0 = beat(beats, 'pillar0')
   const p3 = beat(beats, 'pillar3')
   const crack = beat(beats, 'crack')
@@ -146,9 +145,6 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
     <AbsoluteFill style={{ backgroundColor: bg, color: TEXT, fontFamily: DISPLAY }}>
       <Sequence from={hook.from} durationInFrames={hook.duration + (teaser?.duration ?? 0)} layout="none">
         <HookSzene headline={props.hook} value={props.metricValue} label={props.metricLabel} teaserAb={teaser ? teaser.from - hook.from : null} />
-      </Sequence>
-      <Sequence from={business.from} durationInFrames={business.duration} layout="none">
-        <BusinessSzene ticker={props.ticker} name={props.firmenname} logoUrl={props.logoUrl} />
       </Sequence>
       <Sequence from={p0.from} durationInFrames={p3.from + p3.duration - p0.from} layout="none">
         <PillarSzene pillars={props.pillars} starts={[0, 1, 2, 3].map((i) => beat(beats, `pillar${i}` as MoatShortBeat['id']).from - p0.from)} />
@@ -216,7 +212,7 @@ function Ton({
   const cues: { from: number; src: string; volume: number }[] = []
   for (const b of beats) {
     if (b.id === 'hook') cues.push({ from: b.from + HOOK_ZAHL_FRAME, src: mouseClick, volume: sfxPegel })
-    if (b.id === 'business') cues.push({ from: Math.max(0, b.from - 4), src: whoosh, volume: sfxPegel })
+    if (b.id === 'pillar0') cues.push({ from: Math.max(0, b.from - 4), src: whoosh, volume: sfxPegel })
     if (b.id.startsWith('pillar')) {
       cues.push({ from: b.from, src: uiSwitch, volume: sfxPegel })
       cues.push({ from: b.from + PILLAR_ZAHL_FRAME, src: mouseClick, volume: sfxPegel })
@@ -400,47 +396,6 @@ function HookSzene({
           <GezaehlteZahl value={value} schritt={zahlSchritt} schritte={zahlSchritte} />
         </div>
         <div style={{ marginTop: 30, fontFamily: MONO, fontSize: 32, letterSpacing: 7, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
-      </div>
-    </AbsoluteFill>
-  )
-}
-
-function BusinessSzene({ ticker, name, logoUrl }: { ticker: string; name: string; logoUrl: string | null }) {
-  const frame = useCurrentFrame()
-  const { fps } = useVideoConfig()
-  const [logoKaputt, setLogoKaputt] = useState(false)
-  const tile = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 12 })
-  const text = spring({ frame: frame - 4, fps, config: { damping: 200 }, durationInFrames: 12 })
-  return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SAFE_TOP, paddingBottom: SAFE_BOTTOM }}>
-      <div
-        style={{
-          width: 340,
-          height: 340,
-          borderRadius: 72,
-          background: logoUrl && !logoKaputt ? '#FFFFFF' : BRAND,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: tile,
-          transform: `translateY(${interpolate(tile, [0, 1], [40, 0])}px)`,
-          boxShadow: '0 30px 80px rgba(0,0,0,0.45)',
-          overflow: 'hidden',
-        }}
-      >
-        {logoUrl && !logoKaputt ? (
-          <Img
-            src={logoSrc(logoUrl)}
-            onError={() => setLogoKaputt(true)}
-            style={{ width: 250, height: 250, objectFit: 'contain' }}
-          />
-        ) : (
-          <span style={{ fontSize: Math.min(100, Math.floor(300 / Math.max(1, ticker.length))), fontWeight: 900, color: BG, letterSpacing: -2 }}>{ticker}</span>
-        )}
-      </div>
-      <div style={{ marginTop: 56, textAlign: 'center', opacity: text, transform: `translateY(${interpolate(text, [0, 1], [24, 0])}px)` }}>
-        <div style={{ fontSize: name.length > 22 ? 70 : 88, fontWeight: 800, letterSpacing: -2, lineHeight: 1.05, maxWidth: 900 }}>{name}</div>
-        <div style={{ marginTop: 18, fontFamily: MONO, fontSize: 32, letterSpacing: 6, color: MUTED }}>WHAT THEY SELL</div>
       </div>
     </AbsoluteFill>
   )

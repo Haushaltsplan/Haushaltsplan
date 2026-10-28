@@ -195,11 +195,19 @@ export function istOffeneBruecke(land: string, value?: string): boolean {
   return BRUECKE_ENDE.test(t)
 }
 
-/** Letzter Satz vor dem Restart. Offene Brücke in den Hook, keine Zahl, kein Abschied. */
+/** Letzter Satz vor dem Restart. Eine kurze Brücke, keine zweite Schlussrunde. */
 export function saubererLand(land: string, verdict: MoatShortVerdict, value: string): string {
   const t = oeffneSprechende(ohneKiBindestrich(land))
-  if (istOffeneBruecke(t, value)) return t
-  if (t && !ABSCHIED.test(t) && !/\bout of 10\b/i.test(t) && !(value && t.includes(value)) && !ZUSAMMENFASSUNG.test(t)) {
+  const woerter = t.split(/\s+/).filter(Boolean).length
+  if (istOffeneBruecke(t, value) && woerter <= 10) return t
+  if (
+    t &&
+    woerter <= 7 &&
+    !ABSCHIED.test(t) &&
+    !/\bout of 10\b/i.test(t) &&
+    !(value && t.includes(value)) &&
+    !ZUSAMMENFASSUNG.test(t)
+  ) {
     return `${t}, which is why`
   }
   return fallbackLand(verdict, value)

@@ -5,12 +5,17 @@ import { moatShortSprechtext, woerterAusZeichen, type ShortSprechzeile } from '@
 import type { MoatShortVoiceWort } from '@/remotion/moat-short-types'
 
 const TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech'
+/** ElevenLabs speed: 0,7–1,2. 1,15 zieht Moat-Shorts in das 30–35-Sekunden-Fenster. */
+export const MOAT_STIMME_SPEED = 1.15
 
 export function elevenLabsKonfiguriert(): boolean {
   return Boolean(process.env.ELEVENLABS_API_KEY?.trim() && process.env.ELEVENLABS_VOICE_ID?.trim())
 }
 
-export async function erzeugeMoatShortStimme(zeilen: ShortSprechzeile[]): Promise<{
+export async function erzeugeMoatShortStimme(
+  zeilen: ShortSprechzeile[],
+  speed = 1,
+): Promise<{
   audioBase64: string
   woerter: MoatShortVoiceWort[]
 }> {
@@ -31,7 +36,11 @@ export async function erzeugeMoatShortStimme(zeilen: ShortSprechzeile[]): Promis
     body: JSON.stringify({
       text,
       model_id: process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2',
-      voice_settings: { stability: 0.42, similarity_boost: 0.78 },
+      voice_settings: {
+        stability: 0.42,
+        similarity_boost: 0.78,
+        speed: Math.min(1.2, Math.max(0.7, speed)),
+      },
     }),
     signal: AbortSignal.timeout(45_000),
   })
