@@ -22,7 +22,7 @@ export async function starteYoutubeUpload(opts: {
     snippet: {
       title: opts.title.slice(0, 100),
       description: opts.description.slice(0, 4900),
-      tags: opts.tags.slice(0, 8),
+      tags: opts.tags.slice(0, 30),
       categoryId: '27',
     },
     status: {

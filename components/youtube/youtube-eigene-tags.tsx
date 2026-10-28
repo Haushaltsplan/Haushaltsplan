@@ -1,29 +1,50 @@
 'use client'
 
 import { useState } from 'react'
-import { tagBereinigen } from '@/lib/youtube/youtube-tags'
+import { tagBereinigen, tagsSichtbar } from '@/lib/youtube/youtube-tags'
 
-export function YoutubeEigeneTags({ tags, onChange }: { tags: string[]; onChange: (tags: string[]) => void }) {
+export function YoutubeEigeneTags({
+  eigene,
+  onEigene,
+  automatisch,
+  ohne,
+  onOhne,
+}: {
+  eigene: string[]
+  onEigene: (tags: string[]) => void
+  automatisch: string[]
+  ohne: string[]
+  onOhne: (tags: string[]) => void
+}) {
   const [text, setText] = useState('')
+  const liste = tagsSichtbar(automatisch, eigene, ohne)
 
   function hinzu(roh = text) {
-    const neu = roh
-      .split(/[,;\n]/)
-      .map(tagBereinigen)
-      .filter(Boolean)
+    const neu = roh.split(/[,;\n]/).map(tagBereinigen).filter(Boolean)
     if (!neu.length) return
-    const next = [...tags]
+    const next = [...eigene]
+    const wieder = ohne.filter((w) => !neu.some((n) => n.toLowerCase() === w.toLowerCase()))
+    if (wieder.length !== ohne.length) onOhne(wieder)
     for (const tag of neu) {
+      if (liste.some((t) => t.toLowerCase() === tag.toLowerCase())) continue
       if (next.some((t) => t.toLowerCase() === tag.toLowerCase())) continue
       next.push(tag)
     }
-    onChange(next)
+    onEigene(next)
     setText('')
+  }
+
+  function entfernen(tag: string) {
+    if (eigene.some((t) => t.toLowerCase() === tag.toLowerCase())) {
+      onEigene(eigene.filter((t) => t.toLowerCase() !== tag.toLowerCase()))
+      return
+    }
+    if (!ohne.some((t) => t.toLowerCase() === tag.toLowerCase())) onOhne([...ohne, tag])
   }
 
   return (
     <div className="mt-3">
-      <label className="block text-xs text-[var(--app-text-muted)]">Eigene Tags</label>
+      <label className="block text-xs font-medium text-[var(--app-text)]">Tags</label>
       <div className="mt-1 flex gap-2">
         <input
           value={text}
@@ -39,27 +60,30 @@ export function YoutubeEigeneTags({ tags, onChange }: { tags: string[]; onChange
         <button
           type="button"
           onClick={() => hinzu()}
-          className="shrink-0 rounded-lg border border-[var(--app-border)] px-3 py-1 text-xs text-[var(--app-text-muted)]"
+          className="shrink-0 rounded-lg border border-[var(--app-border)] px-3 py-1 text-xs text-[var(--app-text)]"
         >
           Hinzufügen
         </button>
       </div>
-      {tags.length ? (
+      {liste.length ? (
         <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {tags.map((tag) => (
+          {liste.map((tag) => (
             <button
               key={tag}
               type="button"
-              onClick={() => onChange(tags.filter((t) => t !== tag))}
-              className="rounded-full border border-[var(--app-border)] px-2 py-0.5 text-[11px] text-[var(--app-text)]"
+              onClick={() => entfernen(tag)}
+              className="rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-0.5 text-[11px] text-[var(--app-text)]"
             >
               {tag} ×
             </button>
           ))}
         </div>
       ) : (
-        <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">Komma oder Enter. Die Tags kommen zusätzlich zu Hashtags und Suchbegriffen.</p>
+        <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">Noch keine Tags.</p>
       )}
+      <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
+        Komma oder Enter fügt hinzu. Klick auf einen Tag entfernt ihn. Diese Liste geht so zu YouTube.
+      </p>
     </div>
   )
 }

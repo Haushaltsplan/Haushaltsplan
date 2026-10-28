@@ -11,7 +11,7 @@ import { gesamtScoreAusPfeilern } from '@/lib/portfolio-analyse/moat-ki-types'
 import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
 import { musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { phrasePasst } from '@/lib/youtube/youtube-keywords'
-import { tagsZusammen } from '@/lib/youtube/youtube-tags'
+import { tagsSichtbar } from '@/lib/youtube/youtube-tags'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
@@ -46,7 +46,7 @@ function tagsFuerUpload(
     .filter((s) => phrasePasst(s, ticker, firmenname))
     .map((s) => s.replace(/[^A-Za-z0-9 ]/g, '').trim())
     .filter(Boolean)
-  return tagsZusammen([ticker, ...hashes, ...extra], eigene)
+  return tagsSichtbar([ticker, ...hashes, ...extra], eigene, [])
 }
 
 const WINKEL_LABEL: Record<string, string> = {
@@ -196,6 +196,7 @@ export function YoutubeShortsClient() {
   const [uploadBeschreibung, setUploadBeschreibung] = useState('')
   const [uploadKommentar, setUploadKommentar] = useState('')
   const [eigeneTags, setEigeneTags] = useState<string[]>([])
+  const [ohneTags, setOhneTags] = useState<string[]>([])
   const [stimmeOk, setStimmeOk] = useState(false)
   const [stimmeLaedt, setStimmeLaedt] = useState(false)
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null)
@@ -255,6 +256,8 @@ export function YoutubeShortsClient() {
   const musik = musikWahl === 'auto' ? automatisch : musikWahl || null
   const track = musik ? musikTrack(musik) : null
   const sprechFp = props ? moatShortSprechFingerprint(props) : ''
+  const autoTags = tagsFuerUpload(uploadBeschreibung, ergebnis?.suchphrasen ?? [], props?.ticker ?? '', props?.firmenname ?? '', [])
+  const youtubeTags = tagsSichtbar(autoTags, eigeneTags, ohneTags)
   const stimmePasst = Boolean(props?.voiceSrc && stimmeFp === sprechFp)
   const fertig = props
     ? {
@@ -388,13 +391,7 @@ export function YoutubeShortsClient() {
         body: JSON.stringify({
           title: titel,
           description: uploadBeschreibung,
-          tags: tagsFuerUpload(
-            uploadBeschreibung,
-            ergebnis?.suchphrasen ?? [],
-            props?.ticker ?? '',
-            props?.firmenname ?? '',
-            eigeneTags,
-          ),
+          tags: youtubeTags,
           privacy,
           dateigroesse: mp4Blob.size,
         }),
@@ -919,7 +916,13 @@ export function YoutubeShortsClient() {
                 )}
                 <label className="mt-3 block text-xs text-[var(--app-text-muted)]">Beschreibung</label>
                 <textarea value={uploadBeschreibung} onChange={(e) => setUploadBeschreibung(e.target.value)} rows={6} className={`${feldKlasse} mt-1 font-sans`} />
-                <YoutubeEigeneTags tags={eigeneTags} onChange={setEigeneTags} />
+                <YoutubeEigeneTags
+                  eigene={eigeneTags}
+                  onEigene={setEigeneTags}
+                  automatisch={autoTags}
+                  ohne={ohneTags}
+                  onOhne={setOhneTags}
+                />
                 <label className="mt-3 block text-xs text-[var(--app-text-muted)]">Anzupinnender Kommentar</label>
                 <input value={uploadKommentar} onChange={(e) => setUploadKommentar(e.target.value)} className={`${feldKlasse} mt-1`} />
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -1036,6 +1039,13 @@ export function YoutubeShortsClient() {
                   {rendert ? 'läuft im Browser' : mp4Blob ? 'bereit zum Upload' : 'heruntergeladen'}: <code>{renderDatei}</code>
                 </p>
               ) : null}
+              <YoutubeEigeneTags
+                eigene={eigeneTags}
+                onEigene={setEigeneTags}
+                automatisch={autoTags}
+                ohne={ohneTags}
+                onOhne={setOhneTags}
+              />
               <label className="block text-xs font-medium text-[var(--app-text-muted)]">Sichtbarkeit</label>
               <select value={privacy} onChange={(e) => setPrivacy(e.target.value as YtPrivacy)} className={`${feldKlasse} text-xs`}>
                 <option value="unlisted">Unlisted — Link kennt nur ihr</option>

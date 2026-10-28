@@ -17,3 +17,11 @@ export function tagsZusammen(automatisch: string[], eigene: string[]): string[] 
   }
   return unique
 }
+
+export function tagsSichtbar(automatisch: string[], eigene: string[], ohne: string[]): string[] {
+  const weg = new Set(ohne.map((t) => t.toLowerCase()))
+  return tagsZusammen(
+    automatisch.filter((t) => !weg.has(t.toLowerCase())),
+    eigene,
+  )
+}

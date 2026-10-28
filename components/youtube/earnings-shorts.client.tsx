@@ -19,7 +19,7 @@ import type { EarningsShortAntwort, EarningsShortErgebnis } from '@/lib/youtube/
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { ohneKennzahlId } from '@/lib/youtube/moat-short-script'
 import { phrasePasst } from '@/lib/youtube/youtube-keywords'
-import { tagsZusammen } from '@/lib/youtube/youtube-tags'
+import { tagsSichtbar } from '@/lib/youtube/youtube-tags'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import {
   EARNINGS_SHORT_DEFAULT_PROPS,
@@ -50,7 +50,7 @@ function tagsFuerUpload(
     .filter((s) => phrasePasst(s, ticker, firmenname))
     .map((s) => s.replace(/[^A-Za-z0-9 ]/g, '').trim())
     .filter(Boolean)
-  return tagsZusammen([ticker, ...hashes, ...extra], eigene)
+  return tagsSichtbar([ticker, ...hashes, ...extra], eigene, [])
 }
 
 const EarningsShortPreview = dynamic(() => import('@/components/youtube/earnings-short-preview.client'), {
@@ -129,6 +129,7 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
   const [uploadBeschreibung, setUploadBeschreibung] = useState('')
   const [uploadKommentar, setUploadKommentar] = useState('')
   const [eigeneTags, setEigeneTags] = useState<string[]>([])
+  const [ohneTags, setOhneTags] = useState<string[]>([])
   const [stimmeOk, setStimmeOk] = useState(false)
   const [stimmeLaedt, setStimmeLaedt] = useState(false)
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null)
@@ -155,6 +156,8 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
   const musik = musikWahl === 'auto' ? automatisch : musikWahl || null
   const track = musik ? musikTrack(musik) : null
   const sprechFp = props ? earningsShortSprechFingerprint(props) : ''
+  const autoTags = tagsFuerUpload(uploadBeschreibung, ergebnis?.suchphrasen ?? [], props?.ticker ?? '', props?.firmenname ?? '', [])
+  const youtubeTags = tagsSichtbar(autoTags, eigeneTags, ohneTags)
   const stimmePasst = Boolean(props?.voiceSrc && stimmeFp === sprechFp)
   const fertig = props
     ? {
@@ -245,13 +248,7 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
         body: JSON.stringify({
           title: titel,
           description: uploadBeschreibung,
-          tags: tagsFuerUpload(
-            uploadBeschreibung,
-            ergebnis?.suchphrasen ?? [],
-            props?.ticker ?? '',
-            props?.firmenname ?? '',
-            eigeneTags,
-          ),
+          tags: youtubeTags,
           privacy,
           dateigroesse: mp4Blob.size,
         }),
@@ -510,7 +507,13 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
                 Beschreibung
                 <textarea value={uploadBeschreibung} onChange={(e) => setUploadBeschreibung(e.target.value)} rows={6} className={`${feldKlasse} mt-1`} />
               </label>
-              <YoutubeEigeneTags tags={eigeneTags} onChange={setEigeneTags} />
+              <YoutubeEigeneTags
+                eigene={eigeneTags}
+                onEigene={setEigeneTags}
+                automatisch={autoTags}
+                ohne={ohneTags}
+                onOhne={setOhneTags}
+              />
               <label className="block text-xs font-medium text-[var(--app-text-muted)]">
                 Angepinnter Kommentar
                 <input value={uploadKommentar} onChange={(e) => setUploadKommentar(e.target.value)} className={`${feldKlasse} mt-1`} />
@@ -602,6 +605,13 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
                   {rendert ? 'läuft im Browser' : mp4Blob ? 'bereit zum Upload' : 'heruntergeladen'}: <code>{renderDatei}</code>
                 </p>
               ) : null}
+              <YoutubeEigeneTags
+                eigene={eigeneTags}
+                onEigene={setEigeneTags}
+                automatisch={autoTags}
+                ohne={ohneTags}
+                onOhne={setOhneTags}
+              />
               <label className="block text-xs font-medium text-[var(--app-text-muted)]">Sichtbarkeit</label>
               <select value={privacy} onChange={(e) => setPrivacy(e.target.value as YtPrivacy)} className={`${feldKlasse} text-xs`}>
                 <option value="unlisted">Unlisted — Link kennt nur ihr</option>
