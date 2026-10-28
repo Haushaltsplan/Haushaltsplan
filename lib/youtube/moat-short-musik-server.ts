@@ -28,6 +28,7 @@ export async function stelleTracksSicher(): Promise<void> {
   const zielOrdner = ordner()
   await fs.mkdir(zielOrdner, { recursive: true })
   for (const quelle of MOAT_SHORT_MUSIK_QUELLEN) {
+    if (!/\.mp3(\?|$)/i.test(quelle.url)) continue
     const ziel = path.join(zielOrdner, quelle.datei)
     if (!(await fehltNoch(ziel))) continue
     const res = await fetch(quelle.url, { redirect: 'follow' })
@@ -47,7 +48,7 @@ export async function ladeMusikdatei(dateiname: string): Promise<{ bytes: Buffer
     const bytes = await fs.readFile(lokal)
     if (bytes.length >= 80_000) return { bytes, typ: 'audio/mpeg' }
   }
-  const quelle = MOAT_SHORT_MUSIK_QUELLEN.find((t) => t.datei === dateiname)
+  const quelle = MOAT_SHORT_MUSIK_QUELLEN.find((t) => t.datei === dateiname && /\.mp3(\?|$)/i.test(t.url))
   if (!quelle) return null
   const res = await fetch(quelle.url, { redirect: 'follow' })
   if (!res.ok) return null

@@ -4,12 +4,14 @@ import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { EarningsShortsClient } from '@/components/youtube/earnings-shorts.client'
+import { YoutubeEigeneTags } from '@/components/youtube/youtube-eigene-tags'
 import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { gesamtScoreAusPfeilern } from '@/lib/portfolio-analyse/moat-ki-types'
 import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
 import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { phrasePasst } from '@/lib/youtube/youtube-keywords'
+import { tagsZusammen } from '@/lib/youtube/youtube-tags'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
@@ -32,20 +34,19 @@ function base64ZuMp3(b64: string): Blob {
   return new Blob([arr], { type: 'audio/mpeg' })
 }
 
-function tagsFuerUpload(beschreibung: string, suchphrasen: string[], ticker: string, firmenname: string): string[] {
+function tagsFuerUpload(
+  beschreibung: string,
+  suchphrasen: string[],
+  ticker: string,
+  firmenname: string,
+  eigene: string[] = [],
+): string[] {
   const hashes = [...beschreibung.matchAll(/#([A-Za-z0-9_]+)/g)].map((m) => m[1])
   const extra = suchphrasen
     .filter((s) => phrasePasst(s, ticker, firmenname))
     .map((s) => s.replace(/[^A-Za-z0-9 ]/g, '').trim())
     .filter(Boolean)
-  const unique: string[] = []
-  for (const t of [ticker, ...hashes, ...extra]) {
-    const n = t.trim()
-    if (!n || unique.some((u) => u.toLowerCase() === n.toLowerCase())) continue
-    unique.push(n)
-    if (unique.length >= 8) break
-  }
-  return unique
+  return tagsZusammen([ticker, ...hashes, ...extra], eigene)
 }
 
 const WINKEL_LABEL: Record<string, string> = {
@@ -185,6 +186,7 @@ export function YoutubeShortsClient() {
   const [uploadTitel, setUploadTitel] = useState('')
   const [uploadBeschreibung, setUploadBeschreibung] = useState('')
   const [uploadKommentar, setUploadKommentar] = useState('')
+  const [eigeneTags, setEigeneTags] = useState<string[]>([])
   const [stimmeOk, setStimmeOk] = useState(false)
   const [stimmeLaedt, setStimmeLaedt] = useState(false)
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null)
@@ -377,7 +379,13 @@ export function YoutubeShortsClient() {
         body: JSON.stringify({
           title: titel,
           description: uploadBeschreibung,
-          tags: tagsFuerUpload(uploadBeschreibung, ergebnis?.suchphrasen ?? [], props?.ticker ?? '', props?.firmenname ?? ''),
+          tags: tagsFuerUpload(
+            uploadBeschreibung,
+            ergebnis?.suchphrasen ?? [],
+            props?.ticker ?? '',
+            props?.firmenname ?? '',
+            eigeneTags,
+          ),
           privacy,
           dateigroesse: mp4Blob.size,
         }),
@@ -902,6 +910,7 @@ export function YoutubeShortsClient() {
                 )}
                 <label className="mt-3 block text-xs text-[var(--app-text-muted)]">Beschreibung</label>
                 <textarea value={uploadBeschreibung} onChange={(e) => setUploadBeschreibung(e.target.value)} rows={6} className={`${feldKlasse} mt-1 font-sans`} />
+                <YoutubeEigeneTags tags={eigeneTags} onChange={setEigeneTags} />
                 <label className="mt-3 block text-xs text-[var(--app-text-muted)]">Anzupinnender Kommentar</label>
                 <input value={uploadKommentar} onChange={(e) => setUploadKommentar(e.target.value)} className={`${feldKlasse} mt-1`} />
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -974,11 +983,11 @@ export function YoutubeShortsClient() {
               ) : null}
               {track?.credit ? (
                 <p className="text-xs text-[var(--app-text-muted)]">
-                  Auto: Pulse zum Urteil (wide = Chase Pulse). 50 % = −24 dB unter der Stimme. Lizenz CC BY 4.0, Namensnennung in der Beschreibung.
+                  Automatisch zum Urteil. 50 % = −24 dB unter der Stimme. Namensnennung ist nicht nötig, der Link steht trotzdem in der Beschreibung. MP3s aus der Audio Library: beat-your-competition.mp3, know-myself.mp3, brain-trust.mp3.
                 </p>
               ) : null}
               {!tracks.length ? (
-                <p className="text-xs text-[var(--app-text-muted)]">Musik wird beim ersten Laden heruntergeladen. Seite ggf. neu laden.</p>
+                <p className="text-xs text-[var(--app-text-muted)]">Keine Musikdateien gefunden.</p>
               ) : null}
               <label className="flex items-center gap-2 text-xs text-[var(--app-text-muted)]">
                 <input type="checkbox" checked={sfx} onChange={(e) => setSfx(e.target.checked)} />

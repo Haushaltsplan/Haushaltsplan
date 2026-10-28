@@ -22,10 +22,8 @@ const MIN_SEKUNDEN: Record<Exclude<MoatShortBeatId, 'loop'>, number> = {
   crack: 1.4,
   verdict: 1.1,
 }
-/** Letzte Frames: Hook-Ruhepose, weicher Join in den YouTube-Restart. */
-export const MOAT_SHORT_LOOP_FRAMES = 22
-/** Untertitel müssen vor dem Join weg sein — sonst sieht man den Cut. */
-const CAPTION_ENDE_VOR_LOOP = 8
+/** Kein Nachlauf. Der letzte Frame ist das Ende von „why“, YouTube setzt den Hook davor. */
+export const MOAT_SHORT_LOOP_FRAMES = 0
 /** Der Hook steht als Überschrift im Bild — doppelte Untertitel wären nur Lärm. */
 const OHNE_CAPTIONS = new Set<MoatShortBeatId>(['hook', 'loop'])
 const CAPTION_MAX_WOERTER = 12
@@ -156,7 +154,8 @@ function timelineAusAlignment(props: MoatShortProps): MoatShortTimeline | null {
     return i === 0 ? 0 : msZuFrame(w[0]!.startMs)
   })
   const letzte = map.get(zeilen[zeilen.length - 1]!.id)!
-  const sprechEnde = msZuFrame(letzte[letzte.length - 1]!.endMs) + Math.round(0.12 * MOAT_SHORT_FPS)
+  const endeMs = letzte[letzte.length - 1]!.endMs
+  const sprechEnde = Math.max(1, Math.floor((endeMs / 1000) * MOAT_SHORT_FPS) + 1)
 
   for (let i = 0; i < zeilen.length; i++) {
     const z = zeilen[i]!
@@ -191,12 +190,10 @@ function timelineGeschaetzt(props: MoatShortProps): MoatShortTimeline {
 }
 
 function schliesseTimeline(beats: MoatShortBeat[], captions: MoatShortCaption[], cursor: number): MoatShortTimeline {
-  beats.push({ id: 'loop', text: '', from: cursor, duration: MOAT_SHORT_LOOP_FRAMES })
-  const durationInFrames = cursor + MOAT_SHORT_LOOP_FRAMES
-  const captionEnde = durationInFrames - CAPTION_ENDE_VOR_LOOP
+  const durationInFrames = Math.max(1, cursor)
   const saubereCaptions = captions
-    .map((c) => ({ ...c, duration: Math.min(c.duration, captionEnde - c.from) }))
-    .filter((c) => c.duration >= 6)
+    .map((c) => ({ ...c, duration: Math.min(c.duration, durationInFrames - c.from) }))
+    .filter((c) => c.duration >= 6 && c.from < durationInFrames)
   return { beats, captions: saubereCaptions, durationInFrames }
 }
 

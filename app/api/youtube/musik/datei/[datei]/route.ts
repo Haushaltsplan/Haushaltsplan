@@ -1,5 +1,5 @@
 /**
- * Liefert einen Katalog-Track (lokal oder von incompetech). Öffentlich, damit
+ * Liefert einen Katalog-Track aus public/youtube-music. Öffentlich, damit
  * <audio> und der Remotion-Player ohne Bearer-Header spielen können.
  */
 import { NextResponse } from 'next/server'

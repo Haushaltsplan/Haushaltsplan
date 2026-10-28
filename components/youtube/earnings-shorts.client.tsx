@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PaAktienSucheInput } from '@/components/portfolio-analyse/pa-aktien-suche-input'
+import { YoutubeEigeneTags } from '@/components/youtube/youtube-eigene-tags'
 import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import {
@@ -18,6 +19,7 @@ import type { EarningsShortAntwort, EarningsShortErgebnis } from '@/lib/youtube/
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { ohneKennzahlId } from '@/lib/youtube/moat-short-script'
 import { phrasePasst } from '@/lib/youtube/youtube-keywords'
+import { tagsZusammen } from '@/lib/youtube/youtube-tags'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import {
   EARNINGS_SHORT_DEFAULT_PROPS,
@@ -36,20 +38,19 @@ function base64ZuMp3(b64: string): Blob {
   return new Blob([arr], { type: 'audio/mpeg' })
 }
 
-function tagsFuerUpload(beschreibung: string, suchphrasen: string[], ticker: string, firmenname: string): string[] {
+function tagsFuerUpload(
+  beschreibung: string,
+  suchphrasen: string[],
+  ticker: string,
+  firmenname: string,
+  eigene: string[] = [],
+): string[] {
   const hashes = [...beschreibung.matchAll(/#([A-Za-z0-9_]+)/g)].map((m) => m[1])
   const extra = suchphrasen
     .filter((s) => phrasePasst(s, ticker, firmenname))
     .map((s) => s.replace(/[^A-Za-z0-9 ]/g, '').trim())
     .filter(Boolean)
-  const unique: string[] = []
-  for (const t of [ticker, ...hashes, ...extra]) {
-    const n = t.trim()
-    if (!n || unique.some((u) => u.toLowerCase() === n.toLowerCase())) continue
-    unique.push(n)
-    if (unique.length >= 8) break
-  }
-  return unique
+  return tagsZusammen([ticker, ...hashes, ...extra], eigene)
 }
 
 const EarningsShortPreview = dynamic(() => import('@/components/youtube/earnings-short-preview.client'), {
@@ -127,6 +128,7 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
   const [uploadTitel, setUploadTitel] = useState('')
   const [uploadBeschreibung, setUploadBeschreibung] = useState('')
   const [uploadKommentar, setUploadKommentar] = useState('')
+  const [eigeneTags, setEigeneTags] = useState<string[]>([])
   const [stimmeOk, setStimmeOk] = useState(false)
   const [stimmeLaedt, setStimmeLaedt] = useState(false)
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null)
@@ -149,7 +151,7 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
       .catch(() => setStimmeOk(false))
   }, [])
 
-  const automatisch = tracks.find((t) => t.endsWith('night-break.mp3')) ?? trackZumUrteil('narrow', tracks)
+  const automatisch = trackZumUrteil('narrow', tracks)
   const musik = musikWahl === 'auto' ? automatisch : musikWahl || null
   const track = musik ? musikTrack(musik) : null
   const sprechFp = props ? earningsShortSprechFingerprint(props) : ''
@@ -248,6 +250,7 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
             ergebnis?.suchphrasen ?? [],
             props?.ticker ?? '',
             props?.firmenname ?? '',
+            eigeneTags,
           ),
           privacy,
           dateigroesse: mp4Blob.size,
@@ -507,6 +510,7 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
                 Beschreibung
                 <textarea value={uploadBeschreibung} onChange={(e) => setUploadBeschreibung(e.target.value)} rows={6} className={`${feldKlasse} mt-1`} />
               </label>
+              <YoutubeEigeneTags tags={eigeneTags} onChange={setEigeneTags} />
               <label className="block text-xs font-medium text-[var(--app-text-muted)]">
                 Angepinnter Kommentar
                 <input value={uploadKommentar} onChange={(e) => setUploadKommentar(e.target.value)} className={`${feldKlasse} mt-1`} />
@@ -554,7 +558,7 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
               ) : null}
               {track?.credit ? (
                 <p className="text-xs text-[var(--app-text-muted)]">
-                  Auto: Night Break. 50 % = −24 dB unter der Stimme. Lizenz CC BY 4.0.
+                  Automatisch zum Urteil. 50 % = −24 dB unter der Stimme. Der Link steht in der Beschreibung.
                 </p>
               ) : null}
               <label className="flex items-center gap-2 text-xs text-[var(--app-text-muted)]">

@@ -19,7 +19,7 @@ import {
 import { gesamtScoreAusPfeilern } from '../lib/portfolio-analyse/moat-ki-types'
 import { ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-script'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
-import { berechneMoatShortTimeline, MOAT_SHORT_LOOP_FRAMES } from './moat-short-timeline'
+import { berechneMoatShortTimeline } from './moat-short-timeline'
 import { MOAT_SHORT_HEIGHT, type MoatShortBeat, type MoatShortProps, type MoatShortVerdict } from './moat-short-types'
 
 const { fontFamily: DISPLAY } = loadInterTight('normal', { weights: ['600', '800', '900'], subsets: ['latin'] })
@@ -123,14 +123,7 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
   const p3 = beat(beats, 'pillar3')
   const crack = beat(beats, 'crack')
   const verdict = beat(beats, 'verdict')
-  const loop = beats.find((b) => b.id === 'loop')
   const crackEnde = crack.from + crack.duration
-  const loopFrom = loop?.from ?? durationInFrames - MOAT_SHORT_LOOP_FRAMES
-  const loopDauer = loop?.duration ?? MOAT_SHORT_LOOP_FRAMES
-  const loopBlend = interpolate(frame, [loopFrom, loopFrom + 18], [0, 1], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  })
 
   const bg =
     beats.some((b) => b.id === 'crack') && crack.from > 0
@@ -152,17 +145,12 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
       <Sequence from={crack.from} durationInFrames={crack.duration} layout="none">
         <CrackSzene />
       </Sequence>
-      <Sequence from={verdict.from} durationInFrames={verdict.duration + loopDauer} layout="none">
+      <Sequence from={verdict.from} durationInFrames={Math.max(1, durationInFrames - verdict.from)} layout="none">
         <VerdictSzene
           verdict={props.verdict}
           score={gesamtScoreAusPfeilern(props.pillars.map((p) => p.score))}
-          fadeOut={loopBlend}
+          fadeOut={0}
         />
-      </Sequence>
-      <Sequence from={loopFrom} durationInFrames={loopDauer} layout="none">
-        <AbsoluteFill style={{ opacity: loopBlend }}>
-          <HookSzene headline={props.hook} value={props.metricValue} label={props.metricLabel} teaserAb={null} ruhe />
-        </AbsoluteFill>
       </Sequence>
 
       <Kopfzeile
