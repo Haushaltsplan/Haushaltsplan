@@ -180,6 +180,13 @@ export function fallbackLand(verdict: MoatShortVerdict, _value?: string): string
   return 'The number already told you the story, which is why'
 }
 
+/** Landung, wenn du das Urteil selbst setzt. Offene Brücke, kein neuer Fakt. */
+export function landFuerPersoenlichesUrteil(verdict: MoatShortVerdict): string {
+  if (verdict === 'wide') return 'Nobody else has a lock like this, which is why'
+  if (verdict === 'narrow') return 'The lead is thinner than it looks, which is why'
+  return 'That advantage is not a moat, which is why'
+}
+
 export function istOffeneBruecke(land: string, value?: string): boolean {
   const t = oeffneSprechende(ohneKiBindestrich(land))
   if (!t || ABSCHIED.test(t) || /\bout of 10\b/i.test(t)) return false

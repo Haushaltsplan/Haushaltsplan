@@ -11,6 +11,7 @@ import {
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { generiereMoatKiBewertung, ladeMoatKiCache } from '@/lib/portfolio-analyse/moat-ki-server'
 import { gesamtScoreAusPfeilern, type MoatKiBewertung, type MoatPfeilerId } from '@/lib/portfolio-analyse/moat-ki-types'
+import { moatMitRichtung } from '@/lib/youtube/moat-short-urteil'
 import type { MoatShortErgebnis, MoatShortHookVariante, MoatShortMetrik } from '@/lib/youtube/moat-short-types'
 import { sucheYoutubePhrasen } from '@/lib/youtube/youtube-keywords'
 import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
@@ -213,11 +214,19 @@ Also return
 
 The input data is partly in German. Write everything in English.`
 
+function richtungAnweisung(richtung: 'groesser' | 'kleiner'): string {
+  if (richtung === 'groesser') {
+    return 'Editor override: one step HIGHER than the model. The pillar scores below are final. Write a more durable moat, with a wider lock and a smaller crack. If a German reason sounds weaker than its score, follow the score.'
+  }
+  return 'Editor override: one step LOWER than the model. The pillar scores below are final. Write a thinner moat, with a lead that is easier to challenge and a crack that weighs more. If a German reason sounds stronger than its score, follow the score. Do not insult the company.'
+}
+
 function baueUserPrompt(
   paket: FundamentaldatenPaket,
   moat: MoatKiBewertung,
   metriken: MoatShortMetrik[],
   suchphrasen: string[],
+  richtung?: 'groesser' | 'kleiner',
 ): string {
   return [
     `Company: ${paket.firmenname} (${moat.ticker})`,
@@ -225,6 +234,7 @@ function baueUserPrompt(
     paket.sektor ? `Sector: ${paket.sektor}` : null,
     paket.branche ? `Industry: ${paket.branche}` : null,
     '',
+    richtung ? richtungAnweisung(richtung) : null,
     `Business model (German): ${moat.geschaeftsmodell}`,
     paket.beschreibung ? `Description (German): ${paket.beschreibung.slice(0, 900)}` : null,
     '',
@@ -272,6 +282,8 @@ export async function generiereMoatShort(opts: {
   paket: FundamentaldatenPaket
   isin: string | null
   moatNeu: boolean
+  /** Höher oder niedriger als das KI-Urteil. Verschiebt nur diese Script-Kopie. */
+  moatRichtung?: 'groesser' | 'kleiner'
 }): Promise<MoatShortErgebnis> {
   const { paket, isin } = opts
   const ticker = (paket.symbolYahoo?.split('.')[0] || paket.ticker).trim().toUpperCase()
@@ -279,6 +291,7 @@ export async function generiereMoatShort(opts: {
   let moat = opts.moatNeu ? null : await ladeMoatKiCache(ticker)
   const moatAusCache = moat != null
   if (!moat) moat = await generiereMoatKiBewertung(paket, isin)
+  if (opts.moatRichtung) moat = moatMitRichtung(moat, opts.moatRichtung)
 
   const metriken = metrikenAusPaket(paket)
   const hookMetriken = metriken.filter((m) => m.hook)
@@ -295,7 +308,7 @@ export async function generiereMoatShort(opts: {
     provider.provider,
     provider.apiKey,
     SYSTEM,
-    [{ role: 'user', content: baueUserPrompt(paket, moat, metriken, suchphrasen) }],
+    [{ role: 'user', content: baueUserPrompt(paket, moat, metriken, suchphrasen, opts.moatRichtung) }],
     {
       geminiModels: geminiFreeTierFlashModelKandidaten(),
       geminiForceFreeApiKey: true,

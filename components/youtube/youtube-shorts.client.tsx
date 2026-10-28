@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { EarningsShortsClient } from '@/components/youtube/earnings-shorts.client'
 import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { gesamtScoreAusPfeilern } from '@/lib/portfolio-analyse/moat-ki-types'
 import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
 import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { phrasePasst } from '@/lib/youtube/youtube-keywords'
@@ -13,6 +14,7 @@ import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { ohneKennzahlId, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
+import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { moatShortSprechFingerprint } from '@/lib/youtube/moat-short-voice'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
@@ -187,6 +189,8 @@ export function YoutubeShortsClient() {
   const [stimmeLaedt, setStimmeLaedt] = useState(false)
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null)
   const [stimmeFp, setStimmeFp] = useState<string | null>(null)
+  const [moatWahl, setMoatWahl] = useState<MoatRichtung>('ki')
+  const [richtungLaedt, setRichtungLaedt] = useState<Extract<MoatRichtung, 'groesser' | 'kleiner'> | null>(null)
 
   const ladeYtStatus = useCallback(async () => {
     try {
@@ -270,7 +274,6 @@ export function YoutubeShortsClient() {
   useEffect(() => {
     if (!ergebnis) return
     setUploadTitel(ergebnis.title)
-    setUploadKommentar(ergebnis.kommentar)
     setUploadBeschreibung(track?.credit ? `${ergebnis.description}\n\n${track.credit}` : ergebnis.description)
   }, [ergebnis, track?.credit])
 
@@ -410,6 +413,61 @@ export function YoutubeShortsClient() {
     if (datei) setRohText(await datei.text())
   }
 
+  function scriptAusAntwort(j: MoatShortErgebnis, logoUrl: string | null): MoatShortErgebnis {
+    const sauber = gesprocheneZeilen({ ...j.props, logoUrl })
+    return {
+      ...j,
+      props: sauber,
+      hookVarianten: j.hookVarianten.map((h) => ({
+        ...h,
+        claim: ohneKennzahlId(h.claim),
+        loop: ohneKennzahlId(h.loop),
+        land: ohneKennzahlId(h.land),
+      })),
+    }
+  }
+
+  function zeigeScript(stand: MoatShortErgebnis, logoUrl: string | null) {
+    setErgebnis(stand)
+    setProps({ ...stand.props, logoUrl, voiceSrc: null, voiceAlignment: null })
+    setMp4Blob(null)
+    setVideoId(null)
+    setVoiceUrl((alt) => {
+      if (alt) URL.revokeObjectURL(alt)
+      return null
+    })
+    setStimmeFp(null)
+  }
+
+  async function richtungWaehlen(richtung: 'groesser' | 'kleiner') {
+    if (moatWahl === richtung || richtungLaedt) return
+    const eingabe = leseExport(rohText)
+    if (typeof eingabe === 'string') {
+      toast.error('Höher und niedriger brauchen den eingefügten Export.')
+      return
+    }
+    setRichtungLaedt(richtung)
+    try {
+      const res = await fetch('/api/youtube/short', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paket: eingabe.paket, isin: eingabe.isin, moatRichtung: richtung }),
+      })
+      const j = (await res.json()) as MoatShortAntwort | { error?: string }
+      if (!('ok' in j) || !j.ok) {
+        toast.error(('fehler' in j && j.fehler) || ('error' in j && j.error) || `Fehler (HTTP ${res.status})`)
+        return
+      }
+      const logoUrl = await pruefeLogo(j.props.logoUrl)
+      setMoatWahl(richtung)
+      zeigeScript(scriptAusAntwort(j, logoUrl), logoUrl)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Netzwerkfehler')
+    } finally {
+      setRichtungLaedt(null)
+    }
+  }
+
   async function erstellen() {
     const eingabe = leseExport(rohText)
     if (typeof eingabe === 'string') {
@@ -430,7 +488,7 @@ export function YoutubeShortsClient() {
       }
       const logoUrl = await pruefeLogo(j.props.logoUrl)
       const sauber = gesprocheneZeilen(j.props)
-      setErgebnis({
+      const stand: MoatShortErgebnis = {
         ...j,
         props: sauber,
         hookVarianten: j.hookVarianten.map((h) => ({
@@ -439,7 +497,9 @@ export function YoutubeShortsClient() {
           loop: ohneKennzahlId(h.loop),
           land: ohneKennzahlId(h.land),
         })),
-      })
+      }
+      setMoatWahl('ki')
+      setErgebnis(stand)
       setProps({ ...sauber, logoUrl, voiceSrc: null, voiceAlignment: null })
       setMp4Blob(null)
       setVideoId(null)
@@ -604,6 +664,7 @@ export function YoutubeShortsClient() {
               type="button"
               onClick={() => {
                 const b = beispielErgebnis()
+                setMoatWahl('ki')
                 setErgebnis(b)
                 setProps(b.props)
                 setMp4Blob(null)
@@ -640,7 +701,14 @@ export function YoutubeShortsClient() {
             <div className="app-surface-card-header flex items-center justify-between px-4 py-2.5 sm:px-5">
               <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">2 · Script prüfen</h2>
               <span className="text-xs text-[var(--app-text-muted)]">
-                Moat {ergebnis.moat.score}/10 · {ergebnis.moatAusCache ? 'gespeichertes Urteil' : 'neu bewertet'}
+                Moat {gesamtScoreAusPfeilern(props.pillars.map((p) => p.score)).toFixed(1)}/10 ·{' '}
+                {moatWahl === 'ki'
+                  ? ergebnis.moatAusCache
+                    ? 'gespeichertes Urteil'
+                    : 'KI-Urteil'
+                  : moatWahl === 'groesser'
+                    ? 'höher'
+                    : 'niedriger'}
               </span>
             </div>
             <div className="space-y-4 px-4 py-3 sm:px-5 sm:py-4">
@@ -663,6 +731,29 @@ export function YoutubeShortsClient() {
                     {props.logoUrl ? ' · echtes Firmenlogo' : ' · kein Logo gefunden'}
                   </p>
                 </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {(
+                  [
+                    ['kleiner', 'Niedriger'],
+                    ['groesser', 'Höher'],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    disabled={laedt || richtungLaedt !== null}
+                    onClick={() => void richtungWaehlen(id)}
+                    className={`rounded-full border px-3 py-1 text-xs disabled:opacity-50 ${
+                      moatWahl === id
+                        ? 'border-red-500/60 bg-red-500/10 text-[var(--app-text)]'
+                        : 'border-[var(--app-border)] text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]'
+                    }`}
+                  >
+                    {richtungLaedt === id ? 'Score und Text…' : label}
+                  </button>
+                ))}
               </div>
 
               {ergebnis.warnungen.length ? (
@@ -695,7 +786,9 @@ export function YoutubeShortsClient() {
                       </span>
                       <span className="mt-0.5 block font-medium text-[var(--app-text)]">{h.claim}</span>
                       <span className="block text-[var(--app-text-muted)]">{h.loop}</span>
-                      <span className="mt-1 block text-[11px] text-[var(--app-text-muted)]">Ende → {h.land}</span>
+                      <span className="mt-1 block text-[11px] text-[var(--app-text-muted)]">
+                        Ende → {h.land}
+                      </span>
                     </button>
                   )
                 })}

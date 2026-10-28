@@ -26,10 +26,12 @@ export async function POST(req: Request) {
     }
 
     try {
+      const richtung = body.moatRichtung === 'groesser' || body.moatRichtung === 'kleiner' ? body.moatRichtung : undefined
       const ergebnis = await generiereMoatShort({
         paket,
         isin: typeof body.isin === 'string' ? body.isin : null,
         moatNeu: body.moatNeu === true,
+        moatRichtung: richtung,
       })
       return { ok: true, ...ergebnis }
     } catch (e) {
