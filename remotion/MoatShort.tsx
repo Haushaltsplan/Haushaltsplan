@@ -38,10 +38,9 @@ const STEMPEL_AUFPRALL = 9
 const SAFE_TOP = 300
 const SAFE_LEFT = 72
 const SAFE_RIGHT = 200
-/** YouTube-UI unten. Hero-Szenen füllen die Fläche darüber. */
-const SAFE_BOTTOM = 360
-/** Untertitel im unteren Drittel, unter der großen Zahl, über der YouTube-Leiste. */
-const CAPTION_TOP = 1200
+/** Untertitel unter der großen Zahl, über der YouTube-Leiste. */
+const CAPTION_TOP = 1340
+const SCENE_PAD_BOTTOM = MOAT_SHORT_HEIGHT - CAPTION_TOP + 28
 /** Gleicher Rand links und rechts, sonst hängt Schrift und Pill optisch links. */
 const CONTENT_SIDE = 88
 const CAPTION_SIDE = 88
@@ -358,7 +357,7 @@ function HookSzene({
       style={{
         alignItems: 'center',
         justifyContent: 'center',
-        padding: `${SAFE_TOP + 40}px ${CONTENT_SIDE}px ${SAFE_BOTTOM}px ${CONTENT_SIDE}px`,
+        padding: `${SAFE_TOP + 40}px ${CONTENT_SIDE}px ${SCENE_PAD_BOTTOM}px ${CONTENT_SIDE}px`,
         boxSizing: 'border-box',
         transform: `scale(${schub})`,
         transformOrigin: 'center center',
@@ -470,7 +469,7 @@ function CrackSzene() {
   const pfad = 'M -20 70 L 150 40 L 260 105 L 400 30 L 520 120 L 660 50 L 780 110 L 900 35 L 1100 90'
   const laenge = 1600
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SAFE_TOP, paddingBottom: SAFE_BOTTOM, transform: `scale(${zurueck})` }}>
+    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SAFE_TOP, paddingBottom: SCENE_PAD_BOTTOM, transform: `scale(${zurueck})` }}>
       <div style={{ fontFamily: MONO, fontSize: 32, letterSpacing: 8, color: VERDICT_FARBE.none, opacity: interpolate(frame, [0, 5], [0, 1], { extrapolateRight: 'clamp' }) }}>
         WHAT COULD BREAK IT
       </div>
@@ -497,7 +496,7 @@ function VerdictSzene({ verdict, score, fadeOut }: { verdict: MoatShortVerdict; 
         alignItems: 'center',
         justifyContent: 'center',
         paddingTop: SAFE_TOP,
-        paddingBottom: SAFE_BOTTOM,
+        paddingBottom: SCENE_PAD_BOTTOM,
         opacity: 1 - fadeOut,
         transform: `translate(${wackeln}px, ${wackeln * 0.6}px)`,
       }}

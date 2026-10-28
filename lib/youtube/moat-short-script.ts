@@ -199,7 +199,7 @@ export function istOffeneBruecke(land: string, value?: string): boolean {
 export function saubererLand(land: string, verdict: MoatShortVerdict, value: string): string {
   const t = oeffneSprechende(ohneKiBindestrich(land))
   const woerter = t.split(/\s+/).filter(Boolean).length
-  if (istOffeneBruecke(t, value) && woerter <= 10) return t
+  if (istOffeneBruecke(t, value) && woerter <= 10 && t.length <= 78) return t
   if (
     t &&
     woerter <= 7 &&
@@ -231,6 +231,166 @@ function saetze(text: string): string[] {
 
 export function zuLangeSaetze(text: string, max = SATZ_MAX_WOERTER): string[] {
   return saetze(text).filter((s) => woerter(s).length > max)
+}
+
+const SCHLECHTES_ENDE = new Set(
+  'a an the of and or to for in on with from by at out into that so because which who just than as if when while both every their its this these those next them him her your our per via can could would should might must will shall did does is are was were be been being'.split(
+    ' ',
+  ),
+)
+
+function satzEnde(text: string, bruecke: boolean): string {
+  const kern = text.replace(/[.!?…,;:\s]+$/u, '').trim()
+  if (!kern) return kern
+  if (bruecke || BRUECKE_ENDE.test(kern)) return kern
+  return `${kern}.`
+}
+
+function letztesWort(text: string): string {
+  const w = woerter(text)
+  return (w[w.length - 1] ?? '').replace(/[^A-Za-z]/g, '').toLowerCase()
+}
+
+function endetSauber(text: string): boolean {
+  const last = letztesWort(text)
+  return Boolean(last) && !SCHLECHTES_ENDE.has(last)
+}
+
+function haengtPartizip(text: string): boolean {
+  return /\b(selling|using|running|building|pulling|training|living)\.?$/i.test(text.trim())
+}
+
+function klingtNachMensch(text: string): boolean {
+  if (haengtPartizip(text)) return false
+  if (/\bselling\s+\w+\.?$/i.test(text.trim())) return false
+  if (/\bno\s+\w+\s+can\s+avoid\b/i.test(text)) return false
+  if (/\b(operational complexity|ecosystem)\b/i.test(text)) return false
+  return endetSauber(text)
+}
+
+/** Gestapelte KI-Schlüsse werden zu einem Satz, den man laut sagen kann. */
+function sprichNatuerlich(text: string): string {
+  const t = text.replace(/\s+/g, ' ').trim()
+  const selling = t.match(/^(.*?)\s+selling\s+([A-Za-z][\w-]*)\s+no\s+\w+\s+can\s+avoid\.?$/i)
+  if (selling) {
+    const kern = selling[1]!.replace(/[,;:\s]+$/g, '')
+    const sache = selling[2]!.toLowerCase()
+    const mitSache = `${kern}, and companies can't leave the ${sache}.`
+    const kurz = `${kern} that companies can't leave.`
+    const satz = woerter(mitSache).length <= 12 && mitSache.length <= 78 ? mitSache : kurz
+    if (woerter(satz).length >= 7 && satz.length <= 78) return satz
+  }
+  const dass = t.match(/^(.*?)\s+that\s+no\s+\w+\s+can\s+avoid\.?$/i)
+  if (dass) {
+    const kern = dass[1]!.replace(/[,;:\s]+$/g, '')
+    const satz = `${kern}, and companies can't avoid it.`
+    if (woerter(satz).length >= 7 && satz.length <= 78) return satz
+  }
+  const von = t.match(/^(.*?)\s+of\s+(?:a|an|the)\s+.+?\s+(is|are)\s+((?:a|an|the)\s+)?(nightmare|problem|mess)\.?$/i)
+  if (von) {
+    const satz = `${von[1]} ${von[2]} a ${von[4]}.`.replace(/\s+/g, ' ')
+    if (woerter(satz).length >= 7 && satz.length <= 78) return satz
+  }
+  return t
+}
+
+/** „that already lives“ ist ein abgeschnittener Relativsatz, kein gesprochener Satz. */
+function relativStummel(text: string): boolean {
+  const rest = text.match(/\b(?:that|which|who)\b\s+([^.]+)$/i)?.[1]
+  if (!rest) return false
+  return rest.trim().split(/\s+/).filter(Boolean).length <= 3
+}
+
+const KUERZ_MUSTER = [
+  /\s+no\s+.+$/i,
+  /\s+of\s+(?:a|an|the)\s+.+?(?=\s+(?:is|are|was|were)\b)/i,
+  /\s+of\s+(?:a|an|the)\s+.+$/i,
+  /\s+for\s+(?:a|an|the)\s+.+$/i,
+  /\s+just to\s+.+$/i,
+  /\s+that\s+.+$/i,
+  /\s+which\s+.+$/i,
+  /\s+who\s+.+$/i,
+  /,\s*so\s+.+$/i,
+  /\s+so\s+.+$/i,
+  /\s+in\s+(?:one|a|the|this|that)\s+.+$/i,
+  /,\s+.+$/,
+  /\s+because\s+.+$/i,
+  /\s+selling\s+.+$/i,
+  /\s+of\s+.+$/i,
+]
+
+/** Schneidet Füllphrasen, bis der Satz in Untertitel und Zeitbudget passt. Die Kennzahl bleibt stehen. */
+export function kuerzeGesprocheneZeile(
+  roh: string,
+  opts?: { maxWoerter?: number; maxZeichen?: number; behalten?: string; bruecke?: boolean },
+): string {
+  const maxW = opts?.maxWoerter ?? 12
+  const maxC = opts?.maxZeichen ?? 78
+  const bruecke = Boolean(opts?.bruecke)
+  let start = ohneKiBindestrich(roh).replace(/\s+/g, ' ').trim()
+  if (!bruecke) start = sprichNatuerlich(start)
+  if (bruecke) start = oeffneSprechende(start)
+  const behalten = opts?.behalten?.trim()
+  const muss = behalten && start.includes(behalten) ? behalten : undefined
+  const fertig = (s: string) => satzEnde(s, bruecke)
+  const gueltig = (s: string) => {
+    const out = fertig(s)
+    return (
+      woerter(out).length >= 7 &&
+      woerter(out).length <= maxW &&
+      out.length <= maxC &&
+      klingtNachMensch(out) &&
+      (!muss || out.includes(muss))
+    )
+  }
+  if (gueltig(start)) return fertig(start)
+
+  const nachbarn = (basis: string): { text: string; art: 'muster' | 'wort' }[] => {
+    const rohBasis = basis.replace(/[.!?…]+$/u, '').trim()
+    const aus: { text: string; art: 'muster' | 'wort' }[] = []
+    const merke = (next: string, art: 'muster' | 'wort') => {
+      const s = next.replace(/[,;:\s]+$/g, '').replace(/\s+/g, ' ').trim()
+      if (s && s !== rohBasis) aus.push({ text: s, art })
+    }
+    merke(rohBasis.replace(/\b(?:both|just|already|still|really|actually|very)\b/i, ''), 'muster')
+    for (const re of KUERZ_MUSTER) {
+      if (!re.test(rohBasis)) continue
+      merke(rohBasis.replace(re, ''), 'muster')
+    }
+    const teile = rohBasis.split(/\s+/).filter(Boolean)
+    if (teile.length > 7) merke(teile.slice(0, -1).join(' '), 'wort')
+    return aus
+  }
+
+  let wahl: { text: string; art: 'muster' | 'wort' } | null = null
+  const queue = [start]
+  const gesehen = new Set<string>([start])
+  let schritte = 0
+  while (queue.length && schritte < 48) {
+    const basis = queue.shift()!
+    schritte += 1
+    for (const v of nachbarn(basis)) {
+      if (gesehen.has(v.text)) continue
+      gesehen.add(v.text)
+      if (woerter(v.text).length < 7) continue
+      if (muss && !v.text.includes(muss)) continue
+      queue.push(v.text)
+      if (!gueltig(v.text)) continue
+      if (!wahl) {
+        wahl = v
+        continue
+      }
+      const neuSt = relativStummel(v.text)
+      const altSt = relativStummel(wahl.text)
+      const besser =
+        (altSt && !neuSt) ||
+        (altSt === neuSt &&
+          ((v.art === 'muster' && wahl.art === 'wort') ||
+            (v.art === wahl.art && woerter(v.text).length > woerter(wahl.text).length)))
+      if (besser) wahl = v
+    }
+  }
+  return fertig(wahl?.text ?? start)
 }
 
 export function scriptTonWarnungen(texte: string[]): string[] {

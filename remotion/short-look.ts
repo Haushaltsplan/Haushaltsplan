@@ -20,7 +20,9 @@ export const SHORT_SAFE_TOP = 300
 export const SHORT_SAFE_LEFT = 72
 export const SHORT_SAFE_RIGHT = 200
 export const SHORT_SAFE_BOTTOM = 360
-export const SHORT_CAPTION_TOP = 1200
+/** Unter der Bildzeile, über der YouTube-Leiste. Nicht auf der großen Zahl. */
+export const SHORT_CAPTION_TOP = 1340
+export const SHORT_SCENE_PAD_BOTTOM = 1920 - SHORT_CAPTION_TOP + 28
 export const SHORT_CONTENT_SIDE = 88
 export const SHORT_CAPTION_SIDE = 88
 export const SHORT_CAPTION_SIZE = 58

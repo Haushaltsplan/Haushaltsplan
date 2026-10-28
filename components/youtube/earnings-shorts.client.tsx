@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PaAktienSucheInput } from '@/components/portfolio-analyse/pa-aktien-suche-input'
 import { YoutubeEigeneTags } from '@/components/youtube/youtube-eigene-tags'
-import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
+import { musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import {
   dateiZuEstimateBild,
@@ -115,7 +115,7 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
   const [renderDatei, setRenderDatei] = useState<string | null>(null)
   const [ergebnis, setErgebnis] = useState<EarningsShortErgebnis | null>(null)
   const [props, setProps] = useState<EarningsShortProps | null>(null)
-  const [tracks, setTracks] = useState<string[]>(MOAT_SHORT_KATALOG_PFADE)
+  const [tracks, setTracks] = useState<string[]>([])
   const [musikWahl, setMusikWahl] = useState<string>('auto')
   const [musikPegel, setMusikPegel] = useState(50)
   const [musikPegelCommit, setMusikPegelCommit] = useState(50)
@@ -137,7 +137,7 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
   useEffect(() => {
     void fetch('/api/youtube/musik')
       .then((r) => r.json() as Promise<{ tracks?: string[] }>)
-      .then((j) => setTracks(sortiereTracks([...new Set([...MOAT_SHORT_KATALOG_PFADE, ...(j.tracks ?? [])])])))
+      .then((j) => setTracks(sortiereTracks(j.tracks ?? [])))
       .catch(() => undefined)
     const gespeichert = Number(typeof window !== 'undefined' ? window.localStorage.getItem('moat-short-musik-pegel') : NaN)
     if (Number.isFinite(gespeichert)) {
@@ -559,6 +559,11 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
               {track?.credit ? (
                 <p className="text-xs text-[var(--app-text-muted)]">
                   Automatisch zum Urteil. 50 % = −24 dB unter der Stimme. Der Link steht in der Beschreibung.
+                </p>
+              ) : null}
+              {!tracks.length ? (
+                <p className="text-xs text-[var(--app-text-muted)]">
+                  Keine Musikdatei im Ordner public/youtube-music. Der Player bleibt stumm, bis dort beat-your-competition.mp3, know-myself.mp3 und brain-trust.mp3 liegen.
                 </p>
               ) : null}
               <label className="flex items-center gap-2 text-xs text-[var(--app-text-muted)]">

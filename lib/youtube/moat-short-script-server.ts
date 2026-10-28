@@ -21,6 +21,7 @@ import {
   istOffeneBruecke,
   ohneKennzahlId,
   ohneKiBindestrich,
+  kuerzeGesprocheneZeile,
   saubererHookLoop,
   saubererLand,
   scriptLoopWarnungen,
@@ -103,10 +104,13 @@ Persona: a grounded, sharp equity analyst talking to another investor over coffe
 ## Voice (every company, not one ticker)
 Talk like a person at a table. Same move for ASML, Hermès, a railroad, a card network. The examples below are the MOVE, not vocabulary to copy. Never reuse cards, banks, or payment software unless THIS company actually issues cards.
 
-Every spoken line is a normal human sentence: subject, verb, one thought. 8 to 11 words, and under 70 characters. A comma is fine. One breath. The subtitle should sit on 2 lines. A third line is the limit. Never a fourth, and never a sentence we have to cut in half.
+Every spoken line is a normal human sentence: subject, verb, one thought. 8 to 10 words, and under 70 characters. Count the words. A comma is fine. One breath. The subtitle sits on 2 lines. If it would wrap to a third, the line is too long.
 
-Good: "[Company] prints a 51% margin selling machines nobody else can build."
-Good: "Ripping [their actual stack] out is a nightmare for the buyer."
+Good: "Microsoft prints a 47.1% operating margin that companies can't leave."
+Good: "Ripping that stack out is a nightmare."
+Bad: "Microsoft prints a 47.1% operating margin selling software no corporation can avoid."
+Bad: "Ripping active directory and azure out of a Fortune 500 company is a nightmare."
+Read every line out loud. Contractions are fine. If you would not say it to a friend, rewrite it. One breath, then stop. No stacked ending.
 Good: "Replicating [the concrete thing] requires decades and endless capital."
 Bad: "[Company] prints cash." / "Look at the margins." / "Lock-in." (slogan or fragment)
 Bad: "Customers face extreme operational complexity when leaving this ecosystem."
@@ -153,7 +157,7 @@ Land rules
 - Do not say the score, "wide moat", "narrow moat", or recap the pillars. The stamp already shows the score. After this line the video loops.
 
 Claim rules
-- 10-14 words. One complete sentence. No dashes.
+- 8-11 words and under 70 characters. One complete sentence. No dashes. Count before you return it.
 - MUST start with the company name or ticker, then a verb. Never start with "At 51.3%" or a question.
 - Contains the chosen metric value exactly as written.
 - Name the metric in English: "a 58.3% operating margin". metricId is a machine key. Never say it. Never write "an ltm_ebit of 58.3%".
@@ -190,8 +194,8 @@ Good: "Government fee caps and instant payments threaten margins."
 Bad: "Stricter government fee caps and direct account to account payment rails could compress margins."
 Same move for every company: name the threat and stop. Do not explain the mechanism in the same sentence.
 
-- pillarLines: one per pillar, 8-10 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none".
-- crack: 8-10 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. It answers the loop. No sign-off.
+- pillarLines: one per pillar, 8-9 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none".
+- crack: 8-9 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. It answers the loop. No sign-off.
 
 ## Hard rules
 - Use ONLY facts and numbers from the data provided. Never invent numbers, customers, market shares, years or events.
@@ -199,7 +203,7 @@ Same move for every company: name the threat and stop. Do not explain the mechan
 - Never open a claim with a question, "Did you know", "In this video", "Let's talk about".
 - No buy/sell/hold advice, no price targets, no emojis, no hashtags in spoken text.
 - Do not speak the score as "X out of 10".
-- Whole spoken script stays under 78 words. With a slightly brisk voice the Short lands at 30 to 35 seconds.
+- Whole spoken script stays under 72 words. Count every spoken line. With a slightly brisk voice the Short lands at 30 to 35 seconds.
 
 Also return
 - title: 28-58 characters. Start with the company name, not a two-letter ticker. One grammatical clause plus the hook number. No slang ("the tell"), no ALL-CAPS, no hashtags. Good: "Mastercard: why a 58.3% margin is the moat".
@@ -318,15 +322,15 @@ export async function generiereMoatShort(opts: {
   if (!roh) throw new Error('Script-KI lieferte kein gültiges JSON — bitte erneut versuchen.')
 
   const verdict = verdictAusUrteil(moat.urteil)
-  const crack = sprechtext(roh.crack)
+  const crack = kuerzeGesprocheneZeile(sprechtext(roh.crack), { maxWoerter: 12, maxZeichen: 78 })
   const hookVarianten: MoatShortHookVariante[] = objekte(roh.hooks)
     .map((h) => {
       const metrikId = hookMetriken.some((m) => m.id === h.metricId) ? text(h.metricId) : hookMetriken[0]!.id
       const wert = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).value
       return {
         winkel: text(h.angle),
-        claim: sprechtext(h.claim),
-        loop: saubererHookLoop(sprechtext(h.loop), crack),
+        claim: kuerzeGesprocheneZeile(sprechtext(h.claim), { maxWoerter: 12, maxZeichen: 78, behalten: wert }),
+        loop: kuerzeGesprocheneZeile(saubererHookLoop(sprechtext(h.loop), crack), { maxWoerter: 9, maxZeichen: 78 }),
         land: saubererLand(sprechtext(h.land), verdict, wert),
         metrikId,
       }
@@ -374,7 +378,11 @@ export async function generiereMoatShort(opts: {
         id: p.id,
         label: PFEILER_LABEL[p.id],
         score: p.score,
-        line: sprechtext(z?.line) || `${PFEILER_LABEL[p.id]} is the weak spot.`,
+        line: kuerzeGesprocheneZeile(sprechtext(z?.line) || `${PFEILER_LABEL[p.id]} is the weak spot.`, {
+          maxWoerter: 12,
+          maxZeichen: 78,
+          behalten: stat?.value,
+        }),
         stat: stat ? { value: stat.value, label: stat.label } : null,
       }
     }),
@@ -389,6 +397,42 @@ export async function generiereMoatShort(opts: {
     voiceSrc: null,
     voiceAlignment: null,
   }
+
+  const fest = new Set<string>()
+  for (let runde = 0; runde < 16; runde++) {
+    const teile = [
+      { key: 'hook', text: props.hook, behalten: props.metricValue },
+      { key: 'loop', text: props.hookLoop, behalten: undefined as string | undefined },
+      ...props.pillars.map((p, i) => ({ key: `p${i}`, text: p.line, behalten: p.stat?.value })),
+      { key: 'crack', text: props.crack, behalten: undefined as string | undefined },
+    ]
+    const summe = [...teile.map((t) => t.text), props.closing].map(woerter).reduce((a, b) => a + b, 0)
+    if (summe <= MAX_WOERTER_GESAMT) break
+    const ziel = teile
+      .filter((t) => !fest.has(t.key) && woerter(t.text) > 7)
+      .sort((a, b) => woerter(b.text) - woerter(a.text))[0]
+    if (!ziel) break
+    const neu = kuerzeGesprocheneZeile(ziel.text, {
+      maxWoerter: woerter(ziel.text) - 1,
+      maxZeichen: 78,
+      behalten: ziel.behalten,
+    })
+    if (woerter(neu) >= woerter(ziel.text)) {
+      fest.add(ziel.key)
+      continue
+    }
+    if (ziel.key === 'hook') props.hook = neu
+    else if (ziel.key === 'loop') props.hookLoop = neu
+    else if (ziel.key === 'crack') props.crack = neu
+    else {
+      const idx = Number(ziel.key.slice(1))
+      const pfeiler = props.pillars[idx]
+      if (pfeiler) props.pillars[idx] = { ...pfeiler, line: neu }
+    }
+  }
+  start.claim = props.hook
+  start.loop = props.hookLoop
+  start.land = props.closing
 
   const warnungen: string[] = []
   warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue))

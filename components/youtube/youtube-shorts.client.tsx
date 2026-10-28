@@ -9,13 +9,13 @@ import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { gesamtScoreAusPfeilern } from '@/lib/portfolio-analyse/moat-ki-types'
 import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
-import { MOAT_SHORT_KATALOG_PFADE, musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
+import { musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { phrasePasst } from '@/lib/youtube/youtube-keywords'
 import { tagsZusammen } from '@/lib/youtube/youtube-tags'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
-import { ohneKennzahlId, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
+import { istOffeneBruecke, kuerzeGesprocheneZeile, ohneKennzahlId, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { moatShortSprechFingerprint } from '@/lib/youtube/moat-short-voice'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
@@ -130,15 +130,24 @@ function pruefeLogo(url: string | null): Promise<string | null> {
   })
 }
 
+function zeileWennNoetig(text: string, opts?: { behalten?: string; maxWoerter?: number }): string {
+  const roh = ohneKennzahlId(text).replace(/\s+/g, ' ').trim()
+  const woerter = roh.split(/\s+/).filter(Boolean).length
+  const maxW = opts?.maxWoerter ?? 12
+  const gestapelt = /\bno\s+\w+\s+can\s+avoid\b/i.test(roh) || /\bselling\s+\w+\s+no\s+/i.test(roh)
+  if (woerter <= maxW && roh.length <= 78 && !gestapelt) return roh
+  return kuerzeGesprocheneZeile(roh, { maxWoerter: maxW, maxZeichen: 78, behalten: opts?.behalten })
+}
+
 function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
   return {
     ...p,
-    hook: ohneKennzahlId(p.hook),
-    hookLoop: ohneKennzahlId(p.hookLoop),
+    hook: zeileWennNoetig(p.hook, { behalten: p.metricValue }),
+    hookLoop: zeileWennNoetig(p.hookLoop, { maxWoerter: 9 }),
     business: ohneKennzahlId(p.business),
-    crack: ohneKennzahlId(p.crack),
-    closing: ohneKennzahlId(p.closing),
-    pillars: p.pillars.map((x) => ({ ...x, line: ohneKennzahlId(x.line) })),
+    crack: zeileWennNoetig(p.crack),
+    closing: istOffeneBruecke(p.closing, p.metricValue) ? ohneKennzahlId(p.closing) : p.closing,
+    pillars: p.pillars.map((x) => ({ ...x, line: zeileWennNoetig(x.line, { behalten: x.stat?.value }) })),
   }
 }
 
@@ -171,7 +180,7 @@ export function YoutubeShortsClient() {
     }
     setProps(next)
   }, [props])
-  const [tracks, setTracks] = useState<string[]>(MOAT_SHORT_KATALOG_PFADE)
+  const [tracks, setTracks] = useState<string[]>([])
   const [musikWahl, setMusikWahl] = useState<string>('auto')
   const [musikPegel, setMusikPegel] = useState(50)
   const [musikPegelCommit, setMusikPegelCommit] = useState(50)
@@ -211,7 +220,7 @@ export function YoutubeShortsClient() {
   useEffect(() => {
     void fetch('/api/youtube/musik')
       .then((r) => r.json() as Promise<{ tracks?: string[] }>)
-      .then((j) => setTracks(sortiereTracks([...new Set([...MOAT_SHORT_KATALOG_PFADE, ...(j.tracks ?? [])])])))
+      .then((j) => setTracks(sortiereTracks(j.tracks ?? [])))
       .catch(() => undefined)
     const gespeichert = Number(typeof window !== 'undefined' ? window.localStorage.getItem('moat-short-musik-pegel') : NaN)
     if (Number.isFinite(gespeichert)) {
@@ -987,7 +996,9 @@ export function YoutubeShortsClient() {
                 </p>
               ) : null}
               {!tracks.length ? (
-                <p className="text-xs text-[var(--app-text-muted)]">Keine Musikdateien gefunden.</p>
+                <p className="text-xs text-[var(--app-text-muted)]">
+                  Keine Musikdatei im Ordner public/youtube-music. Der Player bleibt stumm, bis dort beat-your-competition.mp3, know-myself.mp3 und brain-trust.mp3 liegen.
+                </p>
               ) : null}
               <label className="flex items-center gap-2 text-xs text-[var(--app-text-muted)]">
                 <input type="checkbox" checked={sfx} onChange={(e) => setSfx(e.target.checked)} />

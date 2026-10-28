@@ -37,7 +37,7 @@ import {
   SHORT_MUSIK_OHNE_STIMME,
   SHORT_MUTED,
   SHORT_ROT,
-  SHORT_SAFE_BOTTOM,
+  SHORT_SCENE_PAD_BOTTOM,
   SHORT_SAFE_LEFT,
   SHORT_SAFE_RIGHT,
   SHORT_SAFE_TOP,
@@ -334,7 +334,7 @@ function HookSzene({
       style={{
         alignItems: 'center',
         justifyContent: 'center',
-        padding: `${SHORT_SAFE_TOP + 40}px ${SHORT_CONTENT_SIDE}px ${SHORT_SAFE_BOTTOM}px ${SHORT_CONTENT_SIDE}px`,
+        padding: `${SHORT_SAFE_TOP + 40}px ${SHORT_CONTENT_SIDE}px ${SHORT_SCENE_PAD_BOTTOM}px ${SHORT_CONTENT_SIDE}px`,
         boxSizing: 'border-box',
         transform: `scale(${schub})`,
         transformOrigin: 'center center',
@@ -370,7 +370,7 @@ function ZahlenSzene({ eps, umsatz, quartal }: { eps: EarningsShortKarte; umsatz
   const tile = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 12 })
   const text = spring({ frame: frame - 4, fps, config: { damping: 200 }, durationInFrames: 12 })
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SHORT_SAFE_TOP, paddingBottom: SHORT_SAFE_BOTTOM }}>
+    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SHORT_SAFE_TOP, paddingBottom: SHORT_SCENE_PAD_BOTTOM }}>
       <div style={{ fontFamily: SHORT_MONO, fontSize: 28, letterSpacing: 7, color: SHORT_MUTED, opacity: text }}>{quartal.toUpperCase()}</div>
       <div style={{ marginTop: 48, width: 900, display: 'flex', flexDirection: 'column', gap: 36, opacity: tile, transform: `translateY(${interpolate(tile, [0, 1], [40, 0])}px)` }}>
         <ZahlKarte karte={eps} />
@@ -405,7 +405,7 @@ function ThemaSzene({ kicker, titel }: { kicker: string; titel: string }) {
   const { fps } = useVideoConfig()
   const eintritt = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 10 })
   return (
-    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SHORT_SAFE_TOP, paddingBottom: SHORT_SAFE_BOTTOM, opacity: eintritt }}>
+    <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', paddingTop: SHORT_SAFE_TOP, paddingBottom: SHORT_SCENE_PAD_BOTTOM, opacity: eintritt }}>
       <div style={{ fontFamily: SHORT_MONO, fontSize: 32, letterSpacing: 8, color: SHORT_BRAND }}>{kicker}</div>
       <div style={{ marginTop: 36, fontSize: titel.length > 18 ? 88 : 120, fontWeight: 900, letterSpacing: -4, lineHeight: 1, textAlign: 'center', maxWidth: 900 }}>
         {titel}
@@ -427,7 +427,7 @@ function StempelSzene({ art, quartal, fadeOut }: { art: EarningsShortBeatArt; qu
         alignItems: 'center',
         justifyContent: 'center',
         paddingTop: SHORT_SAFE_TOP,
-        paddingBottom: SHORT_SAFE_BOTTOM,
+        paddingBottom: SHORT_SCENE_PAD_BOTTOM,
         opacity: 1 - fadeOut,
         transform: `translate(${wackeln}px, ${wackeln * 0.6}px)`,
       }}
