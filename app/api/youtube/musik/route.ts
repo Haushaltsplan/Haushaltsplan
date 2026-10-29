@@ -28,5 +28,8 @@ export async function GET() {
   } catch {
     /* Ordner fehlt — ohne Datei bleibt die Spur stumm. */
   }
-  return NextResponse.json({ ok: true, tracks })
+  return NextResponse.json(
+    { ok: true, tracks },
+    { headers: { 'Cache-Control': 'no-store' } },
+  )
 }

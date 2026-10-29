@@ -219,10 +219,10 @@ function stimmeAudioSrc(src: string): string {
 }
 
 function musikAudioSrc(src: string): string {
-  if (/^(blob:|data:|https?:)/i.test(src) || src.startsWith('/api/')) return src
+  if (/^(blob:|data:|https?:)/i.test(src) || src.startsWith('/youtube-music/') || src.startsWith('/api/')) return src
   const datei = src.split('/').pop() ?? src
   if (typeof window !== 'undefined' && !('remotion_staticBase' in window && window.remotion_staticBase) && datei) {
-    return `${window.location.origin}/api/youtube/musik/datei/${encodeURIComponent(datei)}`
+    return `${window.location.origin}/youtube-music/${encodeURIComponent(datei)}`
   }
   return staticFile(src.replace(/^\/+/, ''))
 }

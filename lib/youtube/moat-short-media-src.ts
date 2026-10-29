@@ -17,10 +17,12 @@ export function originaleLogoQuelle(url: string): string {
 
 export function musikPlaySrc(rel: string | null): string | null {
   if (!rel) return null
-  if (/^https?:\/\//i.test(rel) || rel.startsWith('/api/')) return rel
+  if (/^(https?:|blob:|data:)/i.test(rel) || rel.startsWith('/youtube-music/') || rel.startsWith('/api/')) return rel
   const datei = rel.split('/').pop()
-  if (!datei || typeof window === 'undefined') return rel
-  return `${window.location.origin}/api/youtube/musik/datei/${encodeURIComponent(datei)}`
+  if (!datei) return rel
+  const pfad = `/youtube-music/${encodeURIComponent(datei)}`
+  if (typeof window === 'undefined') return pfad
+  return `${window.location.origin}${pfad}`
 }
 
 /** Genau ein Same-Origin-Proxy, nie verschachtelt. */

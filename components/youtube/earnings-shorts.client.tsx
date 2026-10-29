@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PaAktienSucheInput } from '@/components/portfolio-analyse/pa-aktien-suche-input'
 import { YoutubeEigeneTags } from '@/components/youtube/youtube-eigene-tags'
-import { musikTrack, sortiereTracks, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
+import { gespeicherterMusikPegel, ladeVorhandeneTracks, liesMusikDatei, musikTrack, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import {
   dateiZuEstimateBild,
@@ -116,6 +116,8 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
   const [ergebnis, setErgebnis] = useState<EarningsShortErgebnis | null>(null)
   const [props, setProps] = useState<EarningsShortProps | null>(null)
   const [tracks, setTracks] = useState<string[]>([])
+  const [eigeneMusik, setEigeneMusik] = useState<string | null>(null)
+  const [eigeneMusikName, setEigeneMusikName] = useState<string | null>(null)
   const [musikWahl, setMusikWahl] = useState<string>('auto')
   const [musikPegel, setMusikPegel] = useState(50)
   const [musikPegelCommit, setMusikPegelCommit] = useState(50)
@@ -136,12 +138,9 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
   const [stimmeFp, setStimmeFp] = useState<string | null>(null)
 
   useEffect(() => {
-    void fetch('/api/youtube/musik')
-      .then((r) => r.json() as Promise<{ tracks?: string[] }>)
-      .then((j) => setTracks(sortiereTracks(j.tracks ?? [])))
-      .catch(() => undefined)
-    const gespeichert = Number(typeof window !== 'undefined' ? window.localStorage.getItem('moat-short-musik-pegel') : NaN)
-    if (Number.isFinite(gespeichert)) {
+    void ladeVorhandeneTracks().then(setTracks)
+    const gespeichert = gespeicherterMusikPegel()
+    if (gespeichert != null) {
       const v = Math.max(0, Math.min(100, gespeichert))
       setMusikPegel(v)
       setMusikPegelCommit(v)
@@ -153,8 +152,9 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
   }, [])
 
   const automatisch = trackZumUrteil('narrow', tracks)
-  const musik = musikWahl === 'auto' ? automatisch : musikWahl || null
-  const track = musik ? musikTrack(musik) : null
+  const katalogMusik = musikWahl === 'auto' ? automatisch : musikWahl || null
+  const musik = eigeneMusik ?? katalogMusik
+  const track = katalogMusik ? musikTrack(katalogMusik) : null
   const sprechFp = props ? earningsShortSprechFingerprint(props) : ''
   const autoTags = tagsFuerUpload(uploadBeschreibung, ergebnis?.suchphrasen ?? [], props?.ticker ?? '', props?.firmenname ?? '', [])
   const youtubeTags = tagsSichtbar(autoTags, eigeneTags, ohneTags)
@@ -527,7 +527,15 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
             </div>
             <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
               {fertig ? <EarningsShortPreview props={fertig} restartKey={musikPegelCommit} /> : null}
-              <select value={musikWahl} onChange={(e) => setMusikWahl(e.target.value)} className={`${feldKlasse} text-xs`}>
+              <select
+                value={musikWahl}
+                onChange={(e) => {
+                  setEigeneMusik(null)
+                  setEigeneMusikName(null)
+                  setMusikWahl(e.target.value)
+                }}
+                className={`${feldKlasse} text-xs`}
+              >
                 <option value="auto">
                   Automatisch
                   {automatisch ? ` · ${musikTrack(automatisch).titel} (${musikTrack(automatisch).stimmung})` : ''}
@@ -539,6 +547,25 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
                   </option>
                 ))}
               </select>
+              <label className="flex items-center gap-2 text-xs text-[var(--app-text-muted)]">
+                <input
+                  type="file"
+                  accept="audio/mpeg,audio/mp4,audio/wav,audio/ogg,.mp3,.m4a,.wav,.ogg"
+                  className="max-w-full text-xs"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    e.target.value = ''
+                    if (!file) return
+                    void liesMusikDatei(file)
+                      .then((url) => {
+                        setEigeneMusik(url)
+                        setEigeneMusikName(file.name)
+                      })
+                      .catch((err: unknown) => toast.error(err instanceof Error ? err.message : 'MP3 nicht lesbar'))
+                  }}
+                />
+                {eigeneMusikName ?? 'MP3 direkt wählen'}
+              </label>
               {musik ? (
                 <label className="block text-xs text-[var(--app-text-muted)]">
                   Musik {musikPegel}%
@@ -564,9 +591,9 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
                   Automatisch zum Urteil. 50 % = −24 dB unter der Stimme. Der Link steht in der Beschreibung.
                 </p>
               ) : null}
-              {!tracks.length ? (
+              {!tracks.length && !eigeneMusik ? (
                 <p className="text-xs text-[var(--app-text-muted)]">
-                  Keine Musikdatei im Ordner public/youtube-music. Der Player bleibt stumm, bis dort beat-your-competition.mp3, know-myself.mp3 und brain-trust.mp3 liegen.
+                  Die drei MP3s liegen lokal in public/youtube-music. Diese Seite sieht sie nur, wenn sie lokal läuft. Sonst oben die Datei wählen.
                 </p>
               ) : null}
               <label className="flex items-center gap-2 text-xs text-[var(--app-text-muted)]">

@@ -17,7 +17,7 @@ export default function EarningsShortPreview({ props, restartKey }: { props: Ear
   return (
     <div>
       <Player
-        key={`${props.musicSrc ?? 'still'}-${props.voiceSrc ?? 'novoice'}-${props.sfx ? 'sfx' : 'nosfx'}-${restartKey ?? 0}`}
+        key={`${props.musicSrc?.startsWith('data:') ? `mp3-${props.musicSrc.length}` : (props.musicSrc ?? 'still')}-${props.voiceSrc ?? 'novoice'}-${props.sfx ? 'sfx' : 'nosfx'}-${restartKey ?? 0}`}
         component={EarningsShort}
         inputProps={props}
         durationInFrames={dauer}

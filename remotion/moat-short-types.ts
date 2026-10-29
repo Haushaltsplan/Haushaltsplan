@@ -68,7 +68,7 @@ export type MoatShortBeat = {
 
 export type MoatShortCaptionWort = { text: string; start: number; end: number }
 
-/** 2–4 Wörter. `start`/`end` sind Frames relativ zu `from`. */
+/** Eine lesbare Phrase. `start`/`end` sind Frames relativ zu `from`. */
 export type MoatShortCaption = {
   text: string
   from: number

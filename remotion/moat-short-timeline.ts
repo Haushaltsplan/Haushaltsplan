@@ -25,10 +25,14 @@ const MIN_SEKUNDEN: Record<Exclude<MoatShortBeatId, 'loop'>, number> = {
 }
 /** Kein Nachlauf. Der letzte Frame ist das Ende der offenen Frage, YouTube setzt den Hook davor. */
 export const MOAT_SHORT_LOOP_FRAMES = 0
-/** Ein Block bleibt kurz, damit das Auge nicht auf einem Satz liegen bleibt. */
-const CAPTION_MAX_WOERTER = 4
-const CAPTION_MAX_MS = 1200
+/** Phrase, nicht Wortsalat. Ein Block endet nicht auf a/of/the. */
+const CAPTION_ZIEL_WOERTER = 4
+const CAPTION_MAX_WOERTER = 6
+const CAPTION_MAX_MS = 1600
 const CAPTION_MIN_FRAMES = Math.round(0.8 * MOAT_SHORT_FPS)
+const CAPTION_KLEIN = new Set(
+  'a an the of and or to for in on with from by at out into that so as if when while without than per its their this these those'.split(' '),
+)
 
 function woerter(text: string): string[] {
   return text.trim().split(/\s+/).filter(Boolean)
@@ -36,6 +40,19 @@ function woerter(text: string): string[] {
 
 function msZuFrame(ms: number): number {
   return Math.max(0, Math.round((ms / 1000) * MOAT_SHORT_FPS))
+}
+
+function captionKern(text: string): string {
+  return text.replace(/[^A-Za-z']/g, '').toLowerCase()
+}
+
+function captionKlein(text: string): boolean {
+  return CAPTION_KLEIN.has(captionKern(text))
+}
+
+/** Erst ab drei Wörtern und nie nach a/of/the umbrechen. */
+function captionSchliessbar(g: MoatShortVoiceWort[]): boolean {
+  return g.length >= 3 && !captionKlein(g[g.length - 1]!.text)
 }
 
 function gruppen(worte: MoatShortVoiceWort[]): MoatShortVoiceWort[][] {
@@ -48,8 +65,8 @@ function gruppen(worte: MoatShortVoiceWort[]): MoatShortVoiceWort[][] {
       continue
     }
     const probe = [...cur, w]
-    const zuViel = probe.length > CAPTION_MAX_WOERTER || (cur.length >= 2 && dauer(probe) > CAPTION_MAX_MS)
-    if (zuViel) {
+    const phraseVoll = captionSchliessbar(cur) && (probe.length > CAPTION_ZIEL_WOERTER || dauer(probe) > CAPTION_MAX_MS)
+    if (phraseVoll || probe.length > CAPTION_MAX_WOERTER) {
       out.push(cur)
       cur = [w]
     } else {
@@ -57,14 +74,23 @@ function gruppen(worte: MoatShortVoiceWort[]): MoatShortVoiceWort[][] {
     }
   }
   if (cur.length) out.push(cur)
+  let i = 0
+  while (i < out.length - 1) {
+    const prev = out[i]!
+    const next = out[i + 1]!
+    const haengt = next.length <= 2 || captionKlein(next[0]!.text)
+    if (haengt && prev.length + next.length <= CAPTION_MAX_WOERTER) {
+      out.splice(i, 2, [...prev, ...next])
+      continue
+    }
+    i += 1
+  }
   if (out.length >= 2 && out[out.length - 1]!.length === 1) {
     const last = out[out.length - 1]!
     const prev = out[out.length - 2]!
     if (prev.length >= 3) {
       const gestohlen = prev[prev.length - 1]!
       out.splice(-2, 2, prev.slice(0, -1), [gestohlen, ...last])
-    } else if (prev.length < CAPTION_MAX_WOERTER) {
-      out.splice(-2, 2, [...prev, ...last])
     }
   }
   return out

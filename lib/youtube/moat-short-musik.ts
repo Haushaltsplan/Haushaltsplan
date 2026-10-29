@@ -71,6 +71,61 @@ export const MOAT_SHORT_MUSIK_QUELLEN: MoatShortTrackQuelle[] = []
 
 export const MOAT_SHORT_KATALOG_PFADE = KATALOG.map((t) => `youtube-music/${t.datei}`)
 
+export function gespeicherterMusikPegel(): number | null {
+  if (typeof window === 'undefined') return null
+  const roh = window.localStorage.getItem('moat-short-musik-pegel')
+  if (roh == null || roh.trim() === '') return null
+  const n = Number(roh)
+  if (!Number.isFinite(n)) return null
+  return Math.max(0, Math.min(100, n))
+}
+
+export function liesMusikDatei(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (file.size > 12_000_000) {
+      reject(new Error('MP3 ist größer als 12 MB.'))
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('MP3 nicht lesbar'))
+    reader.readAsDataURL(file)
+  })
+}
+
+/** API-Liste, und für jede Katalogdatei ein direkter Blick in public/youtube-music. */
+export async function ladeVorhandeneTracks(): Promise<string[]> {
+  let ausApi: string[] = []
+  try {
+    const res = await fetch('/api/youtube/musik', { cache: 'no-store' })
+    if (res.ok) {
+      const j = (await res.json()) as { tracks?: string[] }
+      ausApi = Array.isArray(j.tracks) ? j.tracks : []
+    }
+  } catch {
+    ausApi = []
+  }
+  const haben = new Set(ausApi.map((p) => p.split('/').pop()))
+  const rest = await Promise.all(
+    KATALOG.map(async (t) => {
+      if (haben.has(t.datei)) return null
+      try {
+        const url = `/youtube-music/${encodeURIComponent(t.datei)}`
+        const head = await fetch(url, { method: 'HEAD', cache: 'no-store' })
+        if (head.ok) return `youtube-music/${t.datei}`
+        if (head.status === 404) return null
+        const res = await fetch(url, { method: 'GET', headers: { Range: 'bytes=0-1' }, cache: 'no-store' })
+        void res.body?.cancel()
+        if (res.ok || res.status === 206) return `youtube-music/${t.datei}`
+      } catch {
+        return null
+      }
+      return null
+    }),
+  )
+  return sortiereTracks([...ausApi, ...rest.filter((p): p is string => Boolean(p))])
+}
+
 export function musikTrack(pfad: string): MoatShortTrack {
   const datei = pfad.split('/').pop() ?? pfad
   const k = KATALOG.find((t) => t.datei === datei)

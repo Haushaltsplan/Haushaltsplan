@@ -12,7 +12,7 @@ export default function MoatShortPreview({ props, restartKey }: { props: MoatSho
   return (
     <div>
       <Player
-        key={`${props.musicSrc ?? 'still'}-${props.voiceSrc ?? 'novoice'}-${props.voiceLeadMs ?? 0}-${props.logoUrl?.slice(-32) ?? 'nologo'}-${props.sfx ? 'sfx' : 'nosfx'}-${restartKey ?? 0}`}
+        key={`${props.musicSrc?.startsWith('data:') ? `mp3-${props.musicSrc.length}` : (props.musicSrc ?? 'still')}-${props.voiceSrc ?? 'novoice'}-${props.voiceLeadMs ?? 0}-${props.logoUrl?.slice(-32) ?? 'nologo'}-${props.sfx ? 'sfx' : 'nosfx'}-${restartKey ?? 0}`}
         component={MoatShort}
         inputProps={props}
         durationInFrames={dauer}

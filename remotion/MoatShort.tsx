@@ -42,8 +42,8 @@ const SAFE_RIGHT = Math.round(1080 * 0.15)
 const CAPTION_YELLOW = '#FFE14A'
 const CAPTION_SIZE = 76
 const CAPTION_LINE = 1.05
-/** Alle 2 s ein harter Zoom, liegt in der Spanne 1,5–2,5 s. */
-const SCHNITT_FRAMES = 60
+/** Sanfter Schub. Der Ursprung liegt auf dem Inhalt, damit die feste Kopfzeile nicht mitzoomt. */
+const INHALT_TOP = SAFE_TOP + 130
 /** Balken-Feder ist bei Frame 15 angekommen. */
 const PILLAR_ZAHL_FRAME = 15
 
@@ -169,7 +169,7 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
 
       {captions.map((c, i) => (
         <Sequence key={i} from={c.from} durationInFrames={c.duration} layout="none">
-          <Caption text={c.text} woerter={c.woerter} unterZahl={Boolean(proof && p0.from > proof.from && frame >= proof.from && frame < p0.from)} />
+          <Caption text={c.text} woerter={c.woerter} top={captionTop(frame, proof?.from ?? null, p0.from)} />
         </Sequence>
       ))}
 
@@ -214,10 +214,6 @@ function Ton({
   for (const b of beats) {
     if (b.from > 0 && b.id !== 'proof' && b.id !== 'crack') cues.push({ from: b.from, src: whoosh, volume: whooshPegel })
     if (b.id === 'proof') cues.push({ from: b.from, src: mouseClick, volume: sfxPegel })
-    if (b.duration > 75 && b.id !== 'crack') {
-      const zoom = b.from + SCHNITT_FRAMES
-      if (zoom > 0 && zoom < b.from + b.duration - 8) cues.push({ from: zoom, src: whoosh, volume: whooshPegel * 0.8 })
-    }
     if (b.id.startsWith('pillar')) cues.push({ from: b.from + PILLAR_ZAHL_FRAME, src: mouseClick, volume: sfxPegel * 0.7 })
     if (b.id === 'crack') cues.push({ from: b.from, src: shutterOld, volume: 0.48 })
     if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: sfxPegel })
@@ -276,20 +272,22 @@ function stimmeAudioSrc(src: string): string {
 }
 
 function musikAudioSrc(src: string): string {
-  if (/^(blob:|data:|https?:)/i.test(src) || src.startsWith('/api/')) return src
+  if (/^(blob:|data:|https?:)/i.test(src) || src.startsWith('/youtube-music/') || src.startsWith('/api/')) return src
   const datei = src.split('/').pop() ?? src
   if (typeof window !== 'undefined' && !('remotion_staticBase' in window && window.remotion_staticBase) && datei) {
-    return `${window.location.origin}/api/youtube/musik/datei/${encodeURIComponent(datei)}`
+    return `${window.location.origin}/youtube-music/${encodeURIComponent(datei)}`
   }
   return staticFile(src.replace(/^\/+/, ''))
 }
 
 function kamera(frame: number): number {
-  const block = Math.floor(frame / SCHNITT_FRAMES)
-  const lokal = frame - block * SCHNITT_FRAMES
-  const start = block === 0 ? 1 : 1.1
-  const ende = block === 0 ? 1.06 : 1.15
-  return interpolate(lokal, [0, SCHNITT_FRAMES], [start, ende], { extrapolateRight: 'clamp' })
+  return interpolate(frame, [0, 80], [1, 1.04], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+}
+
+function captionTop(frame: number, proofFrom: number | null, pillarFrom: number): number {
+  if (proofFrom != null && pillarFrom > proofFrom && frame >= proofFrom && frame < pillarFrom) return 1120
+  if (frame < pillarFrom) return 900
+  return 1040
 }
 
 function Kopfzeile({
@@ -345,7 +343,7 @@ function HookSzene({
   const fuell = proofAb > 6 ? Math.min(1, frame / proofAb) : 1
   const balkenFarbe = saeule ? scoreFarbe(saeule.score) : BRAND
   return (
-    <AbsoluteFill style={{ transform: `scale(${kamera(frame)})`, transformOrigin: 'center center' }}>
+    <AbsoluteFill style={{ transform: `scale(${kamera(frame)})`, transformOrigin: `center ${SAFE_TOP + 12}px` }}>
       {logoUrl ? (
         <div
           style={{
@@ -392,16 +390,16 @@ function HookSzene({
         </div>
       ) : null}
       {!zahlAn && saeule ? (
-        <div style={{ position: 'absolute', top: logoUrl ? SAFE_TOP + 390 : 520, left: SAFE_LEFT, right: SAFE_RIGHT }}>
+        <div style={{ position: 'absolute', top: logoUrl ? SAFE_TOP + 440 : 560, left: SAFE_LEFT, right: SAFE_RIGHT }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 16 }}>
-            <span style={{ fontSize: 40, fontWeight: 800, letterSpacing: -0.4 }}>{saeule.label}</span>
-            <span style={{ fontFamily: MONO, fontSize: 36, fontWeight: 700, color: balkenFarbe, fontVariantNumeric: 'tabular-nums' }}>
+            <span style={{ fontSize: 52, fontWeight: 800, letterSpacing: -0.6 }}>{saeule.label}</span>
+            <span style={{ fontFamily: MONO, fontSize: 64, fontWeight: 700, color: balkenFarbe, fontVariantNumeric: 'tabular-nums' }}>
               {saeule.score}
-              <span style={{ color: MUTED, fontSize: 22 }}>/10</span>
+              <span style={{ color: MUTED, fontSize: 28 }}>/10</span>
             </span>
           </div>
-          <div style={{ marginTop: 14, height: 18, borderRadius: 9, background: 'rgba(243,241,236,0.09)', overflow: 'hidden' }}>
-            <div style={{ width: `${(saeule.score / 10) * fuell * 100}%`, height: '100%', borderRadius: 9, background: balkenFarbe }} />
+          <div style={{ marginTop: 18, height: 36, borderRadius: 18, background: 'rgba(243,241,236,0.09)', overflow: 'hidden' }}>
+            <div style={{ width: `${(saeule.score / 10) * fuell * 100}%`, height: '100%', borderRadius: 18, background: balkenFarbe }} />
           </div>
         </div>
       ) : null}
@@ -409,7 +407,7 @@ function HookSzene({
         <div
           style={{
             position: 'absolute',
-            top: '40%',
+            top: '34%',
             left: SAFE_LEFT,
             right: SAFE_RIGHT,
             textAlign: 'center',
@@ -417,7 +415,7 @@ function HookSzene({
             transformOrigin: 'center top',
           }}
         >
-          <div style={{ fontSize: value.length > 7 ? 120 : 148, fontWeight: 900, letterSpacing: -6, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+          <div style={{ fontSize: value.length > 7 ? 160 : 210, fontWeight: 900, letterSpacing: -6, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
             {value}
           </div>
           <div style={{ marginTop: 14, fontFamily: MONO, fontSize: 26, letterSpacing: 6, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
@@ -437,21 +435,18 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
   const fuell = spring({ frame: Math.max(0, lokal), fps, config: { damping: 22, mass: 0.7 }, durationInFrames: 14 })
   const farbe = scoreFarbe(p.score)
   return (
-    <AbsoluteFill style={{ transform: `scale(${kamera(lokal)})`, transformOrigin: 'center center' }}>
-      <div style={{ position: 'absolute', top: '18%', left: SAFE_LEFT, right: SAFE_RIGHT }}>
-        <div style={{ fontFamily: MONO, fontSize: 26, letterSpacing: 7, color: MUTED }}>FOUR PILLARS</div>
-        <div style={{ marginTop: 18, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 24 }}>
-          <span style={{ fontSize: 64, fontWeight: 800, letterSpacing: -0.6 }}>{p.label}</span>
-          <span style={{ fontFamily: MONO, fontSize: 52, fontWeight: 700, color: farbe, fontVariantNumeric: 'tabular-nums' }}>
-            {p.score}
-            <span style={{ color: MUTED, fontSize: 28 }}>/10</span>
-          </span>
+    <AbsoluteFill style={{ transform: `scale(${kamera(lokal)})`, transformOrigin: `center ${INHALT_TOP}px` }}>
+      <div style={{ position: 'absolute', top: INHALT_TOP + 80, left: SAFE_LEFT, right: SAFE_RIGHT }}>
+        <div style={{ fontSize: 72, fontWeight: 800, letterSpacing: -1.2, lineHeight: 0.95 }}>{p.label}</div>
+        <div style={{ marginTop: 12, fontFamily: MONO, fontSize: 200, fontWeight: 700, color: farbe, lineHeight: 0.86, fontVariantNumeric: 'tabular-nums' }}>
+          {p.score}
+          <span style={{ color: MUTED, fontSize: 64 }}>/10</span>
         </div>
-        <div style={{ marginTop: 18, height: 16, borderRadius: 8, background: 'rgba(243,241,236,0.09)', overflow: 'hidden' }}>
-          <div style={{ width: `${(p.score / 10) * Math.min(1, fuell) * 100}%`, height: '100%', borderRadius: 8, background: farbe }} />
+        <div style={{ marginTop: 28, height: 48, borderRadius: 24, background: 'rgba(243,241,236,0.09)', overflow: 'hidden' }}>
+          <div style={{ width: `${(p.score / 10) * Math.min(1, fuell) * 100}%`, height: '100%', borderRadius: 24, background: farbe }} />
         </div>
         {p.stat ? (
-          <div style={{ marginTop: 16, fontFamily: MONO, fontSize: 28, letterSpacing: 1 }}>
+          <div style={{ marginTop: 22, fontFamily: MONO, fontSize: 32, letterSpacing: 0.4 }}>
             <span style={{ color: farbe, fontWeight: 700 }}>{p.stat.value}</span>
             <span style={{ color: MUTED }}> · {p.stat.label}</span>
           </div>
@@ -464,15 +459,15 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
 function CrackSzene() {
   const frame = useCurrentFrame()
   const zeichnen = interpolate(frame, [0, 12], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp', easing: Easing.out(Easing.cubic) })
-  const pfad = 'M -20 70 L 150 40 L 260 105 L 400 30 L 520 120 L 660 50 L 780 110 L 900 35 L 1100 90'
-  const laenge = 1600
+  const pfad = 'M 8 100 L 120 48 L 210 128 L 320 36 L 430 140 L 540 52 L 650 132 L 760 40 L 830 96'
+  const laenge = 1400
   return (
-    <AbsoluteFill style={{ transform: `scale(${kamera(frame)})`, transformOrigin: 'center center' }}>
-      <div style={{ position: 'absolute', top: '18%', left: SAFE_LEFT, right: SAFE_RIGHT, textAlign: 'center' }}>
+    <AbsoluteFill style={{ transform: `scale(${kamera(frame)})`, transformOrigin: `center ${INHALT_TOP}px` }}>
+      <div style={{ position: 'absolute', top: INHALT_TOP + 40, left: SAFE_LEFT, right: SAFE_RIGHT, textAlign: 'center' }}>
         <div style={{ fontFamily: MONO, fontSize: 28, letterSpacing: 8, color: VERDICT_FARBE.none }}>WHAT COULD BREAK IT</div>
-        <div style={{ marginTop: 16, fontSize: 120, fontWeight: 900, letterSpacing: -4, lineHeight: 1 }}>The crack</div>
-        <svg width={1080} height={160} viewBox="0 0 1080 160" style={{ position: 'absolute', left: '50%', marginLeft: -540, top: 150 }}>
-          <path d={pfad} fill="none" stroke={VERDICT_FARBE.none} strokeWidth={9} strokeLinejoin="miter" strokeDasharray={laenge} strokeDashoffset={laenge * (1 - zeichnen)} />
+        <div style={{ marginTop: 18, fontSize: 132, fontWeight: 900, letterSpacing: -4, lineHeight: 0.92 }}>The crack</div>
+        <svg width="100%" height={180} viewBox="0 0 838 180" preserveAspectRatio="none" style={{ marginTop: 12 }}>
+          <path d={pfad} fill="none" stroke={VERDICT_FARBE.none} strokeWidth={10} strokeLinejoin="miter" strokeDasharray={laenge} strokeDashoffset={laenge * (1 - zeichnen)} />
         </svg>
       </div>
     </AbsoluteFill>
@@ -487,8 +482,8 @@ function VerdictSzene({ verdict, score, fadeOut }: { verdict: MoatShortVerdict; 
   const wackeln = fadeOut > 0.2 ? 0 : aufprall * Math.sin(frame * 2.3) * 4
   const farbe = VERDICT_FARBE[verdict]
   return (
-    <AbsoluteFill style={{ opacity: 1 - fadeOut, transform: `scale(${kamera(frame)}) translate(${wackeln}px, ${wackeln * 0.4}px)`, transformOrigin: 'center center' }}>
-      <div style={{ position: 'absolute', top: '20%', left: SAFE_LEFT, right: SAFE_RIGHT, textAlign: 'center' }}>
+    <AbsoluteFill style={{ opacity: 1 - fadeOut, transform: `scale(${kamera(frame)}) translate(${wackeln}px, ${wackeln * 0.4}px)`, transformOrigin: `center ${INHALT_TOP}px` }}>
+      <div style={{ position: 'absolute', top: INHALT_TOP + 80, left: SAFE_LEFT, right: SAFE_RIGHT, textAlign: 'center' }}>
         <div style={{ fontFamily: MONO, fontSize: 28, letterSpacing: 8, color: MUTED }}>VERDICT</div>
         <div
           style={{
@@ -525,14 +520,14 @@ function aktivesWort(woerter: { start: number; end: number }[], frame: number): 
   return last
 }
 
-function Caption({ text, woerter, unterZahl }: { text: string; woerter: { text: string; start: number; end: number }[]; unterZahl: boolean }) {
+function Caption({ text, woerter, top }: { text: string; woerter: { text: string; start: number; end: number }[]; top: number }) {
   const frame = useCurrentFrame()
   const aktiv = aktivesWort(woerter, frame)
   return (
     <div
       style={{
         position: 'absolute',
-        top: Math.min(unterZahl ? MOAT_SHORT_HEIGHT * 0.56 : MOAT_SHORT_HEIGHT * 0.46, MOAT_SHORT_HEIGHT - SAFE_BOTTOM - 160),
+        top: Math.min(top, MOAT_SHORT_HEIGHT - SAFE_BOTTOM - 180),
         left: SAFE_LEFT,
         right: SAFE_RIGHT,
         display: 'flex',
