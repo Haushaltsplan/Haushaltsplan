@@ -168,7 +168,7 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
 
       {captions.map((c, i) => (
         <Sequence key={i} from={c.from} durationInFrames={c.duration} layout="none">
-          <Caption text={c.text} woerter={c.woerter} top={captionTop(frame, proof?.from ?? null, p0.from)} />
+          <Caption text={c.text} woerter={c.woerter} top={captionTop(c.from, proof?.from ?? null, p0.from)} />
         </Sequence>
       ))}
 
@@ -521,11 +521,7 @@ function Caption({ text, woerter, top }: { text: string; woerter: { text: string
             textAlign: 'center',
           }}
         >
-          <Wortzeile
-            text={text}
-            farbeFuer={(_w, i) => (i === aktiv ? CAPTION_YELLOW : TEXT)}
-            gewichtFuer={(_w, i) => (i === aktiv ? 900 : 700)}
-          />
+          <Wortzeile text={text} farbeFuer={(_w, i) => (i === aktiv ? CAPTION_YELLOW : TEXT)} />
         </span>
       </div>
     </div>

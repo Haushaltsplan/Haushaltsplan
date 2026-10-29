@@ -118,16 +118,16 @@ function captionsAusWoertern(worte: MoatShortVoiceWort[]): MoatShortCaption[] {
       woerter: g.map((w) => ({
         text: w.text,
         start: Math.max(0, msZuFrame(w.startMs) - from),
-        end: Math.max(1, msZuFrame(w.endMs) - from),
+        end: Math.max(msZuFrame(w.startMs) - from + 1, msZuFrame(w.endMs) - from),
       })),
     }
   })
   return roh.map((c, i) => {
     const next = roh[i + 1]?.from ?? c.from + c.duration
-    let duration = c.duration
-    if (duration < CAPTION_MIN_FRAMES) duration = Math.min(CAPTION_MIN_FRAMES, Math.max(6, next - c.from))
-    duration = Math.min(duration, Math.max(6, next - c.from))
-    return { ...c, duration: Math.max(6, duration) }
+    const raum = Math.max(1, next - c.from)
+    let duration = Math.min(c.duration, raum)
+    if (duration < CAPTION_MIN_FRAMES) duration = Math.min(CAPTION_MIN_FRAMES, raum)
+    return { ...c, duration }
   })
 }
 
@@ -219,6 +219,39 @@ function timelineGeschaetzt(props: MoatShortProps): MoatShortTimeline {
   return schliesseTimeline(beats, ersterBlockAufFrameNull(captions), cursor, 0)
 }
 
+function legeCaptionsOhneUeberlappung(captions: MoatShortCaption[]): MoatShortCaption[] {
+  const sorted = [...captions].sort((a, b) => a.from - b.from || b.text.length - a.text.length)
+  const out: MoatShortCaption[] = []
+  for (const c of sorted) {
+    if (!c.text.trim() || c.duration < 1) continue
+    const prev = out[out.length - 1]
+    if (prev && c.from <= prev.from) continue
+    if (prev && c.from < prev.from + prev.duration) prev.duration = c.from - prev.from
+    out.push({
+      ...c,
+      woerter: c.woerter.map((w) => ({ ...w })),
+    })
+  }
+  for (let i = 0; i < out.length; i++) {
+    const c = out[i]!
+    const nextFrom = out[i + 1]?.from ?? c.from + c.duration
+    c.duration = Math.max(1, nextFrom - c.from)
+    const ws = [...c.woerter].sort((a, b) => a.start - b.start || a.end - b.end)
+    let cursor = 0
+    for (let k = 0; k < ws.length; k++) {
+      const w = ws[k]!
+      const start = Math.min(Math.max(cursor, w.start), Math.max(0, c.duration - 1))
+      const istLetztes = k === ws.length - 1
+      const bis = istLetztes ? c.duration : Math.min(Math.max(start + 1, ws[k + 1]!.start), c.duration)
+      w.start = start
+      w.end = Math.max(start + 1, bis)
+      cursor = w.end
+    }
+    c.woerter = ws
+  }
+  return out
+}
+
 function schliesseTimeline(
   beats: MoatShortBeat[],
   captions: MoatShortCaption[],
@@ -226,9 +259,9 @@ function schliesseTimeline(
   voiceTrimFrames: number,
 ): MoatShortTimeline {
   const durationInFrames = Math.max(1, cursor)
-  const saubereCaptions = captions
-    .map((c) => ({ ...c, duration: Math.min(c.duration, durationInFrames - c.from) }))
-    .filter((c) => c.duration >= 6 && c.from < durationInFrames)
+  const saubereCaptions = legeCaptionsOhneUeberlappung(captions)
+    .map((c) => ({ ...c, duration: Math.min(c.duration, Math.max(1, durationInFrames - c.from)) }))
+    .filter((c) => c.from < durationInFrames && c.duration >= 1)
   return { beats, captions: saubereCaptions, durationInFrames, voiceTrimFrames }
 }
 
