@@ -180,7 +180,6 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
         voiceSrc={props.voiceSrc}
         voiceTrim={timeline.voiceTrimFrames}
         beats={beats}
-        sprache={captions.flatMap((c) => c.woerter.map((w) => ({ from: c.from + w.start, to: c.from + w.end })))}
       />
     </AbsoluteFill>
   )
@@ -194,7 +193,6 @@ function Ton({
   voiceSrc,
   voiceTrim,
   beats,
-  sprache,
 }: {
   musicSrc: string | null
   musicGain: number
@@ -203,9 +201,7 @@ function Ton({
   voiceSrc: string | null
   voiceTrim: number
   beats: MoatShortBeat[]
-  sprache: { from: number; to: number }[]
 }) {
-  const crack = beats.find((b) => b.id === 'crack')
   /** SFX leise unter der Stimme. Der erste Frame bleibt ohne Whoosh, damit das erste Wort frei ist. */
   const sfxPegel = 0.21
   const whooshPegel = 0.1
@@ -218,23 +214,9 @@ function Ton({
     if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: sfxPegel })
   }
 
-  const musikVolume = (f: number) => {
-    const crackEnde = crack ? crack.from + crack.duration : 0
-    const duck =
-      crack && crack.from >= 4
-        ? interpolate(f, [crack.from - 4, crack.from + 6, crackEnde - 6, crackEnde + 4], [1, 0.4, 0.4, 1], {
-            extrapolateLeft: 'clamp',
-            extrapolateRight: 'clamp',
-          })
-        : 1
-    // Pause = bisheriger Sprach-Deckel. Während eines Wortes nochmal −13 dB, in den Lücken wieder anheben.
-    const pause = voiceSrc ? 0.063 : 0.126
-    const spricht = voiceSrc ? (sprache.length ? sprache.some((b) => f >= b.from && f < b.to) : true) : false
-    const nah = voiceSrc && sprache.some((b) => f >= b.from - 2 && f < b.to + 2)
-    const pegel = spricht ? pause * 10 ** (-13 / 20) : nah ? pause * 10 ** (-6 / 20) : pause
-    const relativ = Math.max(0, musicGain) / 0.5
-    return Math.max(0, Math.min(1, pegel * relativ * duck))
-  }
+  const deckel = voiceSrc ? 0.063 : 0.126
+  const relativ = Math.max(0, musicGain) / 0.5
+  const musikVolume = Math.max(0, Math.min(1, deckel * relativ))
 
   return (
     <>
