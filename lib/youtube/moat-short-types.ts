@@ -5,9 +5,13 @@ export type MoatShortMetrik = { id: string; label: string; value: string; hook: 
 
 export type MoatShortHookVariante = {
   winkel: string
+  kicker: string
+  /** Frage, ohne Kennzahl. */
   claim: string
+  /** Kennzahl als Antwort. */
+  proof: string
   loop: string
-  /** Offene Brücke in den Claim — kein Schlusssatz, keine Hook-Zahl. */
+  /** Offene Brücke in die Frage — endet mit „so the question is“. */
   land: string
   metrikId: string
 }

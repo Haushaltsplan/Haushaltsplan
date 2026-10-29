@@ -37,7 +37,12 @@ import { euPortfolioIrConfig } from '@/lib/portfolio-analyse/eu-portfolio-ir-con
 import { ladeMotleyFoolTranskriptHistorie } from '@/lib/portfolio-analyse/motley-fool-earnings-transcript-server'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
 import { ladeSecEdgarTranskriptHistorie } from '@/lib/portfolio-analyse/sec-edgar-earnings-transcript-server'
-import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiModelKandidaten } from '@/lib/ki-coach-backend'
+import {
+  resolveCoachProviderFromMode,
+  runCoachCompletion,
+  earningsCallGeminiModelKandidaten,
+  earningsDokumentGeminiLimits,
+} from '@/lib/ki-coach-backend'
 import { zusammenfassungMitMarktkontext } from '@/lib/portfolio-analyse/marktkontext-ki-server'
 import { sentimentScoreAusZusammenfassung } from '@/lib/portfolio-analyse/earnings-call-sentiment'
 
@@ -394,6 +399,7 @@ async function zusammenfasseTranscript(
       temperature: 0.35,
       skipMessageTrim: true,
       geminiModels: earningsCallGeminiModelKandidaten(),
+      ...earningsDokumentGeminiLimits(),
     },
   )
 

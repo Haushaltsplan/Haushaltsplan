@@ -207,8 +207,9 @@ function Ton({
 }
 
 function logoSrc(url: string): string {
+  if (/^(data:|blob:)/i.test(url)) return url
   const play = logoPlaySrc(url)
-  if (play && (play.startsWith('http') || play.startsWith('/api/'))) return play
+  if (play && (/^(data:|blob:|https?:)/i.test(play) || play.startsWith('/api/'))) return play
   return staticFile((play ?? url).replace(/^\/+/, ''))
 }
 

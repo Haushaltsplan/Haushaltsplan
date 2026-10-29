@@ -172,7 +172,7 @@ export async function ladeEarningsCallClient(
       quartalId: anfrage.quartalId,
       forceKi: anfrage.forceKi,
     }),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(165_000),
     })
   } catch (e) {
     if (e instanceof Error && e.name === 'TimeoutError') {

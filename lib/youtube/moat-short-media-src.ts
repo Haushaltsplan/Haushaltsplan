@@ -26,6 +26,7 @@ export function musikPlaySrc(rel: string | null): string | null {
 /** Genau ein Same-Origin-Proxy, nie verschachtelt. */
 export function logoPlaySrc(rel: string | null): string | null {
   if (!rel) return null
+  if (/^(data:|blob:)/i.test(rel)) return rel
   const raw = originaleLogoQuelle(rel)
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   if (/^https?:\/\//i.test(raw) && !raw.includes('/api/youtube/logo')) {

@@ -21,9 +21,10 @@ import {
   istOffeneBruecke,
   ohneKennzahlId,
   ohneKiBindestrich,
+  frageFuerHook,
+  kickerFuerBild,
   kuerzeGesprocheneZeile,
-  saubererHookLoop,
-  saubererLand,
+  landZurFrage,
   scriptLoopWarnungen,
   scriptStoryWarnungen,
   scriptTonWarnungen,
@@ -68,12 +69,13 @@ function baueSchema(hookIds: string[], alleIds: string[]) {
           type: 'object',
           properties: {
             angle: { type: 'string', enum: ['number_shock', 'contrast', 'stakes'] },
+            kicker: { type: 'string' },
             claim: { type: 'string' },
-            loop: { type: 'string' },
+            proof: { type: 'string' },
             land: { type: 'string' },
             metricId: { type: 'string', enum: hookIds },
           },
-          required: ['angle', 'claim', 'loop', 'land', 'metricId'],
+          required: ['angle', 'kicker', 'claim', 'proof', 'land', 'metricId'],
         },
       },
       pillarLines: {
@@ -106,7 +108,7 @@ Talk like a person at a table. Same move for ASML, Hermès, a railroad, a card n
 
 Every spoken line is a normal human sentence: subject, verb, one thought. 8 to 10 words, and under 70 characters. Count the words. A comma is fine. One breath. The subtitle sits on 2 lines. If it would wrap to a third, the line is too long.
 
-Good: "Microsoft prints a 47.1% operating margin that companies can't leave."
+Good proof: "Because they print a 47.1% operating margin."
 Good: "Ripping that stack out is a nightmare."
 Bad: "Microsoft prints a 47.1% operating margin selling software no corporation can avoid."
 Bad: "Ripping active directory and azure out of a Fortune 500 company is a nightmare."
@@ -131,18 +133,17 @@ Do not bark 3 to 6 word punches. Do not write a memo. Prefer verbs and pictures 
 - Cut "basically", "essentially", "secret".
 - NEVER use an em-dash, en-dash, or a hyphen with spaces around it. That is AI punctuation. Use a comma, or a second full sentence.
 
-## Seamless loop (land + claim = ONE sentence)
-YouTube restarts the Short on the first frame with zero gap. The last spoken line must be an unfinished bridge that feeds grammatically into the first sentence. Not a summary. Not a repeated phrase. Not a period.
+## Seamless loop (land + question = ONE sentence)
+YouTube restarts the Short on the first frame with zero gap. The last spoken line must be an unfinished bridge into the opening question. Not a summary. Not a repeated number. Not a period.
 
 Draft the pair as one spoken sentence, then split it.
 
-Good pair (read land then claim out loud, no pause):
-- land: "Banks can't leave and merchants can't opt out, which is why"
-- claim: "Mastercard prints a 58% margin without taking credit risk."
-- Heard loop: "...which is why Mastercard prints a 58% margin without taking credit risk."
-
-- land: "There is no second shop that can print these chips, which is why"
-- claim: "ASML prints a 51.3% margin selling machines nobody else can build."
+Good pair (read land, then the question, no pause):
+- kicker: "No way out"
+- claim: "Why can Microsoft raise prices every year and nobody leaves?"
+- proof: "Because they print a 47.1% operating margin."
+- land: "Nobody else has a lock like this, so the question is"
+- Heard loop: "...so the question is why can Microsoft raise prices every year and nobody leaves?"
 
 Bad land
 - "Wide moat. The proof is 51.3%." (standalone summary, repeats the number)
@@ -150,41 +151,40 @@ Bad land
 - "Thanks for watching." / "And that is the story of ASML."
 - Any land that contains the hook metric value
 - Any land that ends with a period or a finished thought
+- Any land that ends with "which is why" and then a statement. The restart must be the question.
 
 Land rules
-- 6-9 words. One clause, one subject, NO metric value, NO second sentence.
-- End on "which is why" or "that's why". Never end with . ! ? and never with a dash.
+- 6-12 words. One clause, NO metric value, NO second sentence.
+- End exactly on "so the question is". Never end with . ! ? and never with a dash.
 - Do not say the score, "wide moat", "narrow moat", or recap the pillars. The stamp already shows the score. After this line the video loops.
 
-Claim rules
-- 8-11 words and under 70 characters. One complete sentence. No dashes. Count before you return it.
-- MUST start with the company name or ticker, then a verb. Never start with "At 51.3%" or a question.
-- Contains the chosen metric value exactly as written.
-- Name the metric in English: "a 58.3% operating margin". metricId is a machine key. Never say it. Never write "an ltm_ebit of 58.3%".
+Opening rules
+- kicker: 2 to 5 words, under 28 characters, one line a viewer can read in under a second. On screen only. Never spoken. No invented number, no market cap, no dollar figure unless that exact figure is in the metrics list.
+- claim: the first spoken line. 8 to 10 words, so the number lands around second 3 to 4. An open question or a provocation. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know". The company may appear, but the line is a question, not "Microsoft prints a 47.1% margin".
+- proof: the second spoken line, the answer. 7 to 11 words. Contains the chosen metric value exactly as written. Name the metric in English: "a 47.1% operating margin". metricId is a machine key. Never say it. Never write "an ltm_ebit of 47.1%".
 
 ## Story order, do not skip ahead
-There is no "what they sell" line. Do not describe the business model as its own beat.
-1. claim (the number)
-2. loop (curiosity ONLY)
-3. four pillars
-4. crack (FIRST time we name the threat)
-5. land (one short bridge back into the claim, then stop)
+There is no "what they sell" line. Do not describe the business model as its own beat. There is no teaser between the number and the pillars. Do not say "one thing could break that lock" or hint at the threat before the crack.
+1. claim (the question, no number). While this line is spoken, the first pillar bar is already filling on screen.
+2. proof (the number, as the answer)
+3. four pillars, in order, each its own sentence
+4. crack (the FIRST and only time the threat is named)
+5. land (bridge into the question, then stop)
 
-The loop is spoken at second 5, while the hook number is still on screen. It must NOT name the threat, the regulator, a rival, a cap, or why the moat holds. It must NOT say "because" or "banks cannot leave".
-Good loop: "One thing could still break that lock."
-Bad loop: "Regulatory caps threaten the business, but banks cannot leave the network because..."
+The number is the proof, not the hook. It is spoken only in proof, around the third second. The crack comes after all four pillars.
 
 ## Each hook
-Write THREE hooks. Each has four fields:
-1. claim, see above.
-2. loop (6-9 words): one complete sentence of curiosity. Same gap in three phrasings. Never the crack.
-3. land, unfinished bridge into THAT claim. No number.
-4. metricId, hook metric whose exact value appears in claim only.
+Write THREE hooks. Each has these fields:
+1. kicker, the on-screen headline. Not spoken.
+2. claim, the spoken question. No metric.
+3. proof, the spoken answer. The metric lives here only.
+4. land, unfinished bridge into THAT question. Ends with "so the question is". No number.
+5. metricId, hook metric whose exact value appears in proof only.
 
 Angles
-- number_shock: the number is absurd for this industry, and you say why.
-- contrast: expected story vs. the real one.
-- stakes: what breaks if this company vanishes, anchored by the number.
+- number_shock: the question makes the number feel absurd, then proof says it.
+- contrast: expected story vs. the real one, then the number.
+- stakes: what it would mean if customers could leave, then the number.
 
 ## Rest of the script
 Length is part of the voice. One verb, then stop. A third clause is what forces the line break.
@@ -195,12 +195,12 @@ Bad: "Stricter government fee caps and direct account to account payment rails c
 Same move for every company: name the threat and stop. Do not explain the mechanism in the same sentence.
 
 - pillarLines: one per pillar, 8-9 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none".
-- crack: 8-9 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. It answers the loop. No sign-off.
+- crack: 8-9 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. No sign-off.
 
 ## Hard rules
 - Use ONLY facts and numbers from the data provided. Never invent numbers, customers, market shares, years or events.
 - Write numbers exactly as given (e.g. "28.4%", "2.1 pts", "0.4x").
-- Never open a claim with a question, "Did you know", "In this video", "Let's talk about".
+- The first spoken line is the question. Never open with the metric, "Did you know", "In this video", or "Let's talk about".
 - No buy/sell/hold advice, no price targets, no emojis, no hashtags in spoken text.
 - Do not speak the score as "X out of 10".
 - Whole spoken script stays under 72 words. Count every spoken line. With a slightly brisk voice the Short lands at 30 to 35 seconds.
@@ -327,28 +327,34 @@ export async function generiereMoatShort(opts: {
     .map((h) => {
       const metrikId = hookMetriken.some((m) => m.id === h.metricId) ? text(h.metricId) : hookMetriken[0]!.id
       const wert = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).value
+      const label = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).label
+      const proofRoh = sprechtext(h.proof) || `Because that business prints ${wert} ${label.toLowerCase()}.`
       return {
         winkel: text(h.angle),
-        claim: kuerzeGesprocheneZeile(sprechtext(h.claim), { maxWoerter: 12, maxZeichen: 78, behalten: wert }),
-        loop: kuerzeGesprocheneZeile(saubererHookLoop(sprechtext(h.loop), crack), { maxWoerter: 9, maxZeichen: 78 }),
-        land: saubererLand(sprechtext(h.land), verdict, wert),
+        kicker: kickerFuerBild(sprechtext(h.kicker), paket.firmenname),
+        claim: frageFuerHook(sprechtext(h.claim), paket.firmenname, wert),
+        proof: kuerzeGesprocheneZeile(proofRoh, { maxWoerter: 11, maxZeichen: 78, behalten: wert }),
+        loop: '',
+        land: landZurFrage(sprechtext(h.land), verdict, wert),
         metrikId,
       }
     })
-    .filter((h) => h.claim)
+    .filter((h) => h.claim && h.proof)
   if (!hookVarianten.length) throw new Error('Script-KI lieferte keinen Hook — bitte erneut versuchen.')
 
   const zeilen = new Map(objekte(roh.pillarLines).map((r) => [text(r.id), r]))
   const scores = [moat.score, ...moat.pfeiler.map((p) => p.score)]
 
-  // Bevorzugt die Variante, deren Landung offen in den Hook mündet — Zahl nur im Claim.
+  // Frage ohne Zahl, Zahl nur in der Antwort, Landung mündet in die Frage.
   const start =
     hookVarianten.find((h) => {
       const m = metriken.find((x) => x.id === h.metrikId)
-      const gesprochen = `${h.claim} ${h.loop} ${h.land}`
+      const gesprochen = `${h.claim} ${h.proof} ${h.land}`
       return (
         m &&
-        h.claim.includes(m.value) &&
+        h.proof.includes(m.value) &&
+        /\?\s*$/.test(h.claim) &&
+        !h.claim.includes(m.value) &&
         istOffeneBruecke(h.land, m.value) &&
         !fremdeZahlen(gesprochen, metriken, scores).length
       )
@@ -366,8 +372,10 @@ export async function generiereMoatShort(opts: {
     ticker,
     firmenname: paket.firmenname,
     logoUrl,
+    kicker: start.kicker,
     hook: start.claim,
-    hookLoop: saubererHookLoop(start.loop, crack),
+    proof: start.proof,
+    hookLoop: '',
     metricValue: startMetrik.value,
     metricLabel: startMetrik.label,
     business: '',
@@ -401,10 +409,10 @@ export async function generiereMoatShort(opts: {
   const fest = new Set<string>()
   for (let runde = 0; runde < 16; runde++) {
     const teile = [
-      { key: 'hook', text: props.hook, behalten: props.metricValue },
-      { key: 'loop', text: props.hookLoop, behalten: undefined as string | undefined },
-      ...props.pillars.map((p, i) => ({ key: `p${i}`, text: p.line, behalten: p.stat?.value })),
-      { key: 'crack', text: props.crack, behalten: undefined as string | undefined },
+      { key: 'hook', text: props.hook, behalten: undefined as string | undefined, frage: true },
+      { key: 'proof', text: props.proof, behalten: props.metricValue, frage: false },
+      ...props.pillars.map((p, i) => ({ key: `p${i}`, text: p.line, behalten: p.stat?.value, frage: false })),
+      { key: 'crack', text: props.crack, behalten: undefined as string | undefined, frage: false },
     ]
     const summe = [...teile.map((t) => t.text), props.closing].map(woerter).reduce((a, b) => a + b, 0)
     if (summe <= MAX_WOERTER_GESAMT) break
@@ -416,13 +424,14 @@ export async function generiereMoatShort(opts: {
       maxWoerter: woerter(ziel.text) - 1,
       maxZeichen: 78,
       behalten: ziel.behalten,
+      frage: ziel.frage,
     })
     if (woerter(neu) >= woerter(ziel.text)) {
       fest.add(ziel.key)
       continue
     }
     if (ziel.key === 'hook') props.hook = neu
-    else if (ziel.key === 'loop') props.hookLoop = neu
+    else if (ziel.key === 'proof') props.proof = neu
     else if (ziel.key === 'crack') props.crack = neu
     else {
       const idx = Number(ziel.key.slice(1))
@@ -430,14 +439,16 @@ export async function generiereMoatShort(opts: {
       if (pfeiler) props.pillars[idx] = { ...pfeiler, line: neu }
     }
   }
+  start.kicker = props.kicker
   start.claim = props.hook
-  start.loop = props.hookLoop
+  start.proof = props.proof
+  start.loop = ''
   start.land = props.closing
 
   const warnungen: string[] = []
-  warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue))
+  warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof))
   warnungen.push(...scriptStoryWarnungen(props.hookLoop, props.crack))
-  const gesprochen = [props.hook, props.hookLoop, ...props.pillars.map((p) => p.line), props.crack, props.closing]
+  const gesprochen = [props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing]
   warnungen.push(...scriptTonWarnungen(gesprochen))
   const fremd = fremdeZahlen(gesprochen.join(' '), metriken, scores)
   if (fremd.length) warnungen.push(`Zahlen ohne Quelle im Export: ${fremd.join(', ')} — bitte prüfen oder streichen.`)

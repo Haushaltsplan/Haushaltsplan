@@ -8,10 +8,12 @@ export type ShortSprechzeile<T extends string = string> = { id: T; text: string 
 
 const PILLAR_IDS = ['pillar0', 'pillar1', 'pillar2', 'pillar3'] as const
 
-export function moatShortSprechzeilen(props: Pick<MoatShortProps, 'hook' | 'hookLoop' | 'pillars' | 'crack' | 'closing'>): MoatShortSprechzeile[] {
+export function moatShortSprechzeilen(
+  props: Pick<MoatShortProps, 'hook' | 'proof' | 'hookLoop' | 'pillars' | 'crack' | 'closing'>,
+): MoatShortSprechzeile[] {
   const zeilen: MoatShortSprechzeile[] = [
     { id: 'hook', text: props.hook },
-    { id: 'teaser', text: props.hookLoop },
+    { id: 'proof', text: props.proof },
     ...props.pillars.slice(0, 4).map((p, i) => ({
       id: PILLAR_IDS[i] ?? 'pillar0',
       text: p.line,
@@ -26,7 +28,9 @@ export function moatShortSprechtext(zeilen: ShortSprechzeile[]): string {
   return zeilen.map((z) => z.text.trim()).join('\n')
 }
 
-export function moatShortSprechFingerprint(props: Pick<MoatShortProps, 'hook' | 'hookLoop' | 'pillars' | 'crack' | 'closing'>): string {
+export function moatShortSprechFingerprint(
+  props: Pick<MoatShortProps, 'hook' | 'proof' | 'hookLoop' | 'pillars' | 'crack' | 'closing'>,
+): string {
   return moatShortSprechtext(moatShortSprechzeilen(props))
 }
 

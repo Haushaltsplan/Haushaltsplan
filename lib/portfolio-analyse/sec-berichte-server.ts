@@ -19,7 +19,12 @@ import {
 import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { SEC_BERICHTE_SYSTEM_PROMPT } from '@/lib/portfolio-analyse/sec-berichte-prompt'
 import type { SecBerichtAnfrage, SecBerichtEintrag, SecBerichtePaket } from '@/lib/portfolio-analyse/sec-berichte-types'
-import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiModelKandidaten } from '@/lib/ki-coach-backend'
+import {
+  resolveCoachProviderFromMode,
+  runCoachCompletion,
+  earningsCallGeminiModelKandidaten,
+  earningsDokumentGeminiLimits,
+} from '@/lib/ki-coach-backend'
 
 const MAX_REPORT_CHARS = 120_000
 const serverCache = new Map<string, { at: number; paket: SecBerichtePaket }>()
@@ -201,6 +206,7 @@ async function zusammenfasseBericht(
       temperature: 0.35,
       skipMessageTrim: true,
       geminiModels: earningsCallGeminiModelKandidaten(),
+      ...earningsDokumentGeminiLimits(),
     },
   )
 

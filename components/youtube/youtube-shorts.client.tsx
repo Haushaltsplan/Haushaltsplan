@@ -17,6 +17,7 @@ import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { istOffeneBruecke, kuerzeGesprocheneZeile, ohneKennzahlId, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
+import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
 import { moatShortSprechFingerprint } from '@/lib/youtube/moat-short-voice'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
@@ -90,7 +91,15 @@ function beispielErgebnis(): MoatShortErgebnis {
       { id: 'roic', label: '5-year avg. ROIC', value: '28.4%', hook: false },
     ],
     hookVarianten: [
-      { winkel: 'number_shock', claim: props.hook, loop: props.hookLoop, land: props.closing, metrikId: 'gm' },
+      {
+        winkel: 'number_shock',
+        kicker: props.kicker,
+        claim: props.hook,
+        proof: props.proof,
+        loop: props.hookLoop,
+        land: props.closing,
+        metrikId: 'gm',
+      },
     ],
     moat: {
       ticker: props.ticker,
@@ -117,7 +126,39 @@ function beispielErgebnis(): MoatShortErgebnis {
 }
 
 function logoHref(url: string): string {
+  if (/^(data:|blob:)/i.test(url)) return url
   return logoPlaySrc(url) ?? `/${url.replace(/^\/+/, '')}`
+}
+
+function dateiZuLogo(datei: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const objekt = URL.createObjectURL(datei)
+    const img = new Image()
+    img.onload = () => {
+      const max = 512
+      const faktor = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight, 1))
+      const w = Math.max(1, Math.round(img.naturalWidth * faktor))
+      const h = Math.max(1, Math.round(img.naturalHeight * faktor))
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        URL.revokeObjectURL(objekt)
+        reject(new Error('Bild lässt sich nicht lesen.'))
+        return
+      }
+      ctx.clearRect(0, 0, w, h)
+      ctx.drawImage(img, 0, 0, w, h)
+      URL.revokeObjectURL(objekt)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(objekt)
+      reject(new Error('Das ist kein lesbares Bild.'))
+    }
+    img.src = objekt
+  })
 }
 
 function pruefeLogo(url: string | null): Promise<string | null> {
@@ -130,20 +171,35 @@ function pruefeLogo(url: string | null): Promise<string | null> {
   })
 }
 
-function zeileWennNoetig(text: string, opts?: { behalten?: string; maxWoerter?: number }): string {
+function zeileWennNoetig(text: string, opts?: { behalten?: string; maxWoerter?: number; frage?: boolean }): string {
   const roh = ohneKennzahlId(text).replace(/\s+/g, ' ').trim()
   const woerter = roh.split(/\s+/).filter(Boolean).length
   const maxW = opts?.maxWoerter ?? 12
   const gestapelt = /\bno\s+\w+\s+can\s+avoid\b/i.test(roh) || /\bselling\s+\w+\s+no\s+/i.test(roh)
   if (woerter <= maxW && roh.length <= 78 && !gestapelt) return roh
-  return kuerzeGesprocheneZeile(roh, { maxWoerter: maxW, maxZeichen: 78, behalten: opts?.behalten })
+  return kuerzeGesprocheneZeile(roh, { maxWoerter: maxW, maxZeichen: 78, behalten: opts?.behalten, frage: opts?.frage })
+}
+
+function kickerWennNoetig(kicker: string): string {
+  const t = ohneKennzahlId(kicker).replace(/\s+/g, ' ').trim()
+  const teile = t.split(/\s+/).filter(Boolean)
+  if (teile.length <= 5 && t.length <= 28) return t
+  const kurz = teile.slice(0, 5).join(' ')
+  return kurz.length <= 28 ? kurz : kurz.slice(0, 28).replace(/\s+\S*$/, '').trim()
 }
 
 function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
+  const alsFrage = Boolean(p.proof.trim()) || /\?\s*$/.test(p.hook.trim())
   return {
     ...p,
-    hook: zeileWennNoetig(p.hook, { behalten: p.metricValue }),
-    hookLoop: zeileWennNoetig(p.hookLoop, { maxWoerter: 9 }),
+    kicker: kickerWennNoetig(p.kicker),
+    hook: zeileWennNoetig(p.hook, {
+      behalten: alsFrage ? undefined : p.metricValue,
+      maxWoerter: alsFrage ? 10 : 12,
+      frage: alsFrage,
+    }),
+    proof: p.proof.trim() ? zeileWennNoetig(p.proof, { behalten: p.metricValue, maxWoerter: 11 }) : p.proof,
+    hookLoop: '',
     business: ohneKennzahlId(p.business),
     crack: zeileWennNoetig(p.crack),
     closing: istOffeneBruecke(p.closing, p.metricValue) ? ohneKennzahlId(p.closing) : p.closing,
@@ -157,6 +213,8 @@ const feldKlasse =
 export function YoutubeShortsClient() {
   const [modus, setModus] = useState<YoutubeModus>('moat')
   const [rohText, setRohText] = useState('')
+  const [eigenesLogo, setEigenesLogo] = useState<string | null>(null)
+  const [logoAusSuche, setLogoAusSuche] = useState<string | null>(null)
   const [moatNeu, setMoatNeu] = useState(false)
   const [laedt, setLaedt] = useState(false)
   const [rendert, setRendert] = useState(false)
@@ -169,7 +227,9 @@ export function YoutubeShortsClient() {
     const next = gesprocheneZeilen(props)
     const zeilenGleich = next.pillars.every((x, i) => x.line === props.pillars[i]?.line)
     if (
+      next.kicker === props.kicker &&
       next.hook === props.hook &&
+      next.proof === props.proof &&
       next.hookLoop === props.hookLoop &&
       next.business === props.business &&
       next.crack === props.crack &&
@@ -275,14 +335,14 @@ export function YoutubeShortsClient() {
   const fremd =
     props && ergebnis
       ? fremdeZahlen(
-          [props.hook, props.hookLoop, ...props.pillars.map((p) => p.line), props.crack, props.closing].join(' '),
+          [props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing].join(' '),
           ergebnis.metriken,
           [ergebnis.moat.score, ...props.pillars.map((p) => p.score)],
         )
       : []
   const zahlenWarnung = fremd.length ? `Zahlen ohne Quelle im Export: ${fremd.join(', ')}` : null
   const loopWarnung = props
-    ? [...scriptLoopWarnungen(props.hook, props.closing, props.metricValue), ...scriptStoryWarnungen(props.hookLoop, props.crack)]
+    ? [...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof), ...scriptStoryWarnungen(props.hookLoop, props.crack)]
     : []
 
   useEffect(() => {
@@ -297,7 +357,7 @@ export function YoutubeShortsClient() {
       return null
     })
     setStimmeFp(null)
-    setProps((p) => (p ? { ...p, voiceSrc: null, voiceAlignment: null } : p))
+    setProps((p) => (p ? { ...p, voiceSrc: null, voiceAlignment: null, voiceLeadMs: undefined } : p))
   }
 
   useEffect(() => {
@@ -320,13 +380,15 @@ export function YoutubeShortsClient() {
         toast.error(j.fehler || j.error || 'Stimme fehlgeschlagen.')
         return
       }
-      const url = URL.createObjectURL(base64ZuMp3(j.audioBase64))
+      const blob = base64ZuMp3(j.audioBase64)
+      const url = URL.createObjectURL(blob)
+      const voiceLeadMs = await fuehrendeStilleMs(blob).catch(() => undefined)
       setVoiceUrl((alt) => {
         if (alt) URL.revokeObjectURL(alt)
         return url
       })
       setStimmeFp(moatShortSprechFingerprint(props))
-      setProps((p) => (p ? { ...p, voiceSrc: url, voiceAlignment: j.woerter ?? null } : p))
+      setProps((p) => (p ? { ...p, voiceSrc: url, voiceAlignment: j.woerter ?? null, voiceLeadMs } : p))
       toast.success('Stimme liegt auf der Timeline.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Stimme fehlgeschlagen.')
@@ -414,7 +476,9 @@ export function YoutubeShortsClient() {
       p
         ? {
             ...p,
+            kicker: h.kicker,
             hook: h.claim,
+            proof: h.proof,
             hookLoop: h.loop,
             closing: h.land,
             ...(m ? { metricValue: m.value, metricLabel: m.label } : {}),
@@ -427,6 +491,30 @@ export function YoutubeShortsClient() {
     if (datei) setRohText(await datei.text())
   }
 
+  async function logoGewaehlt(datei: File | undefined) {
+    if (!datei) return
+    if (!/^image\/(png|jpeg|webp)$/.test(datei.type)) {
+      toast.error('Logo als PNG, JPG oder WebP.')
+      return
+    }
+    if (datei.size > 8_000_000) {
+      toast.error('Das Logo ist größer als 8 MB.')
+      return
+    }
+    try {
+      const url = await dateiZuLogo(datei)
+      setEigenesLogo(url)
+      setProps((p) => (p ? { ...p, logoUrl: url } : p))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Logo lässt sich nicht lesen.')
+    }
+  }
+
+  function logoEntfernen() {
+    setEigenesLogo(null)
+    setProps((p) => (p ? { ...p, logoUrl: logoAusSuche } : p))
+  }
+
   function scriptAusAntwort(j: MoatShortErgebnis, logoUrl: string | null): MoatShortErgebnis {
     const sauber = gesprocheneZeilen({ ...j.props, logoUrl })
     return {
@@ -434,7 +522,9 @@ export function YoutubeShortsClient() {
       props: sauber,
       hookVarianten: j.hookVarianten.map((h) => ({
         ...h,
+        kicker: ohneKennzahlId(h.kicker),
         claim: ohneKennzahlId(h.claim),
+        proof: ohneKennzahlId(h.proof),
         loop: ohneKennzahlId(h.loop),
         land: ohneKennzahlId(h.land),
       })),
@@ -472,9 +562,11 @@ export function YoutubeShortsClient() {
         toast.error(('fehler' in j && j.fehler) || ('error' in j && j.error) || `Fehler (HTTP ${res.status})`)
         return
       }
-      const logoUrl = await pruefeLogo(j.props.logoUrl)
+      const gefunden = await pruefeLogo(j.props.logoUrl)
+      setLogoAusSuche(gefunden)
+      const logoUrl = eigenesLogo ?? gefunden
       setMoatWahl(richtung)
-      zeigeScript(scriptAusAntwort(j, logoUrl), logoUrl)
+      zeigeScript(scriptAusAntwort({ ...j, warnungen: eigenesLogo ? j.warnungen.filter((w) => !w.includes('Firmenlogo')) : j.warnungen }, logoUrl), logoUrl)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Netzwerkfehler')
     } finally {
@@ -500,14 +592,19 @@ export function YoutubeShortsClient() {
         toast.error(('fehler' in j && j.fehler) || ('error' in j && j.error) || `Fehler (HTTP ${res.status})`)
         return
       }
-      const logoUrl = await pruefeLogo(j.props.logoUrl)
-      const sauber = gesprocheneZeilen(j.props)
+      const gefunden = await pruefeLogo(j.props.logoUrl)
+      setLogoAusSuche(gefunden)
+      const logoUrl = eigenesLogo ?? gefunden
+      const sauber = gesprocheneZeilen({ ...j.props, logoUrl })
       const stand: MoatShortErgebnis = {
         ...j,
+        warnungen: eigenesLogo ? j.warnungen.filter((w) => !w.includes('Firmenlogo')) : j.warnungen,
         props: sauber,
         hookVarianten: j.hookVarianten.map((h) => ({
           ...h,
+          kicker: ohneKennzahlId(h.kicker),
           claim: ohneKennzahlId(h.claim),
+          proof: ohneKennzahlId(h.proof),
           loop: ohneKennzahlId(h.loop),
           land: ohneKennzahlId(h.land),
         })),
@@ -674,13 +771,36 @@ export function YoutubeShortsClient() {
               JSON-Datei wählen
               <input type="file" accept="application/json,.json" className="hidden" onChange={(e) => void dateiGewaehlt(e.target.files?.[0])} />
             </label>
+            <label className="cursor-pointer rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-sm text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]">
+              Logo hochladen
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  void logoGewaehlt(e.target.files?.[0])
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            {eigenesLogo ? (
+              <span className="inline-flex items-center gap-2 text-sm text-[var(--app-text-muted)]">
+                <img src={eigenesLogo} alt="" className="h-9 w-9 rounded-md border border-[var(--app-border)] bg-white object-contain p-0.5" />
+                wird verwendet
+                <button type="button" onClick={logoEntfernen} className="underline">
+                  entfernen
+                </button>
+              </span>
+            ) : (
+              <span className="text-xs text-[var(--app-text-muted)]">PNG, JPG oder WebP. Ersetzt die Logo-Suche.</span>
+            )}
             <button
               type="button"
               onClick={() => {
                 const b = beispielErgebnis()
                 setMoatWahl('ki')
                 setErgebnis(b)
-                setProps(b.props)
+                setProps({ ...b.props, logoUrl: eigenesLogo ?? b.props.logoUrl })
                 setMp4Blob(null)
                 setVideoId(null)
                 setVoiceUrl((alt) => {
@@ -742,7 +862,7 @@ export function YoutubeShortsClient() {
                   <p className="font-medium text-[var(--app-text)]">{props.firmenname}</p>
                   <p className="text-xs text-[var(--app-text-muted)]">
                     ${props.ticker}
-                    {props.logoUrl ? ' · echtes Firmenlogo' : ' · kein Logo gefunden'}
+                    {eigenesLogo ? ' · hochgeladenes Logo' : props.logoUrl ? ' · echtes Firmenlogo' : ' · kein Logo gefunden'}
                   </p>
                 </div>
               </div>
@@ -780,10 +900,10 @@ export function YoutubeShortsClient() {
 
               <div className="space-y-2">
                 <p className="text-xs font-medium text-[var(--app-text-muted)]">
-                  Hook-Kreis — Landung mündet grammatisch in die Behauptung
+                  Hook-Kreis — Frage, die Zahl als Antwort, Landung mündet in die Frage
                 </p>
                 {ergebnis.hookVarianten.map((h, i) => {
-                  const aktiv = h.claim === props.hook
+                  const aktiv = h.claim === props.hook && h.proof === props.proof
                   return (
                     <button
                       key={i}
@@ -797,9 +917,10 @@ export function YoutubeShortsClient() {
                     >
                       <span className="text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">
                         {WINKEL_LABEL[h.winkel] ?? h.winkel}
+                        {h.kicker ? ` · ${h.kicker}` : ''}
                       </span>
                       <span className="mt-0.5 block font-medium text-[var(--app-text)]">{h.claim}</span>
-                      <span className="block text-[var(--app-text-muted)]">{h.loop}</span>
+                      <span className="block text-[var(--app-text-muted)]">{h.proof}</span>
                       <span className="mt-1 block text-[11px] text-[var(--app-text-muted)]">
                         Ende → {h.land}
                       </span>
@@ -807,12 +928,18 @@ export function YoutubeShortsClient() {
                   )
                 })}
 
-                <label className="block pt-1 text-xs font-medium text-[var(--app-text-muted)]">Behauptung (steht als Überschrift im Bild)</label>
+                <label className="block pt-1 text-xs font-medium text-[var(--app-text-muted)]">
+                  Blickfang, nur im Bild, Sekunde 1. 2–5 Wörter.
+                </label>
+                <input value={props.kicker} onChange={(e) => setze('kicker', e.target.value)} className={feldKlasse} />
+                <label className="block text-xs font-medium text-[var(--app-text-muted)]">
+                  Frage, gesprochen ab Sekunde 0. Ohne die Zahl.
+                </label>
                 <textarea value={props.hook} onChange={(e) => setze('hook', e.target.value)} rows={2} className={feldKlasse} />
                 <label className="block text-xs font-medium text-[var(--app-text-muted)]">
-                  Spannungssatz, noch ohne Bedrohung. Der Crack kommt nach den Säulen.
+                  Antwort mit der Zahl, gesprochen ab Sekunde 3.
                 </label>
-                <input value={props.hookLoop} onChange={(e) => setze('hookLoop', e.target.value)} className={feldKlasse} />
+                <textarea value={props.proof} onChange={(e) => setze('proof', e.target.value)} rows={2} className={feldKlasse} />
                 <select
                   value={ergebnis.metriken.find((m) => m.value === props.metricValue && m.label === props.metricLabel)?.id ?? ''}
                   onChange={(e) => {

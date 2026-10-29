@@ -8,7 +8,12 @@ import {
 } from '@/lib/portfolio-analyse/quartals-ki-diff-cache-server'
 import type { QuartalsKiDiffAnfrage, QuartalsKiDiffPaket } from '@/lib/portfolio-analyse/quartals-ki-diff-types'
 import { ladeSecBerichtKiCacheEintrag } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
-import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiModelKandidaten } from '@/lib/ki-coach-backend'
+import {
+  resolveCoachProviderFromMode,
+  runCoachCompletion,
+  earningsCallGeminiModelKandidaten,
+  earningsDokumentGeminiLimits,
+} from '@/lib/ki-coach-backend'
 
 async function summaryEarnings(ticker: string, quartalId: string): Promise<string | null> {
   const hit = await ladeEarningsCallKiCacheEintrag(ticker, quartalId)
@@ -98,6 +103,7 @@ export async function ladeQuartalsKiDiff(anfrage: QuartalsKiDiffAnfrage): Promis
       temperature: 0.35,
       skipMessageTrim: true,
       geminiModels: earningsCallGeminiModelKandidaten(),
+      ...earningsDokumentGeminiLimits(),
     },
   )
 

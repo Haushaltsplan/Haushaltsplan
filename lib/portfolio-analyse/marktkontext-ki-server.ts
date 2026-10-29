@@ -2,7 +2,12 @@
 
 import 'server-only'
 
-import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiModelKandidaten } from '@/lib/ki-coach-backend'
+import {
+  resolveCoachProviderFromMode,
+  runCoachCompletion,
+  earningsCallGeminiModelKandidaten,
+  marktkontextGeminiLimits,
+} from '@/lib/ki-coach-backend'
 import { MARKTKONTEXT_SYSTEM_PROMPT } from './marktkontext-prompt'
 
 export function marktkontextKiAktiv(): boolean {
@@ -44,6 +49,7 @@ export async function ergaenzeMarktkontextKi(opts: {
       skipMessageTrim: true,
       geminiGoogleSearch: true,
       geminiModels: earningsCallGeminiModelKandidaten(),
+      ...marktkontextGeminiLimits(),
     },
   )
 

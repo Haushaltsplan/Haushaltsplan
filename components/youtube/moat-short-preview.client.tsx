@@ -12,7 +12,7 @@ export default function MoatShortPreview({ props, restartKey }: { props: MoatSho
   return (
     <div>
       <Player
-        key={`${props.musicSrc ?? 'still'}-${props.voiceSrc ?? 'novoice'}-${props.sfx ? 'sfx' : 'nosfx'}-${restartKey ?? 0}`}
+        key={`${props.musicSrc ?? 'still'}-${props.voiceSrc ?? 'novoice'}-${props.voiceLeadMs ?? 0}-${props.logoUrl?.slice(-32) ?? 'nologo'}-${props.sfx ? 'sfx' : 'nosfx'}-${restartKey ?? 0}`}
         component={MoatShort}
         inputProps={props}
         durationInFrames={dauer}
@@ -25,7 +25,7 @@ export default function MoatShortPreview({ props, restartKey }: { props: MoatSho
         initiallyMuted={false}
         initialVolume={1}
         showVolumeControls
-        numberOfSharedAudioTags={10}
+        numberOfSharedAudioTags={20}
         style={{ width: '100%', aspectRatio: '9 / 16', borderRadius: 18, overflow: 'hidden' }}
       />
       <p className="mt-2 text-center text-xs text-[var(--app-text-muted)]">

@@ -385,6 +385,30 @@ export function earningsCallGeminiModelKandidaten(): string[] {
   return geminiFreeTierFlashModelKandidaten()
 }
 
+/**
+ * Lange Dokumente (Earnings, SEC, Quartalsvergleich).
+ * Ohne thinkingLevel hängt gemini-3.8-flash bis zum Abbruch.
+ * 65s pro Modell, 130s gesamt: der Lite-Fallback startet noch, der Browser bricht erst danach ab.
+ */
+export function earningsDokumentGeminiLimits() {
+  return {
+    thinkingMinimal: true as const,
+    timeoutMs: 65_000,
+    geminiTotalBudgetMs: 130_000,
+    maxOutputTokens: 8_192,
+  }
+}
+
+/** Kurzer Zusatz nach der Zusammenfassung. Ein Versuch, damit der Request nicht nochmal 90s hängt. */
+export function marktkontextGeminiLimits() {
+  return {
+    thinkingMinimal: true as const,
+    timeoutMs: 22_000,
+    geminiTotalBudgetMs: 22_000,
+    maxOutputTokens: 2_048,
+  }
+}
+
 function parseGeminiFehlerBody(raw: string): { message: string; apiStatus?: string } {
   try {
     const j = JSON.parse(raw) as { error?: { message?: string; status?: string } }
@@ -700,7 +724,10 @@ async function callGemini(
       break
     }
     const model = models[i]!
-    const thisTimeout = Math.min(perModelTimeout, remaining)
+    // Nächstes Modell braucht noch ein eigenes Fenster. Sonst frisst der Primär-Timeout das Budget
+    // und die Meldung „Fallback wird versucht“ geht raus, ohne dass der Fallback startet.
+    const reserve = models[i + 1] ? 40_000 : 0
+    const thisTimeout = Math.min(perModelTimeout, Math.max(12_000, remaining - reserve))
     const modellKey = geminiKeyFuerModell(model, apiKey, { forcePaid: forcePaidKey, forceFree: forceFreeKey })
     const optsMitTimeout = { ...callOpts, timeoutMs: thisTimeout }
     let r = await callGeminiEinModell(modellKey, model, systemText, userMessages, optsMitTimeout)
@@ -763,11 +790,13 @@ async function callGemini(
       }
       return { ok: true, reply: r.reply, model }
     }
-    // Primär-Timeout nicht hinter Fallback-503 „Überlastung“ verstecken
+    // Primär-Timeout nicht hinter Fallback-503 „Überlastung“ verstecken.
+    // „wird versucht“ nur, wenn der nächste Aufruf auch wirklich startet.
+    const fallbackStartet = Boolean(models[i + 1]) && restMs() >= 12_000
     if (r.httpStatus === 504 && i === 0) {
       lastHint =
         `${r.hint} (Modell ${model}).` +
-        (models[i + 1] ? ` Fallback ${models[i + 1]} wird versucht.` : '')
+        (fallbackStartet ? ` Fallback ${models[i + 1]} wird versucht.` : '')
       lastHttp = r.httpStatus
     } else {
       lastHint = r.hint

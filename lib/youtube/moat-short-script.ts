@@ -7,7 +7,7 @@ const ABSCHIED =
 const ZUSAMMENFASSUNG =
   /\b(wide moat|narrow moat|no real moat|the proof is|already said so|is the tell|that's the story|in conclusion|to sum up)\b/i
 
-const BRUECKE_ENDE = /(?:which is why|that's why|that is why|and that's why)$/i
+const BRUECKE_ENDE = /(?:which is why|that's why|that is why|and that's why|so the question is)$/i
 
 const VERBOTENE_WOERTER = [
   'delve',
@@ -175,16 +175,50 @@ export function saubererHookLoop(loop: string, crack: string): string {
 }
 
 export function fallbackLand(verdict: MoatShortVerdict, _value?: string): string {
-  if (verdict === 'wide') return 'Nobody else has a lock like this, which is why'
-  if (verdict === 'narrow') return 'The lead is thinner than it looks, which is why'
-  return 'The number already told you the story, which is why'
+  if (verdict === 'wide') return 'Nobody else has a lock like this, so the question is'
+  if (verdict === 'narrow') return 'The lead is thinner than it looks, so the question is'
+  return 'That advantage is not a moat, so the question is'
 }
 
 /** Landung, wenn du das Urteil selbst setzt. Offene Brücke, kein neuer Fakt. */
 export function landFuerPersoenlichesUrteil(verdict: MoatShortVerdict): string {
-  if (verdict === 'wide') return 'Nobody else has a lock like this, which is why'
-  if (verdict === 'narrow') return 'The lead is thinner than it looks, which is why'
-  return 'That advantage is not a moat, which is why'
+  return fallbackLand(verdict)
+}
+
+/** Die Landung muss in eine Frage münden, sonst startet der Loop mit der Zahl. */
+export function landZurFrage(land: string, verdict: MoatShortVerdict, value: string): string {
+  const t = saubererLand(land, verdict, value)
+  if (/so the question is$/i.test(t)) return t
+  const stamm = t.replace(/\s+(?:which is why|that's why|that is why|and that's why)$/i, '').replace(/[,:\s]+$/g, '')
+  const neu = `${stamm}, so the question is`
+  if (neu.split(/\s+/).filter(Boolean).length <= 12 && neu.length <= 90) return neu
+  return fallbackLand(verdict)
+}
+
+/** Blickfang, eine Zeile, in unter einer Sekunde lesbar. Keine erfundene Zahl. */
+export function kickerFuerBild(roh: string, firma: string): string {
+  const name = firma.split(/\s+/)[0] || 'This'
+  let t = ohneKiBindestrich(roh).replace(/[.!?…]/g, '').replace(/\$?\d[\d.,]*%?/g, '').replace(/\s+/g, ' ').trim()
+  const woerter = t.split(/\s+/).filter(Boolean).slice(0, 5)
+  t = woerter.join(' ')
+  if (t.length > 28) t = t.slice(0, 28).replace(/\s+\S*$/, '').trim()
+  if (t.split(/\s+/).filter(Boolean).length < 2) return `${name} has no substitute`
+  return t
+}
+
+/** Erste gesprochene Zeile ist die Frage. Die Kennzahl darf hier nicht stehen. */
+export function frageFuerHook(roh: string, firma: string, wert: string): string {
+  let t = ohneKiBindestrich(roh).replace(/\s+/g, ' ').trim()
+  if (wert) t = t.replace(wert, '').replace(/\s+/g, ' ').trim()
+  t = t.replace(/[.!]+$/g, '').trim()
+  if (!t.endsWith('?')) t = `${t.replace(/[?]+$/g, '')}?`
+  const gekuerzt = kuerzeGesprocheneZeile(t, { maxWoerter: 10, maxZeichen: 70, frage: true })
+  const n = gekuerzt.split(/\s+/).filter(Boolean).length
+  if (n >= 7 && n <= 10 && gekuerzt.length <= 70 && /^(why|how|what|who|is|can|could)\b/i.test(gekuerzt) && !gekuerzt.includes(wert)) {
+    return gekuerzt
+  }
+  const name = firma.split(/\s+/)[0] || 'They'
+  return `Why can ${name} raise prices and nobody leaves?`
 }
 
 export function istOffeneBruecke(land: string, value?: string): boolean {
@@ -239,10 +273,11 @@ const SCHLECHTES_ENDE = new Set(
   ),
 )
 
-function satzEnde(text: string, bruecke: boolean): string {
+function satzEnde(text: string, bruecke: boolean, frage = false): string {
   const kern = text.replace(/[.!?…,;:\s]+$/u, '').trim()
   if (!kern) return kern
   if (bruecke || BRUECKE_ENDE.test(kern)) return kern
+  if (frage || /\?\s*$/.test(text.trim())) return `${kern}?`
   return `${kern}.`
 }
 
@@ -322,7 +357,7 @@ const KUERZ_MUSTER = [
 /** Schneidet Füllphrasen, bis der Satz in Untertitel und Zeitbudget passt. Die Kennzahl bleibt stehen. */
 export function kuerzeGesprocheneZeile(
   roh: string,
-  opts?: { maxWoerter?: number; maxZeichen?: number; behalten?: string; bruecke?: boolean },
+  opts?: { maxWoerter?: number; maxZeichen?: number; behalten?: string; bruecke?: boolean; frage?: boolean },
 ): string {
   const maxW = opts?.maxWoerter ?? 12
   const maxC = opts?.maxZeichen ?? 78
@@ -332,7 +367,7 @@ export function kuerzeGesprocheneZeile(
   if (bruecke) start = oeffneSprechende(start)
   const behalten = opts?.behalten?.trim()
   const muss = behalten && start.includes(behalten) ? behalten : undefined
-  const fertig = (s: string) => satzEnde(s, bruecke)
+  const fertig = (s: string) => satzEnde(s, bruecke, Boolean(opts?.frage))
   const gueltig = (s: string) => {
     const out = fertig(s)
     return (
@@ -558,12 +593,15 @@ export function kommentarFuerUpload(roh: string, verdict: MoatShortVerdict, tick
   return `${ticker}: no moat. Agree, or am I missing the lock-in?`
 }
 
-export function scriptLoopWarnungen(hook: string, land: string, value: string): string[] {
+export function scriptLoopWarnungen(hook: string, land: string, value: string, proof = ''): string[] {
   const w: string[] = []
-  if (value && !hook.includes(value)) w.push(`Der Hook nennt ${value} nicht wörtlich.`)
+  const zahl = proof.trim() ? proof : hook
+  if (value && !zahl.includes(value)) w.push(`Die Antwort nennt ${value} nicht wörtlich.`)
+  if (value && proof.trim() && hook.includes(value)) w.push(`Die Frage nennt ${value}. Die Zahl kommt erst als Antwort.`)
   if (value && land.includes(value)) {
-    w.push(`Die Landung wiederholt ${value} — der Restart stottert. Zahl nur im Hook.`)
+    w.push(`Die Landung wiederholt ${value} — der Restart stottert. Zahl nur in der Antwort.`)
   }
+  if (proof.trim() && !/\?\s*$/.test(hook.trim())) w.push('Der Einstieg ist keine Frage. Die erste Zeile muss eine Frage sein.')
   if (ABSCHIED.test(land) || /\bout of 10\b/i.test(land) || ZUSAMMENFASSUNG.test(land)) {
     w.push('Die Landung ist ein Schlusssatz. Mach eine offene Brücke, die in den Hook mündet.')
   }
@@ -574,7 +612,7 @@ export function scriptLoopWarnungen(hook: string, land: string, value: string): 
 }
 
 export function scriptStoryWarnungen(hookLoop: string, crack: string): string[] {
-  if (!crack.trim()) return []
+  if (!hookLoop.trim() || !crack.trim()) return []
   if (istSpannungOhneSpoiler(hookLoop, crack)) return []
-  return ['Der Spannungssatz spoilt die Bedrohung. Erst Hook und Säulen, dann der Crack.']
+  return ['Der Spannungssatz spoilt die Bedrohung. Erst die Säulen, dann der Bruch, einmal.']
 }

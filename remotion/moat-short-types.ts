@@ -12,9 +12,13 @@ export type MoatShortProps = {
   ticker: string
   firmenname: string
   logoUrl: string | null
-  /** Behauptung — beginnt mit Firmenname, enthält metricValue wörtlich. */
+  /** Blickfang, 2–5 Wörter, nur Bild, nicht gesprochen. */
+  kicker: string
+  /** Frage in Sekunde 0. Ohne Kennzahl. */
   hook: string
-  /** Offene Schleife nach dem Hook, wird erst beim Crack aufgelöst. */
+  /** Die Kennzahl als Antwort, gesprochen ab Sekunde 3. */
+  proof: string
+  /** Offene Schleife nach der Antwort, wird erst beim Crack aufgelöst. */
   hookLoop: string
   /** Wert exakt aus dem Export, englisch formatiert (z. B. „71.2%“). */
   metricValue: string
@@ -37,12 +41,15 @@ export type MoatShortProps = {
   voiceSrc: string | null
   /** Wortzeiten zur Stimme — Bild und Captions folgen diesen Grenzen. */
   voiceAlignment: MoatShortVoiceWort[] | null
+  /** Millisekunden bis zum ersten Ton, gemessen an der Datei. Fehlt der Wert, gilt das erste Wort. */
+  voiceLeadMs?: number
 }
 
 export type MoatShortVoiceWort = { text: string; startMs: number; endMs: number }
 
 export type MoatShortBeatId =
   | 'hook'
+  | 'proof'
   | 'teaser'
   | 'pillar0'
   | 'pillar1'
@@ -59,20 +66,32 @@ export type MoatShortBeat = {
   duration: number
 }
 
-export type MoatShortCaption = { text: string; from: number; duration: number }
+export type MoatShortCaptionWort = { text: string; start: number; end: number }
+
+/** 2–4 Wörter. `start`/`end` sind Frames relativ zu `from`. */
+export type MoatShortCaption = {
+  text: string
+  from: number
+  duration: number
+  woerter: MoatShortCaptionWort[]
+}
 
 export type MoatShortTimeline = {
   beats: MoatShortBeat[]
   captions: MoatShortCaption[]
   durationInFrames: number
+  /** Frames Stille vor dem ersten Wort. Die Stimme wird um genau so viel vorgezogen. */
+  voiceTrimFrames: number
 }
 
 export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
   ticker: 'ASML',
   firmenname: 'ASML Holding',
   logoUrl: 'portfolio-logos/asml.png',
-  hook: 'ASML prints a 51.3% margin selling machines nobody else can build.',
-  hookLoop: 'The problem is that one thing could still break that lock.',
+  kicker: 'No second shop',
+  hook: 'Why can ASML charge whatever the chip needs?',
+  proof: 'Because those machines print a 51.3% margin.',
+  hookLoop: '',
   metricValue: '51.3%',
   metricLabel: 'Gross margin',
   business: '',
@@ -97,7 +116,7 @@ export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
   crack: 'The real risk is export controls cutting off its biggest customers.',
   verdict: 'wide',
   score: 9,
-  closing: 'Nobody else can print these chips, which is why',
+  closing: 'Nobody else has a lock like this, so the question is',
   musicSrc: null,
   musicGain: 0.5,
   musicTrim: 0,

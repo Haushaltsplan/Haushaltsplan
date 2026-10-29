@@ -62,7 +62,7 @@ export function PaFundamentalQuartalsDiff({
             vorherId,
             force: Boolean(force),
           }),
-          signal: AbortSignal.timeout(120_000),
+          signal: AbortSignal.timeout(155_000),
         })
         const j = (await res.json()) as QuartalsKiDiffPaket & { fehler?: string }
         if (!j.ok && j.fehler) {
