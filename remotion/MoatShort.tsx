@@ -140,7 +140,6 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
           logoUrl={props.logoUrl}
           value={props.metricValue}
           label={props.metricLabel}
-          saeule={props.pillars[0] ?? null}
           proofAb={proof && proof.text.trim() ? proof.from - hook.from : 0}
         />
       </Sequence>
@@ -325,14 +324,12 @@ function HookSzene({
   logoUrl,
   value,
   label,
-  saeule,
   proofAb,
 }: {
   kicker: string
   logoUrl: string | null
   value: string
   label: string
-  saeule: MoatShortProps['pillars'][number] | null
   /** Frame, ab dem die Zahl als Antwort hart einschlägt. */
   proofAb: number
 }) {
@@ -340,8 +337,6 @@ function HookSzene({
   const zahlAn = proofAb <= 0 || frame >= proofAb
   const zahlScale = !zahlAn ? 1 : interpolate(frame - proofAb, [0, 4], [1.12, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   const kickerGroesse = kicker.length <= 16 ? 84 : kicker.length <= 24 ? 70 : 56
-  const fuell = proofAb > 6 ? Math.min(1, frame / proofAb) : 1
-  const balkenFarbe = saeule ? scoreFarbe(saeule.score) : BRAND
   return (
     <AbsoluteFill style={{ transform: `scale(${kamera(frame)})`, transformOrigin: `center ${SAFE_TOP + 12}px` }}>
       {logoUrl ? (
@@ -387,20 +382,6 @@ function HookSzene({
           }}
         >
           {kicker}
-        </div>
-      ) : null}
-      {!zahlAn && saeule ? (
-        <div style={{ position: 'absolute', top: logoUrl ? SAFE_TOP + 440 : 560, left: SAFE_LEFT, right: SAFE_RIGHT }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 16 }}>
-            <span style={{ fontSize: 52, fontWeight: 800, letterSpacing: -0.6 }}>{saeule.label}</span>
-            <span style={{ fontFamily: MONO, fontSize: 64, fontWeight: 700, color: balkenFarbe, fontVariantNumeric: 'tabular-nums' }}>
-              {saeule.score}
-              <span style={{ color: MUTED, fontSize: 28 }}>/10</span>
-            </span>
-          </div>
-          <div style={{ marginTop: 18, height: 36, borderRadius: 18, background: 'rgba(243,241,236,0.09)', overflow: 'hidden' }}>
-            <div style={{ width: `${(saeule.score / 10) * fuell * 100}%`, height: '100%', borderRadius: 18, background: balkenFarbe }} />
-          </div>
         </div>
       ) : null}
       {zahlAn ? (

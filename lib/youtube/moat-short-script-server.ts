@@ -165,7 +165,7 @@ Opening rules
 
 ## Story order, do not skip ahead
 There is no "what they sell" line. Do not describe the business model as its own beat. There is no teaser between the number and the pillars. Do not say "one thing could break that lock" or hint at the threat before the crack.
-1. claim (the question, no number). While this line is spoken, the first pillar bar is already filling on screen.
+1. claim (the question, no number). Logo and the on-screen kicker only. No pillar, no score, no bar yet.
 2. proof (the number, as the answer)
 3. four pillars, in order, each its own sentence
 4. crack (the FIRST and only time the threat is named)
