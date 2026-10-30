@@ -108,9 +108,9 @@ Talk like a person at a table. Same move for ASML, Hermès, a railroad, a card n
 
 Every spoken line is a normal human sentence: subject, verb, one thought. 8 to 10 words, and under 70 characters. Count the words. A comma is fine. One breath. The subtitle sits on 2 lines. If it would wrap to a third, the line is too long.
 
-Good proof: "Because they print a 47.1% operating margin."
+Good proof: "Network effect lets them print a 47.1% operating margin."
 Good: "Ripping that stack out is a nightmare."
-Bad: "Microsoft prints a 47.1% operating margin selling software no corporation can avoid."
+Bad: "Because they print a 47.1% operating margin."
 Bad: "Ripping active directory and azure out of a Fortune 500 company is a nightmare."
 Read every line out loud. Contractions are fine. If you would not say it to a friend, rewrite it. One breath, then stop. No stacked ending.
 Good: "Replicating [the concrete thing] requires decades and endless capital."
@@ -141,7 +141,7 @@ Draft the pair as one spoken sentence, then split it.
 Good pair (read land, then the question, no pause):
 - kicker: "No way out"
 - claim: "Why can Microsoft raise prices every year and nobody leaves?"
-- proof: "Because they print a 47.1% operating margin."
+- proof: "Network effect lets them print a 47.1% operating margin."
 - land: "Nobody else has a lock like this, so the question is"
 - Heard loop: "...so the question is why can Microsoft raise prices every year and nobody leaves?"
 
@@ -169,13 +169,16 @@ Grammar
 Causality
 - proof is the direct reason for THAT question. A viewer who hears only these two lines must see why the number answers the question.
 - If proof is a margin or a return on capital, the question asks about pricing power or dominance. A growth rate does not answer a fee question, and a margin does not answer "how fast are they growing?".
-- Patterns, same shape for every company:
-  * "Why can [Company] charge endless fees?" -> "Because they command a [X]% margin."
-  * "How dominant is [Company]'s market monopoly?" -> "They print a [X]% return on capital."
-  * "Why can no customer drop [Company]'s [product]?" -> "Because it yields a [X]% operating margin."
+- Patterns, same shape for every company. The cause is the class, not a ticker to copy:
+  * Card network: "Network effect lets them print a [X]% margin."
+  * B2B software: "High switching costs let them print a [X]% margin."
+  * Medtech or pharma: "Patented tech lets them print a [X]% margin."
+  * Infrastructure: "High barrier to entry lets them print a [X]% margin."
+- Never open the answer with Because. Because in front of the bare number is forbidden.
+- A verb such as losing, charging, or paying needs its object. "losing market share", never "losing".
 - kicker: 2 to 5 words, under 28 characters, one line a viewer can read in under a second. On screen only. Never spoken. No invented number, no market cap, no dollar figure unless that exact figure is in the metrics list.
 - claim: the first spoken line. 6 to 10 words, so the number lands around second 3 to 4. A complete question. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know".
-- proof: the second spoken line, the answer. 6 to 11 words. A complete sentence. Contains the chosen metric value exactly as written, plus the English name: "a 47.1% operating margin". metricId is a machine key. Never say it. Never write "an ltm_ebit of 47.1%".
+- proof: the second spoken line, around second 3. Shape: [moat cause] + "lets them print a" + the metric, exactly as written, with its English name. 8 to 14 words. Plural causes use "let" ("costs let"). Never "Because a 47.1%". Never the metricId. Never "an ltm_ebit of 47.1%".
 
 ## Story order, do not skip ahead
 There is no "what they sell" line. Do not describe the business model as its own beat. There is no teaser between the number and the pillars. Do not say "one thing could break that lock" or hint at the threat before the crack.
@@ -336,14 +339,15 @@ export async function generiereMoatShort(opts: {
   if (!roh) throw new Error('Script-KI lieferte kein gültiges JSON — bitte erneut versuchen.')
 
   const verdict = verdictAusUrteil(moat.urteil)
+  const kontext = [paket.sektor, paket.branche, paket.beschreibung, moat.geschaeftsmodell].filter(Boolean).join('\n')
   const crack = kuerzeGesprocheneZeile(sprechtext(roh.crack), { maxWoerter: 12, maxZeichen: 78 })
   const hookVarianten: MoatShortHookVariante[] = objekte(roh.hooks)
     .map((h) => {
       const metrikId = hookMetriken.some((m) => m.id === h.metricId) ? text(h.metricId) : hookMetriken[0]!.id
       const wert = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).value
       const label = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).label
-      const proofRoh = sprechtext(h.proof) || `Because they command ${wert} ${label.toLowerCase()}.`
-      const paar = hookPaar(sprechtext(h.claim), proofRoh, paket.firmenname, wert, label, metrikId)
+      const proofRoh = sprechtext(h.proof)
+      const paar = hookPaar(sprechtext(h.claim), proofRoh, paket.firmenname, wert, label, metrikId, kontext)
       return {
         winkel: text(h.angle),
         kicker: kickerFuerBild(sprechtext(h.kicker), paket.firmenname),
@@ -454,7 +458,15 @@ export async function generiereMoatShort(opts: {
       if (pfeiler) props.pillars[idx] = { ...pfeiler, line: neu }
     }
   }
-  const repariert = hookPaar(props.hook, props.proof, props.firmenname, props.metricValue, props.metricLabel, start.metrikId)
+  const repariert = hookPaar(
+    props.hook,
+    props.proof,
+    props.firmenname,
+    props.metricValue,
+    props.metricLabel,
+    start.metrikId,
+    kontext,
+  )
   props.hook = repariert.claim
   props.proof = repariert.proof
   start.kicker = props.kicker

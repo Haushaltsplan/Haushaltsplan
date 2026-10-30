@@ -280,13 +280,45 @@ export function frageFuerKennzahl(firma: string, label: string, id = ''): string
   return `Why does ${name} keep that edge?`
 }
 
-export function antwortFuerKennzahl(wert: string, label: string, id = ''): string {
+export type MoatUrsacheId = 'network' | 'switching' | 'patent' | 'barrier'
+
+/**
+ * Klasse, nicht Ticker. Ein Kartennetz steht für alle Zahlungsnetze.
+ * Plural („costs“) nimmt „let“, Singular nimmt „lets“.
+ */
+export function moatUrsacheAusText(text: string): MoatUrsacheId {
+  const t = text.toLowerCase()
+  if (/pharma|biotech|biotechn|medtech|medizintechnik|medizinprodukt|arznei|wirkstoff|therapeutic|implant/.test(t)) {
+    return 'patent'
+  }
+  if (/zahlungs|payment|kreditkarte|kartenzahlung|card network|interchange|bezahl|acquiring|netzwerkeffekt|network effect/.test(t)) {
+    return 'network'
+  }
+  if (/halbleiter|semiconductor|eisenbahn|railroad|pipeline|flughafen|hafen|netzbetreiber|maschinenbau|energieversorg/.test(t)) {
+    return 'barrier'
+  }
+  if (/\b(software|saas|cloud|enterprise|lizenzsoftware|b2b)\b/.test(t)) return 'switching'
+  return 'barrier'
+}
+
+function druckKopf(ursache: MoatUrsacheId): string {
+  if (ursache === 'network') return 'Network effect lets them print'
+  if (ursache === 'switching') return 'High switching costs let them print'
+  if (ursache === 'patent') return 'Patented tech lets them print'
+  return 'High barrier to entry lets them print'
+}
+
+export function antwortFuerKennzahl(wert: string, label: string, id = '', kontext = ''): string {
   const name = kennzahlGesprochen(label, id)
   const artikel = artikelVorGesprochen(wert)
-  const art = hookKennzahlArt(label, id)
-  if (art === 'kapital') return `They print ${artikel} ${wert} ${name}.`
-  if (art === 'marge') return `Because they command ${artikel} ${wert} ${name}.`
-  return `Because the figure is ${artikel} ${wert} ${name}.`
+  return `${druckKopf(moatUrsacheAusText(kontext))} ${artikel} ${wert} ${name}.`
+}
+
+function proofIstDruck(text: string, wert: string, label: string, id: string): boolean {
+  if (!wert || !text.includes(wert) || satzUnbrauchbar(text) || /\?\s*$/.test(text.trim())) return false
+  if (/^\s*because\b/i.test(text)) return false
+  if (!/\b(?:lets|let) them print\b/i.test(text)) return false
+  return nenntKennzahl(text, label, id)
 }
 
 /**
@@ -300,23 +332,24 @@ export function hookPaar(
   wert: string,
   label: string,
   id = '',
+  kontext = '',
 ): { claim: string; proof: string } {
   const art = hookKennzahlArt(label, id)
   let frage = frageFuerHook(claim, firma, wert)
-  let antwort = kuerzeGesprocheneZeile(proof, { maxWoerter: 11, maxZeichen: 78, behalten: wert || undefined })
+  const rohAntwort = proof.replace(/\s+/g, ' ').trim()
+  let antwort =
+    proofIstDruck(rohAntwort, wert, label, id) && woerter(rohAntwort).length <= 14
+      ? `${rohAntwort.replace(/[.]+$/g, '').trim()}.`
+      : antwortFuerKennzahl(wert, label, id, kontext)
   const frageKaputt = !/\?\s*$/.test(frage) || satzUnbrauchbar(frage) || Boolean(wert && frage.includes(wert))
-  const antwortKaputt =
-    !wert || !antwort.includes(wert) || satzUnbrauchbar(antwort) || /\?\s*$/.test(antwort.trim()) || !nenntKennzahl(antwort, label, id)
 
   if (art === 'marge' || art === 'kapital') {
     if (frageKaputt || !fragtNachMachtOderDominanz(frage)) frage = frageFuerKennzahl(firma, label, id)
-    if (antwortKaputt) antwort = antwortFuerKennzahl(wert, label, id)
-  } else if (frageKaputt || antwortKaputt || fragtNachMachtOderDominanz(frage)) {
-    if (frageKaputt || fragtNachMachtOderDominanz(frage)) frage = frageFuerKennzahl(firma, label, id)
-    if (antwortKaputt) antwort = antwortFuerKennzahl(wert, label, id)
+  } else if (frageKaputt || fragtNachMachtOderDominanz(frage)) {
+    frage = frageFuerKennzahl(firma, label, id)
   }
   if (satzUnbrauchbar(frage)) frage = frageFuerKennzahl(firma, label, id)
-  if (wert && (satzUnbrauchbar(antwort) || !antwort.includes(wert))) antwort = antwortFuerKennzahl(wert, label, id)
+  if (!proofIstDruck(antwort, wert, label, id)) antwort = antwortFuerKennzahl(wert, label, id, kontext)
   return { claim: frage, proof: antwort }
 }
 
@@ -394,6 +427,13 @@ function haengtPartizip(text: string): boolean {
   return /\b(selling|using|running|building|pulling|training|living)\.?$/i.test(text.trim())
 }
 
+/** „losing“ ohne Objekt ist abgeschnitten. „losing market share“ bleibt. */
+function endetOhneObjekt(text: string): boolean {
+  return /^(losing|gaining|raising|cutting|charging|causing|replacing|earning|saving|seeking|buying|selling|holding|dropping|missing)$/.test(
+    letztesWort(text),
+  )
+}
+
 /** Adjektive, die keinen Satz beenden dürfen. „pay endless“ fehlt das Substantiv. */
 const ABGEBROCHENES_ENDE = new Set(
   'endless legal operational massive global institutional financial regulatory competitive significant extreme absolute huge tiny major severe heavy pure gross operating pricing dominant several various ongoing remaining potential existing'.split(
@@ -419,11 +459,11 @@ function unvollstaendigeAufzaehlung(text: string): boolean {
 }
 
 function satzUnbrauchbar(text: string): boolean {
-  return endetAufAbbruch(text) || unvollstaendigeAufzaehlung(text) || haengtPartizip(text)
+  return endetAufAbbruch(text) || unvollstaendigeAufzaehlung(text) || haengtPartizip(text) || endetOhneObjekt(text)
 }
 
 function klingtNachMensch(text: string): boolean {
-  if (haengtPartizip(text) || endetAufAbbruch(text)) return false
+  if (haengtPartizip(text) || endetAufAbbruch(text) || endetOhneObjekt(text)) return false
   if (/\bselling\s+\w+\.?$/i.test(text.trim())) return false
   if (/\bno\s+\w+\s+can\s+avoid\b/i.test(text)) return false
   if (/\b(operational complexity|ecosystem)\b/i.test(text)) return false
@@ -734,6 +774,12 @@ export function scriptLoopWarnungen(hook: string, land: string, value: string, p
   const art = hookKennzahlArt(label)
   if (proof.trim() && (art === 'marge' || art === 'kapital') && !fragtNachMachtOderDominanz(hook)) {
     w.push('Marge oder Kapitalrendite beantwortet nur eine Frage nach Preismacht oder Dominanz.')
+  }
+  if (proof.trim() && /^\s*because\b/i.test(proof)) {
+    w.push('Die Antwort stellt Because vor die Kennzahl. Erst die Ursache, dann „lets them print a“.')
+  }
+  if (proof.trim() && !/\b(?:lets|let) them print\b/i.test(proof)) {
+    w.push('Die Antwort muss lauten: Ursache, dann „lets them print a“, dann die Kennzahl.')
   }
   if (value && land.includes(value)) {
     w.push(`Die Landung wiederholt ${value} — der Restart stottert. Zahl nur in der Antwort.`)

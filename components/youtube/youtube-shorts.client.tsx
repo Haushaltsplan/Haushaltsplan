@@ -198,7 +198,11 @@ function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
       maxWoerter: alsFrage ? 10 : 12,
       frage: alsFrage,
     }),
-    proof: p.proof.trim() ? zeileWennNoetig(p.proof, { behalten: p.metricValue, maxWoerter: 11 }) : p.proof,
+    proof: p.proof.trim()
+      ? /\b(?:lets|let) them print\b/i.test(p.proof)
+        ? p.proof.replace(/\s+/g, ' ').trim()
+        : zeileWennNoetig(p.proof, { behalten: p.metricValue, maxWoerter: 14 })
+      : p.proof,
     hookLoop: '',
     business: ohneKennzahlId(p.business),
     crack: zeileWennNoetig(p.crack),
