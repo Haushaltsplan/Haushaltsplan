@@ -424,7 +424,7 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
 
   // ── SPEKULATIV (Metadaten) ─────────────────────────────────────────────────
   // Nur noch KaufTrigger/Risikoklasse, wenn der Titel im Depot/Watchlist liegt.
-  // Universum = Depot ∪ Watchlist — verkaufte Titel (z. B. Datadog) gehören nicht hierher.
+  // Universum = nur Depot — verkaufte Titel (z. B. Datadog) gehören nicht hierher.
 
   {
     isin: 'US0576652004',
@@ -446,7 +446,7 @@ export function istWhitelistIsin(isin: string): boolean {
 
 export type KandidatenQuelle = NonNullable<WhitelistPosition['quelle']>
 
-/** Watchlist-Neukauf: nicht im Depot (Universum = Depot ∪ Watchlist). */
+/** Alt-Pfad: Watchlist-Neukauf. Der Radar scannt die Watchlist nicht mehr. */
 export function istWatchlistNeukauf(
   _isin: string,
   depotGewichtPct?: number | null,

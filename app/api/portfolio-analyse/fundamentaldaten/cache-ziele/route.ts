@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
+import {
+  ladeNachkaufKandidaten,
+  ladeWatchlistScrapeKandidaten,
+} from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import type { FundamentaldatenAnfrage } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 export const runtime = 'nodejs'
@@ -22,27 +25,22 @@ function unique(werte: Array<string | null | undefined>): string[] {
 }
 
 /**
- * Fundamentaldaten-/Segment-Batch: Depot ∪ Watchlist.
- * Gleiche Quelle wie Nachkauf-Radar (Live-Depot zuerst, Snapshot-Fallback) —
- * nicht nur Snapshot, sonst fehlen Depot-Titel wenn der Snapshot leer/veraltet ist.
+ * Fundamentaldaten-/Segment-Batch.
+ * `?umfang=depot` (Default): nur Live-Depot.
+ * `?umfang=watchlist`: Cloud-Watchlist ohne Titel, die schon im Depot liegen.
  */
 export async function GET(req: Request) {
   return jsonMitOwner(req, async () => {
   try {
-    const kandidaten = await ladeNachkaufKandidaten()
+    const umfang = new URL(req.url).searchParams.get('umfang') === 'watchlist' ? 'watchlist' : 'depot'
+    const kandidaten =
+      umfang === 'watchlist' ? await ladeWatchlistScrapeKandidaten() : await ladeNachkaufKandidaten()
     const ziele: FundamentaldatenAnfrage[] = []
     const gesehen = new Set<string>()
     let depotN = 0
     let watchlistN = 0
 
-    // Depot zuerst (wie Radar-Priorität), dann Watchlist.
-    const sortiert = [...kandidaten].sort((a, b) => {
-      const pa = a.quelle === 'depot' ? 0 : 1
-      const pb = b.quelle === 'depot' ? 0 : 1
-      return pa - pb
-    })
-
-    for (const k of sortiert) {
+    for (const k of kandidaten) {
       const isin = k.isin?.trim().toUpperCase()
       if (!isin || gesehen.has(isin)) continue
       gesehen.add(isin)

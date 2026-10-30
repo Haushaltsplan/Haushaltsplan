@@ -1,6 +1,6 @@
 /**
  * Eingebaute Standard-Watchlist — bewusst leer.
- * Universum = Depot ∪ persönliche Watchlist (gespeichert), keine verkauften Hartcodes.
+ * Keine verkauften Hartcodes. Radar-Universum ist das Depot; die Watchlist wird separat gepflegt.
  */
 export type PortfolioPositionDefinition = {
   name: string

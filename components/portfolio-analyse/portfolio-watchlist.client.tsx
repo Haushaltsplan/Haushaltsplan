@@ -225,12 +225,7 @@ export function PortfolioWatchlistClient() {
           <PaFundamentalInhalt
             anfrage={anfrage}
             selectionKey={selected ? watchlistSchluessel(selected) : undefined}
-            alleScrapZiele={eintraege.map((e) => ({
-              isin: e.isin,
-              name: e.name,
-              symbolYahoo: e.symbolYahoo,
-              symbolCandidates: e.symbolCandidates,
-            }))}
+            scrapeUmfang="watchlist"
           />
         </div>
       </div>

@@ -1,11 +1,13 @@
 /**
- * Fundamentaldaten-Paket-Cache vorwärmen (Depot ∪ Watchlist — ohne Radar-Whitelist).
+ * Fundamentaldaten-Paket-Cache vorwärmen.
+ * Default: nur Depot. Watchlist separat mit --watchlist, beides mit --alle.
  *
  * Voraussetzung: Migration `20260823220000_fundamentaldaten_paket_cache.sql`.
  *
  *   npx tsx --conditions=react-server --require ./scripts/mock-server-only.cjs scripts/fundamentaldaten-cache-warm.ts
+ *   npx tsx --conditions=react-server --require ./scripts/mock-server-only.cjs scripts/fundamentaldaten-cache-warm.ts --watchlist
+ *   npx tsx --conditions=react-server --require ./scripts/mock-server-only.cjs scripts/fundamentaldaten-cache-warm.ts --alle --erneuern
  *   npx tsx --conditions=react-server --require ./scripts/mock-server-only.cjs scripts/fundamentaldaten-cache-warm.ts MSFT ASML
- *   npx tsx --conditions=react-server --require ./scripts/mock-server-only.cjs scripts/fundamentaldaten-cache-warm.ts --erneuern
  */
 import { readFileSync } from 'fs'
 
@@ -115,6 +117,10 @@ async function main() {
 
   const args = process.argv.slice(2)
   const erneuern = args.includes('--erneuern')
+  const flagWatchlist = args.includes('--watchlist')
+  const flagAlle = args.includes('--alle')
+  const mitDepot = flagAlle || args.includes('--depot') || !flagWatchlist
+  const mitWatchlist = flagAlle || flagWatchlist
   const filter = new Set(args.filter((a) => !a.startsWith('--')).map((a) => a.toUpperCase()))
 
   const { error: tabellenFehler } = await createSupabaseAdmin()
@@ -133,29 +139,33 @@ async function main() {
   }))
   const gesehen = new Set<string>()
   const kandidaten: WhitelistPosition[] = []
-  for (const d of depot) {
-    const isin = d.isin?.trim().toUpperCase()
-    if (!isin || gesehen.has(isin)) continue
-    gesehen.add(isin)
-    kandidaten.push({
-      isin,
-      name: d.name ?? isin,
-      symbolYahoo: d.symbolYahoo,
-      symbolCandidates: d.symbolCandidates,
-      quelle: 'depot',
-    })
+  if (mitDepot) {
+    for (const d of depot) {
+      const isin = d.isin?.trim().toUpperCase()
+      if (!isin || gesehen.has(isin)) continue
+      gesehen.add(isin)
+      kandidaten.push({
+        isin,
+        name: d.name ?? isin,
+        symbolYahoo: d.symbolYahoo,
+        symbolCandidates: d.symbolCandidates,
+        quelle: 'depot',
+      })
+    }
   }
-  for (const w of watchlist) {
-    const isin = w.isin.trim().toUpperCase()
-    if (!isin || gesehen.has(isin)) continue
-    gesehen.add(isin)
-    kandidaten.push({
-      isin,
-      name: w.name,
-      symbolYahoo: w.symbolYahoo,
-      symbolCandidates: w.symbolCandidates,
-      quelle: 'watchlist',
-    })
+  if (mitWatchlist) {
+    for (const w of watchlist) {
+      const isin = w.isin.trim().toUpperCase()
+      if (!isin || gesehen.has(isin)) continue
+      gesehen.add(isin)
+      kandidaten.push({
+        isin,
+        name: w.name,
+        symbolYahoo: w.symbolYahoo,
+        symbolCandidates: w.symbolCandidates,
+        quelle: 'watchlist',
+      })
+    }
   }
   const liste = kandidaten.filter((k) => {
     if (filter.size === 0) return true
@@ -170,7 +180,7 @@ async function main() {
   const schnell = liste.filter((k) => !istEuIsin(k.isin))
   const langsam = liste.filter((k) => istEuIsin(k.isin))
   console.log(
-    `Warmup ${liste.length} Titel (Depot+Watchlist)${erneuern ? ', erneuern' : ''} — ${schnell.length} parallel, ${langsam.length} EU nacheinander`,
+    `Warmup ${liste.length} Titel (${mitDepot ? 'Depot' : ''}${mitDepot && mitWatchlist ? '+' : ''}${mitWatchlist ? 'Watchlist' : ''})${erneuern ? ', erneuern' : ''} — ${schnell.length} parallel, ${langsam.length} EU nacheinander`,
   )
 
   let ok = 0

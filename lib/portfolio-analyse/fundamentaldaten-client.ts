@@ -8,7 +8,7 @@ import { ergaenzeFcfRenditeKeyMetrics, ergaenzeFcfRenditeZeilen } from '@/lib/po
 
 const LS_KEY = 'pa-fundamentaldaten-v64'
 const LS_MAX_AGE_MS = 24 * 60 * 60 * 1000
-/** Depot ∪ Watchlist — mehr Titel lokal halten, sonst jeder Switch = Server-Roundtrip. */
+/** Mehr Titel lokal halten, sonst jeder Switch = Server-Roundtrip. */
 const LS_MAX_TITEL = 48
 
 function anfrageCacheKey(anfrage: FundamentaldatenAnfrage): string {
@@ -138,10 +138,15 @@ export type FundamentaldatenCacheZiele = {
   watchlist: number
 }
 
+/** Batch-Scrape: Depot auf der Fundamentaldaten-Seite, Watchlist separat. */
+export type FundamentalScrapeUmfang = 'depot' | 'watchlist'
+
 export async function ladeFundamentaldatenCacheZieleDetailed(opts?: {
   signal?: AbortSignal
+  umfang?: FundamentalScrapeUmfang
 }): Promise<FundamentaldatenCacheZiele> {
-  const res = await fetch('/api/portfolio-analyse/fundamentaldaten/cache-ziele', {
+  const umfang = opts?.umfang === 'watchlist' ? 'watchlist' : 'depot'
+  const res = await fetch(`/api/portfolio-analyse/fundamentaldaten/cache-ziele?umfang=${umfang}`, {
     cache: 'no-store',
     signal: opts?.signal,
   })
@@ -164,6 +169,7 @@ export async function ladeFundamentaldatenCacheZieleDetailed(opts?: {
 
 export async function ladeFundamentaldatenCacheZiele(opts?: {
   signal?: AbortSignal
+  umfang?: FundamentalScrapeUmfang
 }): Promise<FundamentaldatenAnfrage[]> {
   const { ziele } = await ladeFundamentaldatenCacheZieleDetailed(opts)
   return ziele

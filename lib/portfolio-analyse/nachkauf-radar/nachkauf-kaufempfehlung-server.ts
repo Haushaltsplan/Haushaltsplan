@@ -75,7 +75,6 @@ export function istKiKaufKandidat(e: NachkaufScanEintrag): boolean {
 function kaufSchwellenText(): string {
   return (
     `Depot-Nachkauf: Grün + Score ≥ ${MIN_SCORE_KAUF_GRUEN}, oder Kaufzone + Gelb + Score ≥ ${MIN_SCORE_KAUF_TRIGGER}` +
-    `; Watchlist-Neukauf: Score ≥ ${MIN_SCORE_WATCHLIST_NEUKAUF}` +
     ` (jeweils mit Deep Research)`
   )
 }
@@ -331,13 +330,13 @@ Ziel: Markt outperformen durch disziplinierte Kapitalallokation — nicht durch 
 - Emotionslos: weder Panik-Verkauf noch FOMO-Kauf
 - Klumpenrisiko-Grenze beim Nachkauf: ≥15 % Depotanteil maximal ${klumpenCap} € zusätzlich
 - Mindestbetrag pro Kauf: 100 €
-- **Watchlist-Kandidaten** (als solche markiert) sind noch nicht im Depot: Ein Kauf eröffnet eine NEUE Position. Cap spekulativ (≤ ${capSpekulativ} €). Score-Hürde ≥ ${MIN_SCORE_WATCHLIST_NEUKAUF}. Bevorzuge bestehende Depot-Positionen bei vergleichbarem Chance/Risiko.
+- **Universum**: nur aktuelle Depot-Positionen. Die Watchlist ist kein Kauf-Kandidat und eröffnet keine neue Position.
 
 ## Risiko-adjustierte Positionsobergrenzen (HART, nicht überschreiten)
 Basis 500 € → 350/200/100; bei ${budgetEur} € Budget linear skaliert:
 - **Konservativ**: max. **${capKonservativ} €** — Mastercard, Visa, Microsoft, …
 - **Moderat**: max. **${capModerat} €** — ASML, UnitedHealth, Wolters Kluwer, …
-- **Spekulativ**: max. **${capSpekulativ} €** — Balchem, Watchlist-Neukäufe
+- **Spekulativ**: max. **${capSpekulativ} €** — spekulative Depot-Titel (z. B. Balchem)
 
 ## Regelbasierte Basis-Allokation (Käufe)
 ${basisText}

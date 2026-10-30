@@ -1,5 +1,5 @@
 /**
- * Löscht Radar-Scan/Deep-Research außerhalb Depot ∪ Watchlist (inkl. DDOG/MUM/Whitelist-Reste).
+ * Löscht Radar-Scan/Deep-Research außerhalb des Depots (inkl. Watchlist, DDOG/MUM/Whitelist-Reste).
  *
  *   npx tsx --conditions=react-server --require ./scripts/mock-server-only.cjs scripts/bereinige-radar-universum.ts
  */
@@ -27,7 +27,7 @@ async function main() {
   await runWithPrimaeremOwner(async () => {
     const kandidaten = await ladeNachkaufKandidaten()
     console.log(
-      'Universum Depot∪Watchlist:',
+      'Universum Depot:',
       kandidaten.length,
       kandidaten.map((k) => `${k.name}(${k.quelle})`).join(', ') || '(leer)',
     )

@@ -1,7 +1,7 @@
 /**
  * Nachkauf-Radar — Scan-Server (Stufe A).
  *
- * 1. Universum: aktuelles Depot ∪ Watchlist (keine feste Whitelist mehr).
+ * 1. Universum: nur das aktuelle Depot (Watchlist wird separat gescrapt, nicht gescannt).
  * 2. Für jede Position: Fundamentaldaten + gecachte KI-Summaries
  * 3. Regelbasierter Score inkl. historischer Relative Bewertung + Kaufzonen-Trigger
  * 4. Gemini Flash: kurze Begründung pro Titel
@@ -437,7 +437,7 @@ async function reichereErgebnisseAn(
 
 export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufScanPaket> {
   const kandidaten = await ladeNachkaufKandidaten()
-  // Verkauft / von Watchlist runter → nicht mitscrapen, Alt-Zeilen entfernen
+  // Verkauft oder nur noch auf der Watchlist → nicht mitscannen, Alt-Zeilen entfernen
   await bereinigeNachkaufRadarAusserhalbKandidaten(kandidaten).catch((e) =>
     console.warn('[nachkauf-scan] Universum-Bereinigung:', e),
   )

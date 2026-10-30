@@ -6,21 +6,25 @@ alwaysApply: true
 # Nachkauf-Radar — Projektstatus
 
 ## Was ist das?
-Emotion-freier Nachkauf-Assistent für **aktuelles Depot ∪ Watchlist** (Cloud-Sync).
+Emotion-freier Nachkauf-Assistent für das **aktuelle Depot** (Cloud-Sync).
 Monatsbudget (Standard 500 €) wird per KI risiko-adjustiert auf Kandidaten verteilt.
 Die alte 32er-Whitelist ist nur noch optionale Metadaten (Risikoklasse/KaufTrigger), **kein Universum**.
+Die Watchlist ist kein Radar-Universum.
 
-## Universum — Depot ∪ Watchlist (Okt 2026)
+## Universum — nur Depot (Okt 2026)
 
-- Browser-Watchlist (`pa-watchlist-v1` localStorage) wird von der Watchlist-Seite automatisch
-  nach Supabase gespiegelt: Tabelle `nachkauf_radar_watchlist` via `/api/portfolio-analyse/watchlist-sync`
-  (GET = Cloud-Stand, POST = Vollabgleich; Client-Helfer in `lib/portfolio-analyse/watchlist-client.ts`).
-- `ladeNachkaufKandidaten()` = **Live-Depot ∪ Watchlist** (Priorität: depot > watchlist).
-  Watchlist: `quelle: 'watchlist'`, `risikoKlasse: 'spekulativ'`; Depot: `quelle: 'depot'`, `moderat`
+- `ladeNachkaufKandidaten()` = **nur Live-Depot**. `quelle: 'depot'`, Risiko `moderat`
   (bzw. Whitelist-Metadaten falls ISIN noch dort steht).
-- Scan, Rescan, Cron, Quartals-KI, Kaufempfehlung, Fundamental-Batch nutzen nur diese Liste —
-  verkaufte / von Watchlist entfernte Titel werden nicht mitgescrapt.
-- Beim Watchlist-Entfernen: Scan + Deep Research löschen, außer ISIN noch im Depot.
+- Scan, Rescan, Cron, Quartals-KI und Kaufempfehlung nutzen nur diese Liste.
+  Watchlist-Titel werden beim nächsten Scan/Sync aus Scan- und Deep-Research-Zeilen entfernt.
+- Fundamental-Batch ist getrennt:
+  - Fundamentaldaten-Seite: `?umfang=depot` (Button „Depot aktualisieren“, Umsatzmix Depot)
+  - Watchlist-Seite: `?umfang=watchlist` (Button „Watchlist aktualisieren“, Umsatzmix Watchlist)
+  - Watchlist-Scrape = `ladeWatchlistScrapeKandidaten()` — Cloud-Watchlist ohne ISINs, die schon im Depot liegen.
+- Browser-Watchlist (`pa-watchlist-v1` localStorage) wird weiter nach Supabase gespiegelt:
+  Tabelle `nachkauf_radar_watchlist` via `/api/portfolio-analyse/watchlist-sync`
+  (GET = Cloud-Stand, POST = Vollabgleich; Client-Helfer in `lib/portfolio-analyse/watchlist-client.ts`).
+  Der Sync speist den separaten Watchlist-Scrape, nicht den Radar.
 - `bereinigeNachkaufRadarAusserhalbKandidaten()` bei Watchlist-Sync, Scan-Start, Ergebnisse-GET
   und nach Kauf/Verkauf/Import via `/api/portfolio-analyse/universum-sync` (inkl. Depot-Cache-Invalidierung).
 - Migration: `supabase/migrations/20260720190000_nachkauf_radar_watchlist.sql`
@@ -104,7 +108,7 @@ Basis-Caps bei **500 €** Monatsbudget (`risikoCapsFuerBudget` in `nachkauf-rad
 
 - **konservativ**: max. **350 €** bei 500 € → skaliert linear (`budget/500`)
 - **moderat**: max. **200 €** bei 500 €
-- **spekulativ**: max. **100 €** bei 500 € (Watchlist-Neukäufe + spekulative Titel)
+- **spekulativ**: max. **100 €** bei 500 € (spekulative Depot-Titel)
 
 Beispiel 2000 €: konservativ 1400 / moderat 800 / spekulativ 400. Klumpen-Cap bleibt 20 % des Budgets.
 
@@ -151,7 +155,7 @@ Beispiel 2000 €: konservativ 1400 / moderat 800 / spekulativ 400. Klumpen-Cap 
 - **Euro-Allokation ist regelbasiert** (`berechneRegelAllokation`); KI darf nur kürzen/streichen, nicht erhöhen.
 - **Struktur-Signale** (Verwässerung, FCF-Conv., NRR/Ro40, Zinsdeckung, GAAP-Lücke, KGV-Perzentil) in `scoreDetail.strukturSignale` + UI.
 - Score: KGV-Perzentil **oder** Median-Premium (nicht additiv); Timing ohne Roh-Drawdown-Doppelung; Kombiniert 55 % Qualität / 45 % Timing.
-- Watchlist-Neukauf: `risikoKlasse spekulativ` (≤100 €), Score ≥ **84** + Deep Research; Depot-Kauf ≥76.
+- Depot-Kauf ≥76 + Deep Research. Watchlist ist kein Kauf-Kandidat.
 - Performance-Panel immer sichtbar; Tracking speichert regelbasierte Beträge vs. SPY.
 
 ## Prompt-Qualität

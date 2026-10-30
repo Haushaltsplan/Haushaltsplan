@@ -2100,7 +2100,7 @@ export function NachkaufRadarClient() {
             title="Nachkauf-Radar"
             description={
               gastRadar
-                ? 'Scannt dein Depot und deine Watchlist — eigene Empfehlungen, unabhängig vom Eigentümer-Radar.'
+                ? 'Scannt dein Depot — eigene Empfehlungen, unabhängig vom Eigentümer-Radar.'
                 : 'Monatliche Priorisierung: Wo neues Kapital hin — und wo Positionen reduziert werden sollten?'
             }
           />
@@ -2256,13 +2256,11 @@ export function NachkaufRadarClient() {
             {radarLeer ? (
               <>
                 <p className="text-sm text-[var(--app-text-muted)]">
-                  Noch keine Aktien zum Scannen. Importiere dein Depot oder füge Titel zur{' '}
-                  <span className="font-medium text-teal-400">Watchlist</span> hinzu — der Radar
-                  analysiert nur deine Unternehmen, nicht die Liste des Eigentümers.
+                  Noch keine Depot-Aktien zum Scannen. Importiere dein Depot — der Radar
+                  berücksichtigt nur diese Positionen.
                 </p>
                 <p className="mt-2 text-xs text-[var(--app-text-muted)]">
-                  Danach „Neuer Scan“ starten. Depot-Positionen sind Nachkäufe; Watchlist-Titel
-                  gelten als Neukauf (höhere Hürde).
+                  Danach „Neuer Scan“ starten. Die Watchlist wird hier nicht gescannt.
                 </p>
               </>
             ) : (
@@ -2292,7 +2290,7 @@ export function NachkaufRadarClient() {
                 <div>
                   <p className="text-sm font-semibold text-teal-300">Monatsallokation (regelbasiert)</p>
                   <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                    Euro-Beträge aus Regeln. Depot-Nachkauf ≥76 / Watchlist-Neukauf ≥84 — jeweils mit Deep Research.
+                    Euro-Beträge aus Regeln. Depot-Nachkauf ab Score 76 mit Deep Research.
                     KI erklärt und warnt, ändert keine Beträge nach oben.
                   </p>
                 </div>

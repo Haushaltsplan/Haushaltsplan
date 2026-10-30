@@ -44,6 +44,7 @@ import {
   ladeFundamentaldatenAusLocalCache,
   ladeFundamentaldatenCacheZieleDetailed,
   ladeFundamentaldatenClient,
+  type FundamentalScrapeUmfang,
   type AlleAktualisierenFortschritt,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import { keyMetricNavZiel } from '@/lib/portfolio-analyse/fundamentaldaten-key-metric-nav'
@@ -104,14 +105,12 @@ function fundamentalPaketPasstZurAnfrage(
 export function PaFundamentalInhalt({
   anfrage,
   selectionKey,
+  scrapeUmfang = 'depot',
 }: {
   anfrage: FundamentaldatenAnfrage | null
   selectionKey?: string
-  /**
-   * @deprecated Batch-Scrape nutzt nur Server Depot∪Watchlist (cache-ziele).
-   * Prop bleibt für Call-Sites kompatibel, wird ignoriert.
-   */
-  alleScrapZiele?: FundamentaldatenAnfrage[] | null
+  /** Batch „Alle aktualisieren“ und Umsatzmix: nur dieses Universum. */
+  scrapeUmfang?: FundamentalScrapeUmfang
 }) {
   const { live, buchungen } = usePortfolioAnalyse()
   const [unterTab, setUnterTab] = useState<(typeof UNTER_TABS)[number]['id']>('uebersicht')
@@ -349,12 +348,12 @@ export function PaFundamentalInhalt({
 
   const aktualisiereAllePakete = useCallback(async () => {
     if (alleLaeuft || aktualisiere) return
+    const istWatchlist = scrapeUmfang === 'watchlist'
     let ziele: FundamentaldatenAnfrage[] = []
     let depotN = 0
     let watchlistN = 0
     try {
-      // Live-Depot ∪ Cloud-Watchlist (gleiche Quelle wie Nachkauf-Radar).
-      const meta = await ladeFundamentaldatenCacheZieleDetailed()
+      const meta = await ladeFundamentaldatenCacheZieleDetailed({ umfang: scrapeUmfang })
       ziele = meta.ziele
       depotN = meta.depot
       watchlistN = meta.watchlist
@@ -363,13 +362,18 @@ export function PaFundamentalInhalt({
       return
     }
     if (ziele.length === 0) {
-      setFehler('Keine Titel zum Aktualisieren (Depot/Watchlist leer).')
+      setFehler(
+        istWatchlist
+          ? 'Keine Watchlist-Titel zum Aktualisieren (leer oder schon im Depot).'
+          : 'Keine Depot-Titel zum Aktualisieren.',
+      )
       return
     }
+    const umfangZeile = istWatchlist ? `Watchlist ${watchlistN}` : `Depot ${depotN}`
     const okStart = window.confirm(
       `${ziele.length} Titel neu scrapen und den Cloud-Cache überschreiben?\n\n` +
-        `Depot ${depotN} · Watchlist ${watchlistN}\n` +
-        'Langsamer Batch mit Retries (oft 45–90 Min) — Seite offen lassen.',
+        `${umfangZeile}\n` +
+        'Langsamer Batch mit Retries — Seite offen lassen.',
     )
     if (!okStart) return
 
@@ -418,7 +422,7 @@ export function PaFundamentalInhalt({
         setFehler(
           `${res.ok} aktualisiert, ${res.fehlgeschlagen} weiterhin fehlgeschlagen` +
             (liste ? `: ${liste}${mehr}` : '') +
-            '. Später erneut „Alle“ — oft nach Pause ok.',
+            '. Später erneut starten — oft nach Pause ok.',
         )
       }
     } catch (e) {
@@ -431,7 +435,7 @@ export function PaFundamentalInhalt({
       setAlleLaeuft(false)
       alleAbortRef.current = null
     }
-  }, [alleLaeuft, aktualisiere])
+  }, [alleLaeuft, aktualisiere, scrapeUmfang])
 
   const starteJsonExport = useCallback(async () => {
     if (!daten?.ok || exportLaeuft) return
@@ -657,9 +661,13 @@ export function PaFundamentalInhalt({
                     onClick={() => void aktualisiereAllePakete()}
                     disabled={aktualisiere || laden}
                     className="rounded-md border border-amber-500/40 bg-amber-500/20 px-2 py-1 text-[11px] font-medium text-amber-100 transition hover:bg-amber-500/30 disabled:opacity-50"
-                    title="Depot und Watchlist neu scrapen — Cache überschreiben"
+                    title={
+                      scrapeUmfang === 'watchlist'
+                        ? 'Nur die Watchlist neu scrapen — Cache überschreiben'
+                        : 'Nur das Depot neu scrapen — Cache überschreiben'
+                    }
                   >
-                    Alle aktualisieren
+                    {scrapeUmfang === 'watchlist' ? 'Watchlist aktualisieren' : 'Depot aktualisieren'}
                   </button>
                 )}
                 <button
@@ -752,6 +760,7 @@ export function PaFundamentalInhalt({
               symbolYahoo={daten.symbolYahoo}
               isin={anfrage.isin ?? null}
               selectionKey={selectionKey}
+              scrapeUmfang={scrapeUmfang}
             />
           ) : null}
 

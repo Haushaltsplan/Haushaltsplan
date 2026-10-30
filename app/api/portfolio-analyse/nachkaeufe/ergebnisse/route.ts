@@ -38,7 +38,7 @@ export async function GET(req: Request) {
         console.warn('[api/nachkaeufe/ergebnisse] Anreicherung fehlgeschlagen — Roh-Scan wird trotzdem geliefert:', e)
       }
 
-      // Alt-Scans außerhalb Depot∪Watchlist ausblenden + DB bereinigen
+      // Alt-Scans außerhalb des Depots ausblenden + DB bereinigen
       void bereinigeNachkaufRadarAusserhalbKandidaten(kandidaten)
       const sichtbar = filtereGastScanAufKandidaten(mitDeep, kandidaten)
       const gesamtAnzahl = kandidaten.length

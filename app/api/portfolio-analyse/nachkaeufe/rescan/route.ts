@@ -1,6 +1,6 @@
 /**
- * Einzel-Rescan: Scannt einen Titel aus dem aktuellen Universum
- * (Depot ∪ Watchlist) neu und persistiert das Ergebnis.
+ * Einzel-Rescan: Scannt einen Titel aus dem aktuellen Depot neu
+ * und persistiert das Ergebnis. Watchlist-Titel gehören nicht zum Radar.
  * POST /api/portfolio-analyse/nachkaeufe/rescan
  * Body: { ticker?: string; isin?: string }
  */

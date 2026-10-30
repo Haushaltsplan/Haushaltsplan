@@ -93,13 +93,16 @@ async function ladeMitRetry(
   throw letzter instanceof Error ? letzter : new Error('Segment-Abruf fehlgeschlagen')
 }
 
-/** Depot ∪ Watchlist: Umsatzmix/Segmente live scrapen und in Cloud speichern. */
+/** Umsatzmix/Segmente live scrapen — Umfang depot oder watchlist. */
 export async function aktualisiereAlleSegmentStrukturen(opts: {
   signal?: AbortSignal
+  umfang?: 'depot' | 'watchlist'
   onFortschritt?: (info: AlleAktualisierenFortschritt) => void
   onPaket?: (anfrage: FundamentaldatenAnfrage, paket: SecSegmentHistoriePaket) => void
 }): Promise<{ ok: number; fehlgeschlagen: number; abgebrochen: boolean; fehlende: string[] }> {
-  const ziele = sortiereFundamentaldatenBatchZiele(await ladeFundamentaldatenCacheZiele({ signal: opts.signal }))
+  const ziele = sortiereFundamentaldatenBatchZiele(
+    await ladeFundamentaldatenCacheZiele({ signal: opts.signal, umfang: opts.umfang }),
+  )
   const gesamt = ziele.length
   let ok = 0
   const fehlende: string[] = []

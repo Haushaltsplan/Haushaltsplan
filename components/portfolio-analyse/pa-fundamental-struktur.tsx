@@ -21,6 +21,7 @@ import {
 import {
   ladeFundamentaldatenCacheZieleDetailed,
   type AlleAktualisierenFortschritt,
+  type FundamentalScrapeUmfang,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import {
   aktualisiereAlleSegmentStrukturen,
@@ -44,12 +45,14 @@ export function PaFundamentalStruktur({
   symbolYahoo,
   isin,
   selectionKey,
+  scrapeUmfang = 'depot',
 }: {
   paket: FundamentaldatenPaket | null
   ticker: string
   symbolYahoo?: string | null
   isin?: string | null
   selectionKey?: string
+  scrapeUmfang?: FundamentalScrapeUmfang
 }) {
   const erweitert = paket?.erweitert
   const navId = useId()
@@ -76,21 +79,29 @@ export function PaFundamentalStruktur({
 
   const aktualisiereAlleSegmente = useCallback(async () => {
     if (alleLaeuft) return
+    const istWatchlist = scrapeUmfang === 'watchlist'
     let zieleMeta: { ziele: { length: number }; depot: number; watchlist: number }
     try {
-      zieleMeta = await ladeFundamentaldatenCacheZieleDetailed()
+      zieleMeta = await ladeFundamentaldatenCacheZieleDetailed({ umfang: scrapeUmfang })
     } catch (e) {
       setAlleFehler(e instanceof Error ? e.message : 'Cache-Ziele fehlgeschlagen')
       return
     }
     if (zieleMeta.ziele.length === 0) {
-      setAlleFehler('Keine Titel zum Aktualisieren (Depot/Watchlist leer).')
+      setAlleFehler(
+        istWatchlist
+          ? 'Keine Watchlist-Titel zum Aktualisieren (leer oder schon im Depot).'
+          : 'Keine Depot-Titel zum Aktualisieren.',
+      )
       return
     }
+    const umfangZeile = istWatchlist
+      ? `Watchlist ${zieleMeta.watchlist}`
+      : `Depot ${zieleMeta.depot}`
     const okStart = window.confirm(
       `Umsatzmix/Segmente neu scrapen und in der Cloud speichern?\n\n` +
-        `${zieleMeta.ziele.length} Titel · Depot ${zieleMeta.depot} · Watchlist ${zieleMeta.watchlist}\n` +
-        'SEC/Marketscreener — Seite offen lassen (oft 20–60 Min).',
+        `${zieleMeta.ziele.length} Titel · ${umfangZeile}\n` +
+        'SEC/Marketscreener — Seite offen lassen.',
     )
     if (!okStart) return
 
@@ -110,6 +121,7 @@ export function PaFundamentalStruktur({
     try {
       const res = await aktualisiereAlleSegmentStrukturen({
         signal: ac.signal,
+        umfang: scrapeUmfang,
         onFortschritt: setAlleFortschritt,
         onPaket: (ziel, segPaket) => {
           const gleicheIsin =
@@ -145,7 +157,7 @@ export function PaFundamentalStruktur({
       setAlleLaeuft(false)
       alleAbortRef.current = null
     }
-  }, [alleLaeuft, isin, symbolYahoo])
+  }, [alleLaeuft, isin, symbolYahoo, scrapeUmfang])
 
   useEffect(() => {
     const ids = KAPITEL.map((k) => `pa-struktur-${k.id}`)
@@ -223,9 +235,13 @@ export function PaFundamentalStruktur({
               type="button"
               onClick={() => void aktualisiereAlleSegmente()}
               className="rounded-md border border-teal-500/35 bg-teal-500/15 px-2 py-1 text-[11px] font-medium text-teal-100 transition hover:bg-teal-500/25"
-              title="Depot ∪ Watchlist: Segmente neu scrapen und in Supabase speichern"
+              title={
+                scrapeUmfang === 'watchlist'
+                  ? 'Nur Watchlist: Segmente neu scrapen und in Supabase speichern'
+                  : 'Nur Depot: Segmente neu scrapen und in Supabase speichern'
+              }
             >
-              Umsatzmix alle aktualisieren
+              {scrapeUmfang === 'watchlist' ? 'Umsatzmix Watchlist' : 'Umsatzmix Depot'}
             </button>
           )}
         </div>
@@ -285,8 +301,8 @@ export function PaFundamentalStruktur({
 
       {leer ? (
         <PaCard className="p-6 text-sm text-[var(--app-text-muted)]">
-          Für diesen Titel noch keine Strukturdaten — „Umsatzmix alle aktualisieren“ füllt den Cache für
-          Depot und Watchlist.
+          Für diesen Titel noch keine Strukturdaten — „
+          {scrapeUmfang === 'watchlist' ? 'Umsatzmix Watchlist' : 'Umsatzmix Depot'}“ füllt den Cache.
         </PaCard>
       ) : null}
 

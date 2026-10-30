@@ -1,6 +1,6 @@
 ﻿/**
  * Automatische Erkennung **neuer** Quartalsberichte / Earnings Calls
- * und KI-Zusammenfassung + Quartals-Diff fÃ¼r Whitelist + Watchlist.
+ * und KI-Zusammenfassung + Quartals-Diff fÃ¼r das aktuelle Depot.
  *
  * Cursor lÃ¤uft tickerweise: zuerst Earnings Call, dann SEC/IR.
  * Bei erschÃ¶pftem KI-Kontingent: sofort stoppen â€” Fortschritt wird persistiert

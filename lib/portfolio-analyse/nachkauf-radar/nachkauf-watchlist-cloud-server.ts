@@ -1,10 +1,11 @@
 /**
- * Nachkauf-Radar — Kandidaten-Universum: nur aktuelles Depot ∪ Watchlist.
+ * Nachkauf-Radar — Kandidaten-Universum: nur das aktuelle Depot.
  *
  * Die Portfolioanalyse-Watchlist lebt im Browser (localStorage) und wird von der
- * Watchlist-Seite automatisch in die Tabelle `nachkauf_radar_watchlist` gespiegelt.
- * Verkaufte / von der Watchlist entfernte Titel werden nicht gescannt und aus
- * Scan-/Deep-Research-Zeilen bereinigt. Die alte 32er-Whitelist ist kein Universum mehr.
+ * Watchlist-Seite in `nachkauf_radar_watchlist` gespiegelt. Sie wird separat
+ * gescrapt (`ladeWatchlistScrapeKandidaten`), fließt aber nicht in Scan,
+ * Rescan, Kaufempfehlung oder Quartals-KI. Verkaufte Titel werden aus
+ * Scan-/Deep-Research-Zeilen bereinigt. Die alte 32er-Whitelist ist kein Universum.
  */
 
 import 'server-only'
@@ -238,7 +239,7 @@ export async function syncNachkaufWatchlistZurCloud(
       }
     }
 
-    // Verkauft / nicht mehr im Universum → Alt-Scans entfernen (Whitelist ∪ Depot ∪ Watchlist)
+    // Verkauft / nicht mehr im Depot → Alt-Scans entfernen (Watchlist gehört nicht zum Radar)
     const kandidaten = await ladeNachkaufKandidaten()
     await bereinigeNachkaufRadarAusserhalbKandidaten(kandidaten)
 
@@ -276,14 +277,11 @@ function kandidatAusTitel(opts: {
 }
 
 /**
- * Effektive Radar-Kandidaten — nur aktuelles Depot ∪ Watchlist.
- * Priorität: depot > watchlist. Verkaufte / entfernte Titel erscheinen nicht.
+ * Effektive Radar-Kandidaten — nur das aktuelle Depot.
+ * Verkaufte Titel erscheinen nicht. Die Watchlist ist kein Radar-Universum.
  */
 export async function ladeNachkaufKandidaten(): Promise<WhitelistPosition[]> {
-  const [watchlist, depot] = await Promise.all([
-    ladeEffektiveNachkaufWatchlist(),
-    ladeDepotRadarAktien().catch(() => []),
-  ])
+  const depot = await ladeDepotRadarAktien().catch(() => [])
   const byIsin = new Map<string, WhitelistPosition>()
 
   for (const d of depot) {
@@ -301,9 +299,24 @@ export async function ladeNachkaufKandidaten(): Promise<WhitelistPosition[]> {
     )
   }
 
+  return [...byIsin.values()]
+}
+
+/**
+ * Watchlist-Scrape — Cloud-Watchlist ohne Titel, die schon im Depot liegen.
+ * Getrennt vom Nachkauf-Radar.
+ */
+export async function ladeWatchlistScrapeKandidaten(): Promise<WhitelistPosition[]> {
+  const [watchlist, depot] = await Promise.all([
+    ladeEffektiveNachkaufWatchlist(),
+    ladeDepotRadarAktien().catch(() => []),
+  ])
+  const depotIsins = new Set(depot.map((d) => d.isin.toUpperCase()))
+  const byIsin = new Map<string, WhitelistPosition>()
+
   for (const w of watchlist) {
     const key = w.isin.toUpperCase()
-    if (byIsin.has(key)) continue
+    if (depotIsins.has(key) || byIsin.has(key)) continue
     byIsin.set(
       key,
       kandidatAusTitel({
@@ -321,7 +334,7 @@ export async function ladeNachkaufKandidaten(): Promise<WhitelistPosition[]> {
 
 /**
  * Löscht Scan- und Deep-Research-Zeilen, deren ISIN nicht mehr im Kandidaten-Universum liegt.
- * Nur Depot-/Watchlist-Titel bleiben. Rückgabe = Anzahl gelöschter Scan-ISINs.
+ * Nur Depot-Titel bleiben. Rückgabe = Anzahl gelöschter Scan-ISINs.
  */
 export async function bereinigeNachkaufRadarAusserhalbKandidaten(
   kandidaten: { isin: string }[],
@@ -359,7 +372,7 @@ export async function bereinigeNachkaufRadarAusserhalbKandidaten(
   }
 }
 
-/** Nur Titel aus dem aktuellen Universum (Depot ∪ Watchlist) — keine Alt-Scans. */
+/** Nur Titel aus dem aktuellen Depot — keine Alt-Scans, keine Watchlist. */
 export function filtereGastScanAufKandidaten<T extends { isin: string }>(
   eintraege: T[],
   kandidaten: { isin: string }[],

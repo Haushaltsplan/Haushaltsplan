@@ -1,5 +1,5 @@
 /**
- * Depot∪Watchlist neu einlesen und Radar-Scans außerhalb bereinigen.
+ * Depot neu einlesen und Radar-Scans außerhalb des Depots bereinigen.
  * Aufruf nach Kauf/Verkauf/Import und (ergänzend) Watchlist-Änderungen.
  */
 import { NextResponse } from 'next/server'

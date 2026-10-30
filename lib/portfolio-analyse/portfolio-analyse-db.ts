@@ -355,7 +355,7 @@ export async function speicherePortfolioImport(
     }
   }
 
-  // Kauf/Import → Depot∪Watchlist-Universum + Radar-Scans anpassen
+  // Kauf/Import → Depot-Universum + Radar-Scans anpassen
   syncNachkaufUniversum()
   return { ok: true, eingefuegt, hinweis }
 }
