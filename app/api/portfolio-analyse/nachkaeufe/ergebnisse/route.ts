@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import {
+  ergaenzeDepotGewichte,
   ladeAlleDeepResearch,
   ladeNachkaufScanAusCloud,
   ladeNachkaufScanDatum,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 import { berechneMonatsEmpfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-score'
-import { reichereNachkaufEintraegeVoll } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kontext-server'
-import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import type { NachkaufErgebnissePaket } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
 export const dynamic = 'force-dynamic'
@@ -16,47 +15,37 @@ export const maxDuration = 30
 export async function GET(req: Request) {
   return jsonMitOwner(req, async () => {
     try {
-      const [ergebnisse, deepMap, gescannt_am, kandidaten] = await Promise.all([
+      const [ergebnisse, deepMap, gescannt_am] = await Promise.all([
         ladeNachkaufScanAusCloud(),
         ladeAlleDeepResearch(),
         ladeNachkaufScanDatum(),
-        ladeNachkaufKandidaten(),
       ])
 
-      const mitDeep = ergebnisse.map((e) => ({
+      const sichtbar = ergebnisse.map((e) => ({
         ...e,
         tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
       }))
 
-      try {
-        // Gespeicherte Scans bleiben sichtbar. Neue Scans laufen nur über das Depot,
-        // löschen aber keine vorhandenen Zeilen.
-        await reichereNachkaufEintraegeVoll(mitDeep, { bestandErhalten: true })
-      } catch (e) {
-        console.warn('[api/nachkaeufe/ergebnisse] Anreicherung fehlgeschlagen — Roh-Scan wird trotzdem geliefert:', e)
-      }
+      // Nur Depot-Gewichte, und auch die dürfen die Antwort nicht verschlucken.
+      await Promise.race([
+        ergaenzeDepotGewichte(sichtbar),
+        new Promise((resolve) => setTimeout(resolve, 4000)),
+      ])
 
-      const sichtbar = mitDeep
-      const gesamtAnzahl = Math.max(kandidaten.length, sichtbar.length)
-      const gespeicherteIsins = new Set(
-        sichtbar.map((e) => e.isin?.trim().toUpperCase()).filter(Boolean),
-      )
-      const gespeicherteTicker = new Set(sichtbar.map((e) => e.ticker.trim().toUpperCase()))
-      const ausstehend = kandidaten.filter((p) => {
-        const isin = p.isin.toUpperCase()
-        if (gespeicherteIsins.has(isin)) return false
-        const k = p.symbolYahoo?.replace(/\.[^.]+$/, '')?.toUpperCase()
-        if (k && gespeicherteTicker.has(k)) return false
-        return true
-      }).length
+      let monatsEmpfehlung = null
+      try {
+        monatsEmpfehlung = sichtbar.length > 0 ? berechneMonatsEmpfehlung(sichtbar) : null
+      } catch (e) {
+        console.warn('[api/nachkaeufe/ergebnisse] Monatsempfehlung übersprungen:', e)
+      }
 
       const paket: NachkaufErgebnissePaket = {
         ok: true,
         ergebnisse: sichtbar,
-        gescannt_am: gescannt_am ?? null,
-        monatsEmpfehlung: sichtbar.length > 0 ? berechneMonatsEmpfehlung(sichtbar) : null,
-        gesamtAnzahl,
-        ausstehend,
+        gescannt_am: gescannt_am ?? sichtbar[0]?.gescannt_am ?? null,
+        monatsEmpfehlung,
+        gesamtAnzahl: sichtbar.length,
+        ausstehend: 0,
       }
 
       return NextResponse.json(paket)

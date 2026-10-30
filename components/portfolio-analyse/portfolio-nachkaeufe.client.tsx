@@ -1829,17 +1829,23 @@ export function NachkaufRadarClient() {
 
   // Cloud-Stand via TanStack Query → lokaler UI-State
   useEffect(() => {
+    if (ergebnisseQuery.isError) {
+      setLaden(false)
+      setFehler('Gespeicherte Scans konnten gerade nicht geladen werden. Sie sind nicht gelöscht.')
+      return
+    }
     const paket = ergebnisseQuery.data
     if (!paket) return
     if (typeof paket.gesamtAnzahl === 'number') setGesamtAnzahl(paket.gesamtAnzahl)
     if (paket.ausstehend != null) setAusstehend(paket.ausstehend)
+    setErgebnisse(paket.ergebnisse)
+    setMonatsEmpfehlung(paket.monatsEmpfehlung)
+    setGescannt_am(paket.gescannt_am)
     if (paket.ergebnisse.length > 0) {
-      setErgebnisse(paket.ergebnisse)
-      setMonatsEmpfehlung(paket.monatsEmpfehlung)
-      setGescannt_am(paket.gescannt_am)
       setSelectedTicker((prev) => prev ?? paket.ergebnisse[0]?.ticker ?? null)
+      setFehler(null)
     }
-  }, [ergebnisseQuery.data])
+  }, [ergebnisseQuery.data, ergebnisseQuery.isError])
 
   useEffect(() => {
     const daten = kaufempfehlungQuery.data
