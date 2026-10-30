@@ -239,10 +239,6 @@ export async function syncNachkaufWatchlistZurCloud(
       }
     }
 
-    // Verkauft / nicht mehr im Depot → Alt-Scans entfernen (Watchlist gehört nicht zum Radar)
-    const kandidaten = await ladeNachkaufKandidaten()
-    await bereinigeNachkaufRadarAusserhalbKandidaten(kandidaten)
-
     return { ok: true }
   } catch (e) {
     return { ok: false, fehler: e instanceof Error ? e.message : String(e) }
@@ -334,13 +330,18 @@ export async function ladeWatchlistScrapeKandidaten(): Promise<WhitelistPosition
 
 /**
  * Löscht Scan- und Deep-Research-Zeilen, deren ISIN nicht mehr im Kandidaten-Universum liegt.
- * Nur Depot-Titel bleiben. Rückgabe = Anzahl gelöschter Scan-ISINs.
+ * Leere Kandidatenliste löscht nichts — sonst würde ein fehlgeschlagenes Depot-Laden den ganzen Radar leeren.
+ * Rückgabe = Anzahl gelöschter Scan-ISINs.
  */
 export async function bereinigeNachkaufRadarAusserhalbKandidaten(
   kandidaten: { isin: string }[],
 ): Promise<number> {
   if (!istKonfiguriert()) return 0
   const keep = new Set(kandidaten.map((p) => p.isin.trim().toUpperCase()).filter(Boolean))
+  if (keep.size === 0) {
+    console.warn('[nachkauf-watchlist] Bereinigung übersprungen: keine Kandidaten, Bestand bleibt.')
+    return 0
+  }
   try {
     const admin = createSupabaseAdmin()
     const ownerUserId = requireOwnerUserId()

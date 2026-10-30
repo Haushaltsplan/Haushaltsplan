@@ -58,7 +58,6 @@ import { berechneTrimSignale } from './nachkauf-trim-signal'
 import { wendeNachkaufDisziplinAn } from './nachkauf-disziplin-server'
 import {
   behalteGastKandidatenInPlace,
-  bereinigeNachkaufRadarAusserhalbKandidaten,
   ladeNachkaufKandidaten,
   setzeKandidatenQuelle,
 } from './nachkauf-watchlist-cloud-server'
@@ -437,10 +436,7 @@ async function reichereErgebnisseAn(
 
 export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufScanPaket> {
   const kandidaten = await ladeNachkaufKandidaten()
-  // Verkauft oder nur noch auf der Watchlist → nicht mitscannen, Alt-Zeilen entfernen
-  await bereinigeNachkaufRadarAusserhalbKandidaten(kandidaten).catch((e) =>
-    console.warn('[nachkauf-scan] Universum-Bereinigung:', e),
-  )
+  // Nur Depot neu scannen. Vorhandene Scan- und Deep-Research-Zeilen bleiben stehen.
   const gesamtAnzahl = kandidaten.length
   if (gesamtAnzahl === 0) {
     return {

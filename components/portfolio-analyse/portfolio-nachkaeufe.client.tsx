@@ -1867,17 +1867,41 @@ export function NachkaufRadarClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ budget: kaufBudget }),
       })
-      const daten = await res.json()
-      if (!res.ok || !daten.ok) {
-        setKaufempfehlungText(`Fehler: ${daten.fehler ?? 'Unbekannter Fehler'}`)
+      const raw = await res.text()
+      let daten: {
+        ok?: boolean
+        fehler?: string
+        kiEmpfehlungText?: string
+        basisAllokation?: SparplanPosten[]
+        basisVerkaufAllokation?: VerkaufPosten[]
+        trackingFehler?: string
+      }
+      try {
+        daten = JSON.parse(raw) as typeof daten
+      } catch {
+        setKaufempfehlungText(
+          'Der Server hat die Kaufempfehlung abgebrochen, bevor die Beträge ankamen. Bitte nochmal „Neu generieren“ — oft ist das das Zeitlimit.',
+        )
         return
       }
-      setKaufempfehlungText(daten.kiEmpfehlungText)
-      setKaufempfehlungAllokation(daten.basisAllokation ?? [])
-      if (daten.trackingFehler && (daten.basisAllokation?.length ?? 0) > 0) {
+      const text = daten.kiEmpfehlungText?.trim() ?? ''
+      const allokation = daten.basisAllokation ?? []
+      const verkauf = daten.basisVerkaufAllokation ?? []
+      if (!text && allokation.length === 0 && verkauf.length === 0) {
+        const hinweis = daten.fehler?.trim()
+        setKaufempfehlungText(
+          hinweis && !/unexpected token|not valid json/i.test(hinweis)
+            ? `Fehler: ${hinweis}`
+            : 'Die KI-Antwort war ungültig. Bitte nochmal „Neu generieren“.',
+        )
+        return
+      }
+      setKaufempfehlungText(text || 'Regelbasierte Allokation ohne KI-Kommentar.')
+      setKaufempfehlungAllokation(allokation)
+      if (daten.trackingFehler && allokation.length > 0) {
         console.warn('[Nachkauf] Performance-Tracking:', daten.trackingFehler)
       }
-      setVerkaufAllokation(daten.basisVerkaufAllokation ?? [])
+      setVerkaufAllokation(verkauf)
       await invalidateNachkauf()
     } catch (e) {
       setKaufempfehlungText(`Fehler: ${e instanceof Error ? e.message : String(e)}`)

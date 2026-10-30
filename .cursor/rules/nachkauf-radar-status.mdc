@@ -25,8 +25,9 @@ Die Watchlist ist kein Radar-Universum.
   Tabelle `nachkauf_radar_watchlist` via `/api/portfolio-analyse/watchlist-sync`
   (GET = Cloud-Stand, POST = Vollabgleich; Client-Helfer in `lib/portfolio-analyse/watchlist-client.ts`).
   Der Sync speist den separaten Watchlist-Scrape, nicht den Radar.
-- `bereinigeNachkaufRadarAusserhalbKandidaten()` bei Watchlist-Sync, Scan-Start, Ergebnisse-GET
-  und nach Kauf/Verkauf/Import via `/api/portfolio-analyse/universum-sync` (inkl. Depot-Cache-Invalidierung).
+- Gespeicherte Scans, Deep Research, Score-Verlauf und Kaufempfehlungen werden beim
+  Öffnen, Sync oder neuen Scan nicht gelöscht. `bereinigeNachkaufRadarAusserhalbKandidaten()`
+  löscht bei leerer Kandidatenliste nichts.
 - Migration: `supabase/migrations/20260720190000_nachkauf_radar_watchlist.sql`
 
 ## Ampel-Kalibrierung (Aug 2026 — geometrisches Kern-Modell)

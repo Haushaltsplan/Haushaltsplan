@@ -342,7 +342,7 @@ export function YoutubeShortsClient() {
       : []
   const zahlenWarnung = fremd.length ? `Zahlen ohne Quelle im Export: ${fremd.join(', ')}` : null
   const loopWarnung = props
-    ? [...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof), ...scriptStoryWarnungen(props.hookLoop, props.crack)]
+    ? [...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof, props.metricLabel), ...scriptStoryWarnungen(props.hookLoop, props.crack)]
     : []
 
   useEffect(() => {

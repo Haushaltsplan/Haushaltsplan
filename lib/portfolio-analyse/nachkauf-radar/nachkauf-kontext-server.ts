@@ -26,10 +26,13 @@ import {
 import type { NachkaufScanEintrag } from './nachkauf-radar-types'
 
 /** Depot, Historie, Notizen, Insider, Score-Verlauf — für Deep Research pro Ticker. */
-export async function reichereNachkaufTickerKontext(eintraege: NachkaufScanEintrag[]): Promise<void> {
+export async function reichereNachkaufTickerKontext(
+  eintraege: NachkaufScanEintrag[],
+  opts?: { bestandErhalten?: boolean },
+): Promise<void> {
   if (eintraege.length === 0) return
   const kandidaten = await ladeNachkaufKandidaten()
-  behalteGastKandidatenInPlace(eintraege, kandidaten)
+  if (!opts?.bestandErhalten) behalteGastKandidatenInPlace(eintraege, kandidaten)
   setzeKandidatenQuelle(eintraege, kandidaten)
   if (eintraege.length === 0) return
   await Promise.allSettled([
@@ -44,10 +47,13 @@ export async function reichereNachkaufTickerKontext(eintraege: NachkaufScanEintr
  * Volle Anreicherung wie Ergebnisse-API / Dashboard-Kontext.
  * Für Kaufempfehlung und Scan-Abschluss.
  */
-export async function reichereNachkaufEintraegeVoll(eintraege: NachkaufScanEintrag[]): Promise<void> {
+export async function reichereNachkaufEintraegeVoll(
+  eintraege: NachkaufScanEintrag[],
+  opts?: { bestandErhalten?: boolean },
+): Promise<void> {
   if (eintraege.length === 0) return
 
-  await reichereNachkaufTickerKontext(eintraege)
+  await reichereNachkaufTickerKontext(eintraege, opts)
   if (eintraege.length === 0) return
 
   const perf = await ladeNachkaufPerformance(undefined, { mitLive: false }).catch(() => null)

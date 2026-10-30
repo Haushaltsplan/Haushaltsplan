@@ -21,7 +21,7 @@ import {
   istOffeneBruecke,
   ohneKennzahlId,
   ohneKiBindestrich,
-  frageFuerHook,
+  hookPaar,
   kickerFuerBild,
   kuerzeGesprocheneZeile,
   landZurFrage,
@@ -158,10 +158,24 @@ Land rules
 - End exactly on "so the question is". Never end with . ! ? and never with a dash.
 - Do not say the score, "wide moat", "narrow moat", or recap the pillars. The stamp already shows the score. After this line the video loops.
 
-Opening rules
+Opening rules, seconds 0 to 5. These override the word targets above for claim and proof.
+The examples are the MOVE for every company. Do not copy "ETF" or "benchmark" unless this company sells an index. Do not copy "fees" onto a company that sells machines, bags, or drugs. Use the noun this company actually charges for, and finish the noun.
+
+Grammar
+- Every spoken line is a complete sentence. The last word is a noun or a full verb, never a bare adjective.
+- Bad: "Why can customers pay endless?" Good: "Why can customers pay endless fees?"
+- Bad: "causes legal and operational friction." That is a chopped list of two adjectives. Name one concrete thing, or two complete things. Good: "Ripping the system out takes years."
+
+Causality
+- proof is the direct reason for THAT question. A viewer who hears only these two lines must see why the number answers the question.
+- If proof is a margin or a return on capital, the question asks about pricing power or dominance. A growth rate does not answer a fee question, and a margin does not answer "how fast are they growing?".
+- Patterns, same shape for every company:
+  * "Why can [Company] charge endless fees?" -> "Because they command a [X]% margin."
+  * "How dominant is [Company]'s market monopoly?" -> "They print a [X]% return on capital."
+  * "Why can no customer drop [Company]'s [product]?" -> "Because it yields a [X]% operating margin."
 - kicker: 2 to 5 words, under 28 characters, one line a viewer can read in under a second. On screen only. Never spoken. No invented number, no market cap, no dollar figure unless that exact figure is in the metrics list.
-- claim: the first spoken line. 8 to 10 words, so the number lands around second 3 to 4. An open question or a provocation. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know". The company may appear, but the line is a question, not "Microsoft prints a 47.1% margin".
-- proof: the second spoken line, the answer. 7 to 11 words. Contains the chosen metric value exactly as written. Name the metric in English: "a 47.1% operating margin". metricId is a machine key. Never say it. Never write "an ltm_ebit of 47.1%".
+- claim: the first spoken line. 6 to 10 words, so the number lands around second 3 to 4. A complete question. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know".
+- proof: the second spoken line, the answer. 6 to 11 words. A complete sentence. Contains the chosen metric value exactly as written, plus the English name: "a 47.1% operating margin". metricId is a machine key. Never say it. Never write "an ltm_ebit of 47.1%".
 
 ## Story order, do not skip ahead
 There is no "what they sell" line. Do not describe the business model as its own beat. There is no teaser between the number and the pillars. Do not say "one thing could break that lock" or hint at the threat before the crack.
@@ -328,12 +342,13 @@ export async function generiereMoatShort(opts: {
       const metrikId = hookMetriken.some((m) => m.id === h.metricId) ? text(h.metricId) : hookMetriken[0]!.id
       const wert = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).value
       const label = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).label
-      const proofRoh = sprechtext(h.proof) || `Because that business prints ${wert} ${label.toLowerCase()}.`
+      const proofRoh = sprechtext(h.proof) || `Because they command ${wert} ${label.toLowerCase()}.`
+      const paar = hookPaar(sprechtext(h.claim), proofRoh, paket.firmenname, wert, label, metrikId)
       return {
         winkel: text(h.angle),
         kicker: kickerFuerBild(sprechtext(h.kicker), paket.firmenname),
-        claim: frageFuerHook(sprechtext(h.claim), paket.firmenname, wert),
-        proof: kuerzeGesprocheneZeile(proofRoh, { maxWoerter: 11, maxZeichen: 78, behalten: wert }),
+        claim: paar.claim,
+        proof: paar.proof,
         loop: '',
         land: landZurFrage(sprechtext(h.land), verdict, wert),
         metrikId,
@@ -439,6 +454,9 @@ export async function generiereMoatShort(opts: {
       if (pfeiler) props.pillars[idx] = { ...pfeiler, line: neu }
     }
   }
+  const repariert = hookPaar(props.hook, props.proof, props.firmenname, props.metricValue, props.metricLabel, start.metrikId)
+  props.hook = repariert.claim
+  props.proof = repariert.proof
   start.kicker = props.kicker
   start.claim = props.hook
   start.proof = props.proof
@@ -446,7 +464,7 @@ export async function generiereMoatShort(opts: {
   start.land = props.closing
 
   const warnungen: string[] = []
-  warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof))
+  warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof, props.metricLabel))
   warnungen.push(...scriptStoryWarnungen(props.hookLoop, props.crack))
   const gesprochen = [props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing]
   warnungen.push(...scriptTonWarnungen(gesprochen))

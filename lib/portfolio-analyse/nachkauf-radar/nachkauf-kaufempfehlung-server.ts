@@ -481,7 +481,8 @@ export async function generiereKaufempfehlung(
       ? '\n\nRegelbasierte Verkäufe:\n' +
         basisVerkaufAllokation.map((p) => `• ${p.ticker}: ~${p.verkaufAnteilPct} % — ${p.begruendung}`).join('\n')
       : ''
-    kiText = `[KI-Synthese fehlgeschlagen${fehler ? ': ' + fehler : ''}]\n\nRegelbasierte Käufe:\n` +
+    const grund = kiFehlerFuerNutzer(fehler)
+    kiText = `[KI-Kommentar fehlt${grund ? ': ' + grund : ''}]\n\nRegelbasierte Käufe:\n` +
       basisAllokation.map((p) => `• ${p.ticker}: ${p.betragEur} € — ${p.begruendung}`).join('\n') +
       verkaufTeil
   }
@@ -499,7 +500,7 @@ export async function generiereKaufempfehlung(
       : { typ: 'sparen', text: kiText }
 
   return {
-    ok: !fehler,
+    ok: true,
     kandidatenAnzahl: allokationQuelle.length,
     verkaufKandidatenAnzahl: verkaufKandidaten.length,
     basisAllokation,
@@ -509,6 +510,15 @@ export async function generiereKaufempfehlung(
     erstellt_am: jetzt,
     fehler,
   }
+}
+
+function kiFehlerFuerNutzer(fehler: string | undefined): string {
+  const f = fehler?.trim() ?? ''
+  if (!f) return ''
+  if (/unexpected token|not valid json|ungültige json|ungültige antwort|an error occurred/i.test(f)) {
+    return 'Die KI hat keine lesbare Antwort geliefert.'
+  }
+  return f.length > 220 ? f.slice(0, 220) : f
 }
 
 async function rufeKiAuf(prompt: string): Promise<{ text: string; fehler?: string }> {
@@ -529,6 +539,10 @@ async function rufeKiAuf(prompt: string): Promise<{ text: string; fehler?: strin
           temperature: 0.3,
           skipMessageTrim: true,
           geminiForcePaidApiKey: true,
+          // Unter dem Vercel-Limit bleiben, sonst kommt statt JSON ein Abbruchtext.
+          timeoutMs: 40_000,
+          geminiTotalBudgetMs: 70_000,
+          maxOutputTokens: 4_096,
           geminiModels: geminiProPaidModelKandidaten({
             primaryEnvKeys: [
               'NACHKAUF_KAUFEMPFEHLUNG_GEMINI_MODEL',

@@ -7,11 +7,7 @@ import {
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 import { berechneMonatsEmpfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-score'
 import { reichereNachkaufEintraegeVoll } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kontext-server'
-import {
-  bereinigeNachkaufRadarAusserhalbKandidaten,
-  filtereGastScanAufKandidaten,
-  ladeNachkaufKandidaten,
-} from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
+import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import type { NachkaufErgebnissePaket } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
 export const dynamic = 'force-dynamic'
@@ -33,15 +29,15 @@ export async function GET(req: Request) {
       }))
 
       try {
-        await reichereNachkaufEintraegeVoll(mitDeep)
+        // Gespeicherte Scans bleiben sichtbar. Neue Scans laufen nur über das Depot,
+        // löschen aber keine vorhandenen Zeilen.
+        await reichereNachkaufEintraegeVoll(mitDeep, { bestandErhalten: true })
       } catch (e) {
         console.warn('[api/nachkaeufe/ergebnisse] Anreicherung fehlgeschlagen — Roh-Scan wird trotzdem geliefert:', e)
       }
 
-      // Alt-Scans außerhalb des Depots ausblenden + DB bereinigen
-      void bereinigeNachkaufRadarAusserhalbKandidaten(kandidaten)
-      const sichtbar = filtereGastScanAufKandidaten(mitDeep, kandidaten)
-      const gesamtAnzahl = kandidaten.length
+      const sichtbar = mitDeep
+      const gesamtAnzahl = Math.max(kandidaten.length, sichtbar.length)
       const gespeicherteIsins = new Set(
         sichtbar.map((e) => e.isin?.trim().toUpperCase()).filter(Boolean),
       )

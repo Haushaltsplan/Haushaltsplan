@@ -262,8 +262,15 @@ async function callOpenAI(
     return { ok: false, status: 502, hint }
   }
 
-  const data = JSON.parse(raw) as {
-    choices?: Array<{ message?: { content?: string } }>
+  let data: { choices?: Array<{ message?: { content?: string } }> }
+  try {
+    data = JSON.parse(raw) as typeof data
+  } catch {
+    return {
+      ok: false,
+      status: 502,
+      hint: `Ungültige Antwort vom KI-Dienst (${res.status}): ${raw.slice(0, 180)}`,
+    }
   }
   const reply = data.choices?.[0]?.message?.content?.trim()
   if (!reply) {
@@ -806,6 +813,7 @@ async function callGemini(
     const naechstes = models[i + 1]
     const modellAbgeschaltet = /no longer available|not longer available/i.test(r.hint)
     /** 404 / Quota / 503 / Timeout / abgekündigtes Modell — nächstes Flash (eigenes Kontingent). */
+    const antwortKeinJson = r.httpStatus === 502 && /Ungültige JSON-Antwort/.test(r.hint)
     const naechstesModellMoeglich =
       Boolean(naechstes) &&
       restMs() >= 12_000 &&
@@ -813,6 +821,7 @@ async function callGemini(
         r.httpStatus === 404 ||
         r.httpStatus === 503 ||
         r.httpStatus === 504 ||
+        antwortKeinJson ||
         modellAbgeschaltet)
     if (naechstesModellMoeglich) {
       console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): ${r.hint.slice(0, 220)} — versuche „${naechstes}“.`)
@@ -909,6 +918,7 @@ export async function runCoachCompletion(
     const kannOpenAiFallback =
       oKey &&
       !options?.geminiForceFreeApiKey &&
+      !options?.geminiForcePaidApiKey &&
       !options?.jsonResponse &&
       !options?.geminiGoogleSearch &&
       !messages.some((m) => m.images?.length)

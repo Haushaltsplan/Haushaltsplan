@@ -295,7 +295,7 @@ export async function fuhreDeepResearchDurch(
         kaufTriggerAusgeloest: false, kaufTriggerText: null,
         scoreVerlauf: [], insiderKaeufe: [],
       }]
-  await reichereNachkaufTickerKontext(kontextEintraege)
+  await reichereNachkaufTickerKontext(kontextEintraege, { bestandErhalten: true })
   wendeNachkaufDisziplinAn(kontextEintraege)
   scanEintrag = kontextEintraege[0]!
 

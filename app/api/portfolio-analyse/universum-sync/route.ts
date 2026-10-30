@@ -1,14 +1,11 @@
 /**
- * Depot neu einlesen und Radar-Scans außerhalb des Depots bereinigen.
- * Aufruf nach Kauf/Verkauf/Import und (ergänzend) Watchlist-Änderungen.
+ * Depot-Cache nach Kauf/Verkauf/Import neu lesen.
+ * Gespeicherte Radar-Scans und Deep-Research-Memos bleiben erhalten.
  */
 import { NextResponse } from 'next/server'
 import { jsonMitOwner, requireOwnerUserId } from '@/lib/request-owner'
 import { invalidateLivePortfolioCache } from '@/lib/portfolio-analyse/depot-gewichte-server'
-import {
-  bereinigeNachkaufRadarAusserhalbKandidaten,
-  ladeNachkaufKandidaten,
-} from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
+import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,7 +15,7 @@ export async function POST(req: Request) {
     try {
       invalidateLivePortfolioCache(requireOwnerUserId())
       const kandidaten = await ladeNachkaufKandidaten()
-      const entfernt = await bereinigeNachkaufRadarAusserhalbKandidaten(kandidaten)
+      const entfernt = 0
       const depot = kandidaten.filter((k) => k.quelle === 'depot').length
       const watchlist = kandidaten.filter((k) => k.quelle === 'watchlist').length
       return NextResponse.json({

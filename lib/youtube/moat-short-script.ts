@@ -212,13 +212,112 @@ export function frageFuerHook(roh: string, firma: string, wert: string): string 
   if (wert) t = t.replace(wert, '').replace(/\s+/g, ' ').trim()
   t = t.replace(/[.!]+$/g, '').trim()
   if (!t.endsWith('?')) t = `${t.replace(/[?]+$/g, '')}?`
-  const gekuerzt = kuerzeGesprocheneZeile(t, { maxWoerter: 10, maxZeichen: 70, frage: true })
+  const gekuerzt = kuerzeGesprocheneZeile(t, { maxWoerter: 10, maxZeichen: 78, frage: true })
   const n = gekuerzt.split(/\s+/).filter(Boolean).length
-  if (n >= 7 && n <= 10 && gekuerzt.length <= 70 && /^(why|how|what|who|is|can|could)\b/i.test(gekuerzt) && !gekuerzt.includes(wert)) {
+  if (
+    n >= 6 &&
+    n <= 10 &&
+    gekuerzt.length <= 78 &&
+    /^(why|how|what|who|is|can|could)\b/i.test(gekuerzt) &&
+    !gekuerzt.includes(wert) &&
+    !satzUnbrauchbar(gekuerzt)
+  ) {
     return gekuerzt
   }
   const name = firma.split(/\s+/)[0] || 'They'
   return `Why can ${name} raise prices and nobody leaves?`
+}
+
+export type HookKennzahlArt = 'marge' | 'kapital' | 'andere'
+
+/** Marge und Kapitalrendite müssen eine Macht- oder Dominanzfrage beantworten. */
+export function hookKennzahlArt(label: string, id = ''): HookKennzahlArt {
+  const l = `${id} ${label}`.toLowerCase()
+  if (/roic|return on capital|return on new capital/.test(l)) return 'kapital'
+  if (/margin|ltm_brutto|ltm_ebit/.test(l)) return 'marge'
+  return 'andere'
+}
+
+function firmenwort(firma: string): string {
+  return firma.split(/\s+/).filter(Boolean)[0] || 'They'
+}
+
+function artikelVorGesprochen(wert: string): 'a' | 'an' {
+  const z = wert.trim()
+  if (/^(?:8\d*(?:\.\d+)?|11(?:\.\d+)?|18(?:\.\d+)?)%/.test(z)) return 'an'
+  return 'a'
+}
+
+function kennzahlGesprochen(label: string, id: string): string {
+  return (KENNZAHL_NAME[id] ?? label).replace(/\s+/g, ' ').trim()
+}
+
+const MACHT_ODER_DOMINANZ =
+  /\b(charg\w*|fees?\b|prices?\b|pricing|pay\w*|rais\w*|premium|toll|dominan\w*|monopol\w*|nobody|no one|cannot leave|can't leave|can no\b|drop\w*)\b/i
+
+export function fragtNachMachtOderDominanz(frage: string): boolean {
+  return MACHT_ODER_DOMINANZ.test(frage)
+}
+
+function nenntKennzahl(text: string, label: string, id: string): boolean {
+  const name = kennzahlGesprochen(label, id).toLowerCase()
+  const t = text.toLowerCase()
+  const kerne = name.split(/\s+/).filter((w) => w.length > 3 && !['year', 'average'].includes(w))
+  if (!kerne.length) return true
+  return kerne.some((w) => t.includes(w))
+}
+
+/** Muster, wenn die KI-Frage die Kennzahl nicht begründet. Gilt für jede Firma, nicht für einen Ticker. */
+export function frageFuerKennzahl(firma: string, label: string, id = ''): string {
+  const name = firmenwort(firma)
+  const art = hookKennzahlArt(label, id)
+  if (art === 'kapital') return `How dominant is ${name}'s market monopoly?`
+  if (art === 'marge') return `Why can ${name} charge endless fees?`
+  const l = `${id} ${label}`.toLowerCase()
+  if (/retention|\bnrr\b/.test(l)) return `Why do ${name}'s customers spend more every year?`
+  if (/fcf|conversion|cash/.test(l)) return `Why does ${name}'s profit turn into cash?`
+  if (/growth|cagr|revenue/.test(l)) return `Why does ${name}'s revenue keep compounding?`
+  return `Why does ${name} keep that edge?`
+}
+
+export function antwortFuerKennzahl(wert: string, label: string, id = ''): string {
+  const name = kennzahlGesprochen(label, id)
+  const artikel = artikelVorGesprochen(wert)
+  const art = hookKennzahlArt(label, id)
+  if (art === 'kapital') return `They print ${artikel} ${wert} ${name}.`
+  if (art === 'marge') return `Because they command ${artikel} ${wert} ${name}.`
+  return `Because the figure is ${artikel} ${wert} ${name}.`
+}
+
+/**
+ * Sekunde 0–5: ganzer Satz, und die Antwort begründet genau diese Frage.
+ * Marge oder Kapitalrendite nur nach einer Macht- oder Dominanzfrage.
+ */
+export function hookPaar(
+  claim: string,
+  proof: string,
+  firma: string,
+  wert: string,
+  label: string,
+  id = '',
+): { claim: string; proof: string } {
+  const art = hookKennzahlArt(label, id)
+  let frage = frageFuerHook(claim, firma, wert)
+  let antwort = kuerzeGesprocheneZeile(proof, { maxWoerter: 11, maxZeichen: 78, behalten: wert || undefined })
+  const frageKaputt = !/\?\s*$/.test(frage) || satzUnbrauchbar(frage) || Boolean(wert && frage.includes(wert))
+  const antwortKaputt =
+    !wert || !antwort.includes(wert) || satzUnbrauchbar(antwort) || /\?\s*$/.test(antwort.trim()) || !nenntKennzahl(antwort, label, id)
+
+  if (art === 'marge' || art === 'kapital') {
+    if (frageKaputt || !fragtNachMachtOderDominanz(frage)) frage = frageFuerKennzahl(firma, label, id)
+    if (antwortKaputt) antwort = antwortFuerKennzahl(wert, label, id)
+  } else if (frageKaputt || antwortKaputt || fragtNachMachtOderDominanz(frage)) {
+    if (frageKaputt || fragtNachMachtOderDominanz(frage)) frage = frageFuerKennzahl(firma, label, id)
+    if (antwortKaputt) antwort = antwortFuerKennzahl(wert, label, id)
+  }
+  if (satzUnbrauchbar(frage)) frage = frageFuerKennzahl(firma, label, id)
+  if (wert && (satzUnbrauchbar(antwort) || !antwort.includes(wert))) antwort = antwortFuerKennzahl(wert, label, id)
+  return { claim: frage, proof: antwort }
 }
 
 export function istOffeneBruecke(land: string, value?: string): boolean {
@@ -295,8 +394,36 @@ function haengtPartizip(text: string): boolean {
   return /\b(selling|using|running|building|pulling|training|living)\.?$/i.test(text.trim())
 }
 
+/** Adjektive, die keinen Satz beenden dürfen. „pay endless“ fehlt das Substantiv. */
+const ABGEBROCHENES_ENDE = new Set(
+  'endless legal operational massive global institutional financial regulatory competitive significant extreme absolute huge tiny major severe heavy pure gross operating pricing dominant several various ongoing remaining potential existing'.split(
+    ' ',
+  ),
+)
+
+function endetAufAbbruch(text: string): boolean {
+  const last = letztesWort(text)
+  if (!last || SCHLECHTES_ENDE.has(last)) return true
+  if (/^(operating|gross|legal|operational|institutional|regulatory|competitive|financial)$/.test(last)) return true
+  const w = woerter(text)
+  const prev = (w[w.length - 2] ?? '').replace(/[^A-Za-z]/g, '').toLowerCase()
+  if (ABGEBROCHENES_ENDE.has(last) && /^(pay|pays|paying|charge|charges|charging|cause|causes|causing|face|faces|facing|and|or)$/.test(prev)) {
+    return true
+  }
+  return false
+}
+
+/** „legal and operational friction“ zählt zwei Adjektive als eine Sache und bleibt ein Stummel. */
+function unvollstaendigeAufzaehlung(text: string): boolean {
+  return /\b\w+(?:al|ive|ous|ful|less)\s+and\s+\w+(?:al|ive|ous|ful|less)\b/i.test(text)
+}
+
+function satzUnbrauchbar(text: string): boolean {
+  return endetAufAbbruch(text) || unvollstaendigeAufzaehlung(text) || haengtPartizip(text)
+}
+
 function klingtNachMensch(text: string): boolean {
-  if (haengtPartizip(text)) return false
+  if (haengtPartizip(text) || endetAufAbbruch(text)) return false
   if (/\bselling\s+\w+\.?$/i.test(text.trim())) return false
   if (/\bno\s+\w+\s+can\s+avoid\b/i.test(text)) return false
   if (/\b(operational complexity|ecosystem)\b/i.test(text)) return false
@@ -593,11 +720,21 @@ export function kommentarFuerUpload(roh: string, verdict: MoatShortVerdict, tick
   return `${ticker}: no moat. Agree, or am I missing the lock-in?`
 }
 
-export function scriptLoopWarnungen(hook: string, land: string, value: string, proof = ''): string[] {
+export function scriptLoopWarnungen(hook: string, land: string, value: string, proof = '', label = ''): string[] {
   const w: string[] = []
   const zahl = proof.trim() ? proof : hook
   if (value && !zahl.includes(value)) w.push(`Die Antwort nennt ${value} nicht wörtlich.`)
   if (value && proof.trim() && hook.includes(value)) w.push(`Die Frage nennt ${value}. Die Zahl kommt erst als Antwort.`)
+  if (proof.trim() && satzUnbrauchbar(hook)) {
+    w.push('Die Frage ist kein ganzer Satz. Nicht auf einem Adjektiv enden, und keine halbe Aufzählung wie „legal and operational“.')
+  }
+  if (proof.trim() && satzUnbrauchbar(proof)) {
+    w.push('Die Antwort ist kein ganzer Satz. Das Substantiv muss stehen, zum Beispiel „endless fees“, nicht „endless“.')
+  }
+  const art = hookKennzahlArt(label)
+  if (proof.trim() && (art === 'marge' || art === 'kapital') && !fragtNachMachtOderDominanz(hook)) {
+    w.push('Marge oder Kapitalrendite beantwortet nur eine Frage nach Preismacht oder Dominanz.')
+  }
   if (value && land.includes(value)) {
     w.push(`Die Landung wiederholt ${value} — der Restart stottert. Zahl nur in der Antwort.`)
   }
