@@ -1,7 +1,7 @@
 /** ElevenLabs TTS mit Zeichen-Zeiten — eigener Key, nicht Gemini. */
 import 'server-only'
 
-import { moatShortSprechtext, woerterAusZeichen, type ShortSprechzeile } from '@/lib/youtube/moat-short-voice'
+import { moatShortSprechtext, regieFuerElevenLabs, woerterAusZeichen, type ShortSprechzeile } from '@/lib/youtube/moat-short-voice'
 import type { MoatShortVoiceWort } from '@/remotion/moat-short-types'
 
 const TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech'
@@ -15,6 +15,7 @@ export function elevenLabsKonfiguriert(): boolean {
 export async function erzeugeMoatShortStimme(
   zeilen: ShortSprechzeile[],
   speed = 1,
+  opts?: { regie?: boolean },
 ): Promise<{
   audioBase64: string
   woerter: MoatShortVoiceWort[]
@@ -22,9 +23,14 @@ export async function erzeugeMoatShortStimme(
   const key = process.env.ELEVENLABS_API_KEY?.trim()
   const voice = process.env.ELEVENLABS_VOICE_ID?.trim()
   if (!key || !voice) throw new Error('ELEVENLABS_API_KEY oder ELEVENLABS_VOICE_ID fehlt.')
-  const text = moatShortSprechtext(zeilen)
+  const text = moatShortSprechtext(opts?.regie ? regieFuerElevenLabs(zeilen) : zeilen)
   if (text.length < 8) throw new Error('Kein Sprechtext.')
   if (text.length > 4000) throw new Error('Sprechtext ist zu lang für einen Short.')
+  const tempo = Math.min(1.2, Math.max(0.7, speed))
+  // Moat: Stability 0,40, Similarity 0,80, Style 0,20. Earnings bleibt bei der bisherigen Lage.
+  const voice_settings = opts?.regie
+    ? { stability: 0.4, similarity_boost: 0.8, style: 0.2, speed: tempo }
+    : { stability: 0.42, similarity_boost: 0.78, speed: tempo }
 
   const res = await fetch(`${TTS_URL}/${encodeURIComponent(voice)}/with-timestamps`, {
     method: 'POST',
@@ -36,11 +42,7 @@ export async function erzeugeMoatShortStimme(
     body: JSON.stringify({
       text,
       model_id: process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2',
-      voice_settings: {
-        stability: 0.42,
-        similarity_boost: 0.78,
-        speed: Math.min(1.2, Math.max(0.7, speed)),
-      },
+      voice_settings,
     }),
     signal: AbortSignal.timeout(45_000),
   })

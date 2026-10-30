@@ -36,7 +36,9 @@ export async function POST(req: Request) {
         : moatShortSprechzeilen(props as MoatShortProps)
     if (zeilen.length < 3) return { ok: false as const, fehler: 'Zu wenig Sprechtext.' }
     try {
-      const stimme = await erzeugeMoatShortStimme(zeilen, art === 'moat' ? MOAT_STIMME_SPEED : 1)
+      const stimme = await erzeugeMoatShortStimme(zeilen, art === 'moat' ? MOAT_STIMME_SPEED : 1, {
+        regie: art === 'moat',
+      })
       return { ok: true as const, ...stimme }
     } catch (e) {
       return { ok: false as const, fehler: e instanceof Error ? e.message : 'Stimme fehlgeschlagen' }

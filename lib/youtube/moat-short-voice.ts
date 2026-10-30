@@ -28,6 +28,32 @@ export function moatShortSprechtext(zeilen: ShortSprechzeile[]): string {
   return zeilen.map((z) => z.text.trim()).join('\n')
 }
 
+/**
+ * Regie nur für die Stimme. Untertitel bleiben der geschriebene Satz.
+ * Gedankenstrich = kurze Pause vor der Zahl. Ausrufezeichen hebt die Zahl an.
+ */
+export function regieFuerElevenLabs<T extends string>(zeilen: ShortSprechzeile<T>[]): ShortSprechzeile<T>[] {
+  return zeilen.map((z) => ({ ...z, text: regieZeile(String(z.id), z.text) }))
+}
+
+function regieZeile(id: string, text: string): string {
+  const t = text.replace(/\s+/g, ' ').trim()
+  if (id === 'proof') return regieBeweis(t)
+  if (id === 'verdict' && /\bno moat\b/i.test(t)) return t.replace(/no moat[.!]?/i, 'no moat!')
+  return t
+}
+
+function regieBeweis(text: string): string {
+  let t = text
+  if (!t.includes('—')) {
+    const mitPause = t.replace(/\s+(an?\s+\d)/i, ' — $1')
+    if (mitPause !== t) t = mitPause
+  }
+  if (/\.$/.test(t)) return `${t.slice(0, -1)}!`
+  if (!/[!?]$/.test(t)) return `${t}!`
+  return t
+}
+
 export function moatShortSprechFingerprint(
   props: Pick<MoatShortProps, 'hook' | 'proof' | 'hookLoop' | 'pillars' | 'crack' | 'closing'>,
 ): string {
