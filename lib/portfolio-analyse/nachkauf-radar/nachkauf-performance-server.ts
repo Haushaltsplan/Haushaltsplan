@@ -307,6 +307,8 @@ export async function speichereEmpfehlungTracking(opts: {
   scanMap: Map<string, NachkaufScanEintrag>
   ownerUserId?: string | null
   empfohlenAm?: string
+  /** false: kein Yahoo-Live-Kurs. Der Startkurs wird später aus dem Schlusskurs nachgezogen. */
+  liveKurse?: boolean
 }): Promise<EmpfehlungTrackingErgebnis> {
   if (!istKonfiguriert() || opts.basisAllokation.length === 0) {
     return { gespeichert: 0 }
@@ -326,11 +328,13 @@ export async function speichereEmpfehlungTracking(opts: {
     if (!meta) continue
     const symbole = kursSymboleFuerTracking(meta.ticker, meta.isin)
     let livePreis: number | null = null
-    for (const sym of symbole) {
-      const live = await ladeYahooLiveKurs(sym).catch(() => null)
-      if (live?.preis != null && live.preis > 0) {
-        livePreis = live.preis
-        break
+    if (opts.liveKurse !== false) {
+      for (const sym of symbole) {
+        const live = await ladeYahooLiveKurs(sym).catch(() => null)
+        if (live?.preis != null && live.preis > 0) {
+          livePreis = live.preis
+          break
+        }
       }
     }
     zeilen.push({

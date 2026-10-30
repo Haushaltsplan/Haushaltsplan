@@ -4,12 +4,12 @@ import 'server-only'
 import { parseJsonBody } from '@/lib/api/parse-json-body'
 import { nachkaufKaufempfehlungBodySchema } from '@/lib/api/schemas/nachkauf'
 import {
+  ergaenzeDepotGewichte,
   ladeNachkaufScanAusCloud,
   ladeAlleDeepResearch,
-  speichereNachkaufScanEintraege,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
-import { reichereNachkaufEintraegeVoll } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kontext-server'
 import { generiereKaufempfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kaufempfehlung-server'
+import { berechneTrimSignale } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
 import {
   speichereEmpfehlungTracking,
   ladePortfolioOwnerUserId,
@@ -18,7 +18,7 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ownerUserIdAusRequest } from '@/lib/supabase-user'
 import { jsonMitOwner } from '@/lib/request-owner'
 
-export const maxDuration = 120
+export const maxDuration = 60
 
 export async function POST(req: Request) {
   return jsonMitOwner(req, async () => {
@@ -44,19 +44,13 @@ export async function POST(req: Request) {
       if (dr) e.tiefenAnalyse = dr
     }
 
-    // Volle Projekt-Anreicherung: Depot (Dashboard), Historie, Notizen, Insider, Ranking
-    await reichereNachkaufEintraegeVoll(ergebnisse)
-    if (ergebnisse.length === 0) {
-      return NextResponse.json(
-        {
-          ok: false,
-          fehler:
-            'Keine Aktien im aktuellen Radar. Importiere dein Depot oder füge Titel zur Watchlist hinzu, dann scanne erneut.',
-        },
-        { status: 400 },
-      )
-    }
-    await speichereNachkaufScanEintraege(ergebnisse)
+    // Gespeicherte Scans reichen. Kein Insider-Neuabruf und kein Überschreiben der Scan-Zeilen:
+    // das hat die Funktion vor der Antwort ans Zeitlimit gebracht.
+    await Promise.race([
+      ergaenzeDepotGewichte(ergebnisse),
+      new Promise((resolve) => setTimeout(resolve, 4_000)),
+    ])
+    berechneTrimSignale(ergebnisse)
 
     const ergebnis = await generiereKaufempfehlung(ergebnisse, budgetEur)
 
@@ -98,6 +92,7 @@ export async function POST(req: Request) {
             scanMap,
             ownerUserId,
             empfohlenAm: ergebnis.erstellt_am,
+            liveKurse: false,
           })
           trackingGespeichert = tracking.gespeichert
           if (tracking.fehler) trackingFehler = tracking.fehler

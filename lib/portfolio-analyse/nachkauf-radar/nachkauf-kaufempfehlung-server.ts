@@ -9,7 +9,6 @@
 import 'server-only'
 
 import {
-  geminiProPaidModelKandidaten,
   resolveCoachProviderFromMode,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
@@ -205,8 +204,9 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
       e.datenSignale?.prognoseProfil && e.datenSignale.prognoseProfil.anzahlJahre >= 2
         ? `Prognose (FY0–2027): ${e.datenSignale.prognoseProfil.zusammenfassung}`
         : ''
-    const struktur = e.datenSignale?.segmentStrukturKontext
-      ? `Geschäftsstruktur:\n${e.datenSignale.segmentStrukturKontext}`
+    const strukturRoh = e.datenSignale?.segmentStrukturKontext?.trim() ?? ''
+    const struktur = strukturRoh
+      ? `Geschäftsstruktur:\n${strukturRoh.length > 400 ? strukturRoh.slice(0, 400).trimEnd() + ' […]' : strukturRoh}`
       : ''
 
     const neukaufHinweis = istWatchlistNeukauf(e.isin, e.depotGewichtPct, e.kandidatenQuelle)
@@ -440,8 +440,8 @@ export async function generiereKaufempfehlung(
   if (allokationQuelle.length === 0) {
     const prompt = bauePrompt(
       [],
-      verkaufKandidaten,
-      beobachtungsKandidaten,
+      verkaufKandidaten.slice(0, 6),
+      beobachtungsKandidaten.slice(0, 6),
       [],
       basisVerkaufAllokation,
       budgetEur,
@@ -465,9 +465,9 @@ export async function generiereKaufempfehlung(
 
   // Gemini-Synthese (Käufe + Verkäufe + Beobachtung) — KI darf nur kürzen/streichen, nicht erhöhen/erweitern
   const prompt = bauePrompt(
-    allokationQuelle,
-    verkaufKandidaten,
-    beobachtungsKandidaten,
+    allokationQuelle.slice(0, 8),
+    verkaufKandidaten.slice(0, 6),
+    beobachtungsKandidaten.slice(0, 6),
     basisAllokation,
     basisVerkaufAllokation,
     budgetEur,
@@ -529,32 +529,37 @@ async function rufeKiAuf(prompt: string): Promise<{ text: string; fehler?: strin
   if (!provider || provider.provider !== 'gemini') {
     fehler = 'Kein Gemini-API-Key konfiguriert.'
   } else {
+    const pro =
+      process.env.NACHKAUF_KAUFEMPFEHLUNG_GEMINI_MODEL?.trim() ||
+      process.env.NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL?.trim() ||
+      'gemini-3.1-pro-preview'
+    const modelle = [pro, 'gemini-3.5-flash']
+    const system =
+      'Du bist ein rationaler Investmentassistent für Langfrist-Investoren. Antworte auf Deutsch. Verkäufe sind selten — Halten ist der Default.'
     try {
-      const result = await runCoachCompletion(
-        provider.provider,
-        provider.apiKey,
-        'Du bist ein rationaler Investmentassistent für Langfrist-Investoren. Antworte auf Deutsch. Verkäufe sind selten — Halten ist der Default.',
-        [{ role: 'user', content: prompt }],
-        {
-          temperature: 0.3,
-          skipMessageTrim: true,
-          geminiForcePaidApiKey: true,
-          // Unter dem Vercel-Limit bleiben, sonst kommt statt JSON ein Abbruchtext.
-          timeoutMs: 40_000,
-          geminiTotalBudgetMs: 70_000,
-          maxOutputTokens: 4_096,
-          geminiModels: geminiProPaidModelKandidaten({
-            primaryEnvKeys: [
-              'NACHKAUF_KAUFEMPFEHLUNG_GEMINI_MODEL',
-              'NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL',
-            ],
-          }),
-        },
-      )
-      if (result.ok && result.reply?.trim()) {
-        kiText = result.reply.trim()
-      } else if (!result.ok) {
-        fehler = result.hint ?? 'Unbekannter Fehler'
+      for (let i = 0; i < modelle.length; i++) {
+        const timeoutMs = i === 0 ? 22_000 : 12_000
+        const result = await runCoachCompletion(
+          provider.provider,
+          provider.apiKey,
+          system,
+          [{ role: 'user', content: prompt }],
+          {
+            temperature: 0.3,
+            skipMessageTrim: true,
+            geminiForcePaidApiKey: true,
+            thinkingMinimal: true,
+            timeoutMs,
+            geminiTotalBudgetMs: timeoutMs + 1_000,
+            maxOutputTokens: 3_072,
+            geminiModels: [modelle[i]!],
+          },
+        )
+        if (result.ok && result.reply?.trim()) {
+          kiText = result.reply.trim()
+          break
+        }
+        if (!result.ok) fehler = result.hint ?? 'Unbekannter Fehler'
       }
     } catch (e) {
       fehler = e instanceof Error ? e.message : String(e)

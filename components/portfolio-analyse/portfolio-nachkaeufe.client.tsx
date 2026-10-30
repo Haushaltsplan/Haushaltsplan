@@ -2378,7 +2378,7 @@ export function NachkaufRadarClient() {
             {kaufempfehlungLaeuft && (
               <div className="mt-4 flex items-center gap-2 text-xs text-[var(--app-text-muted)]">
                 <span className="inline-block h-3 w-3 animate-spin rounded-full border border-violet-400 border-t-transparent" />
-                Gemini liest die Deep Research Memos… (30–90 Sek.)
+                Gemini liest die Deep Research Memos… (etwa 40 Sek.)
               </div>
             )}
 

@@ -6,6 +6,9 @@
     "app/api/portfolio-analyse/nachkaeufe/scan/route.ts": {
       "maxDuration": 300
     },
+    "app/api/portfolio-analyse/nachkaeufe/kaufempfehlung/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/portfolio-analyse/nachkaeufe/cron-scan/route.ts": {
       "maxDuration": 300
     },
