@@ -9,6 +9,7 @@ export const CLIENT_STATE_KEYS = {
   terminReminder: 'termin-reminder',
   watchlist: 'watchlist',
   kalenderMeta: 'kalender-meta',
+  radwerkstatt: 'radwerkstatt',
   chartAnalyse: 'chart-analyse',
   screenerVorlagen: 'screener-vorlagen',
 } as const

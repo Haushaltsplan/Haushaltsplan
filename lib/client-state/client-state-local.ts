@@ -186,6 +186,10 @@ export async function leseLocalPayload(schluessel: ClientStateKey): Promise<unkn
     }
     case CLIENT_STATE_KEYS.kalenderMeta:
       return null
+    case CLIENT_STATE_KEYS.radwerkstatt: {
+      const { radwerkstattLokalFuerUpload } = await import('@/lib/radwerkstatt/radwerkstatt-store')
+      return radwerkstattLokalFuerUpload()
+    }
     default:
       return null
   }
@@ -268,6 +272,11 @@ export async function wendeClientStateAn(eintrag: ClientStateEintrag): Promise<v
         schreibeScreenerVorlagen(parseScreenerVorlagenPayload(payload).vorlagen, { mitCloud: false })
         break
       }
+      case CLIENT_STATE_KEYS.radwerkstatt: {
+        const { parseRadwerkstattListe, schreibeRadwerkstatt } = await import('@/lib/radwerkstatt/radwerkstatt-store')
+        schreibeRadwerkstatt(parseRadwerkstattListe(payload), { mitCloud: false })
+        break
+      }
       default:
         break
     }
@@ -286,4 +295,5 @@ export const ALLE_UPLOAD_KEYS: ClientStateKey[] = [
   CLIENT_STATE_KEYS.watchlist,
   CLIENT_STATE_KEYS.chartAnalyse,
   CLIENT_STATE_KEYS.screenerVorlagen,
+  CLIENT_STATE_KEYS.radwerkstatt,
 ]

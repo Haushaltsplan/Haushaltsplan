@@ -3,6 +3,7 @@ export const NAV_LINK_DEFS = [
   { href: '/finanzen', label: 'Finanzen', shortLabel: 'Finanzen', emoji: '💰', color: 'text-emerald-400', ring: 'focus-visible:ring-emerald-500/50' },
   { href: '/speisekammer', label: 'Speisekammer', shortLabel: 'Küche', emoji: '🍳', color: 'text-sky-400', ring: 'focus-visible:ring-sky-500/50' },
   { href: '/kalender', label: 'Kalender', shortLabel: 'Kalender', emoji: '📅', color: 'text-teal-400', ring: 'focus-visible:ring-teal-500/50' },
+  { href: '/radwerkstatt', label: 'Radwerkstatt', shortLabel: 'Werkstatt', emoji: '🔧', color: 'text-orange-400', ring: 'focus-visible:ring-orange-500/50' },
   { href: '/rennrad', label: 'Rennrad', shortLabel: 'Rennrad', emoji: '🚴', color: 'text-rose-400', ring: 'focus-visible:ring-rose-500/50' },
   {
     href: '/etsy-ki-agent',
