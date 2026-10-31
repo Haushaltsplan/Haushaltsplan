@@ -11,16 +11,19 @@ export type ProduktSeitenHinweis = {
 }
 
 export function decodeHtml(s: string): string {
-  return s
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => zeichen(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_, n: string) => zeichen(Number(n)))
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&quot;/gi, '"')
-    .replace(/&apos;|&#0*39;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&amp;/gi, '&')
+  let out = s.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+  for (let i = 0; i < 2; i++) {
+    out = out
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&quot;/gi, '"')
+      .replace(/&apos;|&#0*39;/gi, "'")
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&amp;/gi, '&')
+      .replace(/&#x([0-9a-f]+);/gi, (_, h: string) => zeichen(parseInt(h, 16)))
+      .replace(/&#(\d+);/g, (_, n: string) => zeichen(Number(n)))
+  }
+  return out
 }
 
 function zeichen(code: number): string {
@@ -93,15 +96,52 @@ function typPasst(o: Record<string, unknown>, name: string): boolean {
   return liste.some((x) => String(x ?? '').toLowerCase().split('/').pop() === name.toLowerCase())
 }
 
-function gehJson(node: unknown, besuch: (o: Record<string, unknown>) => void) {
-  if (!node || typeof node !== 'object') return
+function gehJson(node: unknown, besuch: (o: Record<string, unknown>) => void, tiefe = 0) {
+  if (!node || typeof node !== 'object' || tiefe > 8) return
   if (Array.isArray(node)) {
-    for (const x of node) gehJson(x, besuch)
+    for (const x of node) gehJson(x, besuch, tiefe + 1)
     return
   }
   const o = node as Record<string, unknown>
   besuch(o)
-  if (o['@graph']) gehJson(o['@graph'], besuch)
+  for (const key of ['@graph', 'hasVariant', 'isVariantOf']) {
+    if (o[key]) gehJson(o[key], besuch, tiefe + 1)
+  }
+}
+
+function angebotUrl(offers: unknown): string {
+  const liste = Array.isArray(offers) ? offers : offers && typeof offers === 'object' ? [offers] : []
+  for (const eintrag of liste) {
+    if (eintrag && typeof eintrag === 'object' && typeof (eintrag as { url?: unknown }).url === 'string') {
+      return (eintrag as { url: string }).url
+    }
+  }
+  return ''
+}
+
+function pfadVon(url: string): string {
+  try {
+    return new URL(url).pathname.replace(/\/+$/, '').toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+function nameOhneShop(name: string): string {
+  return name
+    .replace(
+      /\s*\|\s*(bike24|bike-components|bike-discount|rose bikes|canyon|amazon(?:\.[a-z]{2,3})+|ebay)\s*$/i,
+      '',
+    )
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function seiteWirktGesperrt(html: string): boolean {
+  const title = titelTag(html).toLowerCase()
+  if (/access denied|just a moment|attention required|captcha|forbidden/.test(title)) return true
+  if (html.length < 2500 && /access denied|edgesuite|cf-browser-verification|cloudflare/i.test(html)) return true
+  return false
 }
 
 function zahlAusPreis(raw: unknown): number | null {
@@ -193,31 +233,52 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
   let preisEur: number | null = null
   let anzeigeBetrag: number | null = null
   let waehrung = ''
+  let varianteGetroffen = false
+  const seitenPfad = pfadVon(seitenUrl)
 
-  const merkePreis = (betrag: number | null, cur: string) => {
-    if (betrag == null || anzeigeBetrag != null) return
+  const merkePreis = (betrag: number | null, cur: string, erzwingen = false) => {
+    if (betrag == null) return
+    if (anzeigeBetrag != null && !erzwingen) return
     const c = cur.trim().toUpperCase()
     anzeigeBetrag = betrag
     waehrung = c
-    if (!c || c === 'EUR') preisEur = betrag
+    preisEur = !c || c === 'EUR' ? betrag : null
   }
 
   for (const block of ld) {
     gehJson(block, (o) => {
       if (!typPasst(o, 'Product') && !typPasst(o, 'ProductGroup')) return
-      if (!name && typeof o.name === 'string') name = decodeHtml(o.name).trim()
-      if (!beschreibung && typeof o.description === 'string') beschreibung = decodeHtml(o.description).replace(/\s+/g, ' ').trim()
-      if (!bildUrl) bildUrl = ersteBildUrl(o.image, seitenUrl)
-      if (anzeigeBetrag == null) {
-        const p = preisAusAngebot(o.offers ?? o.price)
-        merkePreis(p.betrag, p.waehrung)
+      const produktName = typeof o.name === 'string' ? decodeHtml(o.name).replace(/\s+/g, ' ').trim() : ''
+      const passtZurSeite = Boolean(seitenPfad) && pfadVon(angebotUrl(o.offers)) === seitenPfad
+      const istVariante = typPasst(o, 'Product') && !typPasst(o, 'ProductGroup')
+      if (passtZurSeite) varianteGetroffen = true
+      const nameUebernehmen =
+        !name ||
+        passtZurSeite ||
+        (istVariante && !varianteGetroffen && produktName.startsWith(name) && produktName.length > name.length)
+      if (produktName && nameUebernehmen) name = produktName
+      if ((!beschreibung || passtZurSeite) && typeof o.description === 'string' && o.description.trim()) {
+        beschreibung = decodeHtml(o.description).replace(/\s+/g, ' ').trim()
       }
+      const bild = ersteBildUrl(o.image, seitenUrl)
+      if (bild && (!bildUrl || passtZurSeite)) bildUrl = bild
+      const p = preisAusAngebot(o.offers ?? o.price)
+      merkePreis(p.betrag, p.waehrung, passtZurSeite)
     })
   }
 
   if (!name) name = metaWert(tags, 'og:title') || metaWert(tags, 'twitter:title') || titelTag(html)
   if (!beschreibung) beschreibung = metaWert(tags, 'og:description') || metaWert(tags, 'description')
-  if (!bildUrl) bildUrl = absUrl(metaWert(tags, 'og:image') || metaWert(tags, 'twitter:image'), seitenUrl)
+  if (!bildUrl) {
+    bildUrl = absUrl(
+      metaWert(tags, 'og:image:secure_url') ||
+        metaWert(tags, 'og:image:url') ||
+        metaWert(tags, 'og:image') ||
+        metaWert(tags, 'twitter:image') ||
+        metaWert(tags, 'twitter:image:src'),
+      seitenUrl,
+    )
+  }
 
   if (anzeigeBetrag == null) {
     const amount = metaWert(tags, 'product:price:amount') || metaWert(tags, 'og:price:amount') || metaWert(tags, 'price')
@@ -229,7 +290,7 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
     merkePreis(shop.betrag, shop.waehrung)
   }
 
-  name = name.replace(/\s+/g, ' ').trim().slice(0, 180)
+  name = nameOhneShop(name).slice(0, 180)
   beschreibung = beschreibung.replace(/\s+/g, ' ').trim().slice(0, 800)
 
   return {

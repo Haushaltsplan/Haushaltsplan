@@ -1,7 +1,7 @@
 /**
  *   npx tsx lib/radwerkstatt/radwerkstatt-html.test.ts
  */
-import { extrahiereProduktHinweise } from '@/lib/radwerkstatt/radwerkstatt-html'
+import { extrahiereProduktHinweise, seiteWirktGesperrt } from '@/lib/radwerkstatt/radwerkstatt-html'
 import { parseRadwerkstattListe } from '@/lib/radwerkstatt/radwerkstatt-store'
 import { istPrivateOderLokaleIp, normalisiereProduktUrl, pruefeHttpUrlForm } from '@/lib/radwerkstatt/radwerkstatt-url'
 
@@ -84,5 +84,26 @@ const shopify = extrahiereProduktHinweise(
 assert(shopify.preisEur === null, 'GBP ist kein Euro-Preis')
 assert(shopify.preisText.includes('22') && shopify.preisText.includes('GBP'), shopify.preisText)
 assert(shopify.bildUrl === 'https://cdn.example/reiniger.png', shopify.bildUrl)
+
+const bike24 = extrahiereProduktHinweise(
+  `<html><head>
+<meta property="og:title" content="SRAM FORCE Kette | E1 - lila | BIKE24">
+<meta property="og:image:url" content="https://cdn.example/og.jpg">
+<script type="application/ld+json">
+{"@type":"ProductGroup","name":"SRAM FORCE Kette | E1","hasVariant":[
+  {"@type":"Product","name":"SRAM FORCE Kette | E1 - silber","offers":{"@type":"Offer","price":"41.99","priceCurrency":"EUR","url":"https://www.bike24.de/p1.html"},"image":["https://cdn.example/silber.jpg"]},
+  {"@type":"Product","name":"SRAM FORCE Kette | E1 - lila","description":"Flattop-Kette für 12-fach-Rennrad.","offers":{"@type":"Offer","price":"49.99","priceCurrency":"EUR","url":"https://www.bike24.de/p1928720.html"},"image":["https://cdn.example/lila.jpg"]}
+]}
+</script>
+</head><body>nav</body></html>`,
+  'https://www.bike24.de/p1928720.html?sku=3136593',
+)
+assert(bike24.name === 'SRAM FORCE Kette | E1 - lila', bike24.name)
+assert(bike24.preisEur === 49.99, String(bike24.preisEur))
+assert(bike24.bildUrl === 'https://cdn.example/lila.jpg', bike24.bildUrl)
+assert(bike24.beschreibung.includes('Flattop'), bike24.beschreibung)
+
+assert(seiteWirktGesperrt('<html><title>Access Denied</title><body>edgesuite</body></html>'), 'gesperrt')
+assert(!seiteWirktGesperrt('<html><title>SRAM FORCE Kette</title><body>' + 'x'.repeat(3000) + '</body></html>'), 'offen')
 
 console.log('radwerkstatt-html.test ok')
