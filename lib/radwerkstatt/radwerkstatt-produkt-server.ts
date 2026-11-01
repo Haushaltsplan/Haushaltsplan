@@ -82,6 +82,7 @@ async function holeHtml(start: string): Promise<{ finalUrl: string; html: string
         Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
       },
+      cache: 'no-store',
       signal: AbortSignal.timeout(12_000),
     })
     if (res.status >= 300 && res.status < 400) {
@@ -215,15 +216,50 @@ async function kiEntwurf(
   return parseKi(result.reply)
 }
 
+function htmlSiehtNachProduktseiteAus(html: string): boolean {
+  if (!html || seiteWirktGesperrt(html)) return false
+  return /<title[\s>]/i.test(html) || /ld\+json/i.test(html) || /property=["']og:/i.test(html)
+}
+
+/** Öffentliche Lesehilfe, wenn der Shop den direkten Abruf sperrt (z. B. Bike24). */
+async function holeHtmlUeberLeser(produktUrl: string): Promise<{ finalUrl: string; html: string } | null> {
+  let host = ''
+  try {
+    host = new URL(produktUrl).hostname.toLowerCase()
+  } catch {
+    return null
+  }
+  if (host === 'r.jina.ai' || host.endsWith('.jina.ai')) return null
+  try {
+    const res = await fetch(`https://r.jina.ai/${produktUrl}`, {
+      headers: {
+        Accept: 'text/html',
+        'X-Return-Format': 'html',
+        'X-Timeout': '20',
+      },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(28_000),
+    })
+    if (!res.ok) return null
+    const html = await res.text()
+    if (!htmlSiehtNachProduktseiteAus(html)) return null
+    return { finalUrl: produktUrl, html }
+  } catch {
+    return null
+  }
+}
+
 async function ladeProduktHtml(start: string): Promise<{ finalUrl: string; html: string }> {
   try {
     const geladen = await holeHtml(start)
-    if (geladen.html && !seiteWirktGesperrt(geladen.html)) return geladen
+    if (htmlSiehtNachProduktseiteAus(geladen.html)) return geladen
   } catch {
     /* Shop blockt den einfachen Abruf. */
   }
+  const leser = await holeHtmlUeberLeser(start)
+  if (leser) return leser
   const browser = await holeHtmlMitBrowser(start)
-  if (browser) return browser
+  if (browser && htmlSiehtNachProduktseiteAus(browser.html)) return { finalUrl: start, html: browser.html }
   throw new Error('Der Shop hat die Seite gesperrt. Name, Preis und Bild kannst du von Hand eintragen.')
 }
 
