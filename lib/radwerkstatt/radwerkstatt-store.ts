@@ -1,5 +1,6 @@
 import { CLIENT_STATE_KEYS } from '@/lib/client-state/client-state-keys'
 import { leseClientStateRev } from '@/lib/client-state/client-state-rev'
+import { artikelMitNutzung } from '@/lib/radwerkstatt/radwerkstatt-nutzung'
 import type { RadwerkstattArt, RadwerkstattArtikel, RadwerkstattListe } from '@/lib/radwerkstatt/radwerkstatt-types'
 
 export const RADWERKSTATT_STORAGE_KEY = 'mein-haushalt:radwerkstatt-v1'
@@ -53,7 +54,7 @@ export function parseRadwerkstattListe(raw: unknown): RadwerkstattArtikel[] {
       erstelltAm: text(r.erstelltAm, 40) || new Date().toISOString(),
     })
   }
-  return out
+  return out.map(artikelMitNutzung)
 }
 
 export function ladeRadwerkstatt(): RadwerkstattArtikel[] {

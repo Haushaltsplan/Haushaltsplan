@@ -250,4 +250,56 @@ assert(eingebettet.name === 'Silca Pumpe', eingebettet.name)
 assert(eingebettet.preisEur === 45, String(eingebettet.preisEur))
 assert(eingebettet.bildUrl === 'https://cdn.example/silca.jpg', eingebettet.bildUrl)
 
+const wachs = parseRadwerkstattListe([
+  {
+    id: 'w1',
+    liste: 'bestand',
+    art: 'werkzeug',
+    name: 'Optimize Graphit-Kettenwachs',
+    einsatzbereich: 'Graphit-Kettenwachs High-Performance Flüssigwachs mit extra hohem Wachsanteil un',
+    zusammenfassung:
+      'Graphit-Kettenwachs High-Performance Flüssigwachs mit extra hohem Wachsanteil und feinstem Graphit Unser flüssiges',
+    anzahl: 1,
+  },
+])
+assert(wachs[0]?.art === 'verbrauch', 'Wachs ist Verbrauch')
+assert(wachs[0]?.einsatzbereich === 'Flüssigwachs für die Kette', wachs[0]?.einsatzbereich ?? '')
+assert(wachs[0]?.zusammenfassung.includes('tropfen'), wachs[0]?.zusammenfassung ?? '')
+assert(wachs[0]?.zusammenfassung.includes('200–300 km'), wachs[0]?.zusammenfassung ?? '')
+assert(/[.!?]$/.test(wachs[0]?.zusammenfassung ?? ''), 'ganzer Satz')
+assert(wachs[0]?.haltbarkeit.includes('200–300 km'), wachs[0]?.haltbarkeit ?? '')
+assert(wachs[0]?.verwendungsrhythmus.includes('nassen Fahrt'), wachs[0]?.verwendungsrhythmus ?? '')
+
+const heiss = parseRadwerkstattListe([
+  {
+    id: 'w2',
+    liste: 'bestand',
+    art: 'werkzeug',
+    name: 'Optimize GmbH Graphit Heißwachs',
+    einsatzbereich: 'Warum Optimize? Weil wir Fahrradketten nicht einfach schmieren, wir denken sie n',
+    zusammenfassung: 'Warum Optimize? Weil wir Fahrradketten nicht einfach schmieren, wir denken sie neu.',
+    anzahl: 1,
+  },
+])
+assert(heiss[0]?.art === 'verbrauch', 'Heißwachs ist Verbrauch')
+assert(heiss[0]?.zusammenfassung.includes('tauchen'), heiss[0]?.zusammenfassung ?? '')
+assert(!heiss[0]?.zusammenfassung.includes('Warum Optimize'), 'kein Werbetext')
+
+assert(liste[0]?.einsatzbereich === 'Kette schmieren', liste[0]?.einsatzbereich ?? '')
+assert(liste[0]?.haltbarkeit === 'ca. 20 Anwendungen', 'eigene Haltbarkeit bleibt')
+
+const nieter = parseRadwerkstattListe([
+  {
+    id: 't1',
+    liste: 'bestand',
+    art: 'werkzeug',
+    name: 'Park Tool Kettennieter CT-3',
+    einsatzbereich: 'Kette nieten',
+    zusammenfassung: 'Nietet 6- bis 12-fach-Ketten.',
+    anzahl: 1,
+  },
+])
+assert(nieter[0]?.art === 'werkzeug', 'Nieter bleibt Werkzeug')
+assert(nieter[0]?.zusammenfassung === 'Nietet 6- bis 12-fach-Ketten.', nieter[0]?.zusammenfassung ?? '')
+
 console.log('radwerkstatt-html.test ok')
