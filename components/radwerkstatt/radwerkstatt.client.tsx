@@ -371,7 +371,7 @@ export function RadwerkstattSeite() {
             />
           </label>
           <button type="button" className={primaerBtn} disabled={lese} onClick={() => void uebernehmen()}>
-            {lese ? 'Lese Produkt…' : 'Aus Link übernehmen'}
+            {lese ? 'Lese Produkt… etwa eine Minute' : 'Aus Link übernehmen'}
           </button>
           <button type="button" className={appSecondaryBtnClass} onClick={oeffneLeer}>
             Manuell
