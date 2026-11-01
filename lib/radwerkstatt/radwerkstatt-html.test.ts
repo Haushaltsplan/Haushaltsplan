@@ -1,7 +1,7 @@
 /**
  *   npx tsx lib/radwerkstatt/radwerkstatt-html.test.ts
  */
-import { extrahiereProduktHinweise, seiteWirktGesperrt } from '@/lib/radwerkstatt/radwerkstatt-html'
+import { extrahiereProduktHinweise, hinweisReicht, seiteWirktGesperrt } from '@/lib/radwerkstatt/radwerkstatt-html'
 import { parseRadwerkstattListe } from '@/lib/radwerkstatt/radwerkstatt-store'
 import { istPrivateOderLokaleIp, normalisiereProduktUrl, pruefeHttpUrlForm } from '@/lib/radwerkstatt/radwerkstatt-url'
 
@@ -104,6 +104,75 @@ assert(bike24.bildUrl === 'https://cdn.example/lila.jpg', bike24.bildUrl)
 assert(bike24.beschreibung.includes('Flattop'), bike24.beschreibung)
 
 assert(seiteWirktGesperrt('<html><title>Access Denied</title><body>edgesuite</body></html>'), 'gesperrt')
+assert(
+  seiteWirktGesperrt('<html><head><title> </title></head><body>bm-verify akamai-loading-screen</body></html>'),
+  'prüfseite',
+)
+
+const varianten = extrahiereProduktHinweise(
+  `<html><head>
+<meta property="og:site_name" content="bike-components">
+<script type="application/ld+json">
+{"@type":"ProductGroup","name":"Kette CN-HG71 6-/7-/8-fach","brand":{"@type":"Brand","name":"Shimano"},"image":"https://cdn.example/kette.jpg","hasVariant":[
+  {"@type":"Product","name":"silber | 116","offers":{"@type":"Offer","price":"16.99","priceCurrency":"EUR","url":"https://www.bike-components.de/de/Shimano/Kette-CN-HG71-6-7-8-fach-p40008/"}},
+  {"@type":"Product","name":"silber | 138","offers":{"@type":"Offer","price":"19.99","priceCurrency":"EUR","url":"https://www.bike-components.de/de/Shimano/Kette-CN-HG71-6-7-8-fach-p40008/"}}
+]}
+</script>
+</head><body><p>Hyperglide-Kette.</p></body></html>`,
+  'https://www.bike-components.de/de/Shimano/Kette-CN-HG71-6-7-8-fach-p40008/',
+)
+assert(varianten.name === 'Shimano Kette CN-HG71 6-/7-/8-fach', varianten.name)
+assert(varianten.preisEur === 16.99, String(varianten.preisEur))
+assert(varianten.bildUrl === 'https://cdn.example/kette.jpg', varianten.bildUrl)
 assert(!seiteWirktGesperrt('<html><title>SRAM FORCE Kette</title><body>' + 'x'.repeat(3000) + '</body></html>'), 'offen')
+
+const rose = extrahiereProduktHinweise(
+  `<html><head>
+<title>Park Tool Kettennieter CT-3.2 | Rose Bikes</title>
+<meta property="og:site_name" content="Rose Bikes">
+<meta property="og:title" content="Park Tool Kettennieter CT-3.2 | Rose Bikes">
+<meta property="og:image" content="https://cdn.example/logo.png">
+<link rel="image_src" href="https://cdn.example/ct.jpg">
+</head><body>
+<nav>Helme Sale 9,99 €</nav>
+<span itemprop="price" content="39.95"></span>
+<span itemprop="priceCurrency" content="EUR"></span>
+<p>Nieten für 6- bis 12-fach-Ketten.</p>
+</body></html>`,
+  'https://www.rosebikes.de/ct-3',
+)
+assert(rose.name === 'Park Tool Kettennieter CT-3.2', rose.name)
+assert(rose.preisEur === 39.95, String(rose.preisEur))
+assert(rose.bildUrl === 'https://cdn.example/ct.jpg', rose.bildUrl)
+assert(!rose.text.includes('Helme'), rose.text)
+assert(hinweisReicht(rose), 'rose reicht')
+
+const huelle = extrahiereProduktHinweise(
+  '<html><head><title>Shop</title></head><body>Bitte JavaScript aktivieren.</body></html>',
+  'https://shop.example/',
+)
+assert(!hinweisReicht(huelle), 'leere Hülle')
+
+const einPreis = extrahiereProduktHinweise(
+  `<html><head><meta property="og:title" content="Silca Kettenwachs"><meta property="og:image" content="https://cdn.example/wachs.jpg"></head><body><p>Das Teil kostet 18,50 €.</p></body></html>`,
+  'https://silca.example/wachs',
+)
+assert(einPreis.preisEur === 18.5, String(einPreis.preisEur))
+
+const zweiPreise = extrahiereProduktHinweise(
+  `<html><head><title>Unklarer Preis</title></head><body><p>12,99 € und Versand 4,90 €</p></body></html>`,
+  'https://shop.example/unklar',
+)
+assert(zweiPreise.preisEur === null, 'mehrere Euro-Beträge')
+
+const eingebettet = extrahiereProduktHinweise(
+  `<html><head><title>Seite</title><script type="application/ld+json">
+{"@type":"WebPage","mainEntity":{"@type":"IndividualProduct","name":"Silca Pumpe","description":"Minipumpe für Rennrad.","image":"https://cdn.example/silca.jpg","offers":{"@type":"Offer","price":"45.00","priceCurrency":"EUR"}}}
+</script></head><body>ok</body></html>`,
+  'https://silca.example/pumpe',
+)
+assert(eingebettet.name === 'Silca Pumpe', eingebettet.name)
+assert(eingebettet.preisEur === 45, String(eingebettet.preisEur))
+assert(eingebettet.bildUrl === 'https://cdn.example/silca.jpg', eingebettet.bildUrl)
 
 console.log('radwerkstatt-html.test ok')

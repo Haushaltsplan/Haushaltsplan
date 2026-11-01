@@ -27,12 +27,22 @@ export async function holeHtmlMitBrowser(url: string): Promise<{ finalUrl: strin
     try {
       browser = await chromium.launch(start)
       const page = await browser.newPage({ locale: 'de-DE', userAgent: UA })
-      const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 25_000 })
+      const res = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
+      await page
+        .waitForFunction(
+          () => {
+            const html = document.documentElement?.innerHTML ?? ''
+            if (html.length > 80_000) return true
+            return /property=["']og:image/i.test(html) || /application\/ld\+json/i.test(html)
+          },
+          { timeout: 15_000 },
+        )
+        .catch(() => undefined)
       const html = await page.content()
       const finalUrl = page.url()
       await browser.close()
       browser = null
-      if (res && res.status() >= 400) continue
+      if (res && res.status() >= 400 && html.length < 20_000) continue
       if (!html || seiteWirktGesperrt(html)) continue
       return { finalUrl, html }
     } catch {

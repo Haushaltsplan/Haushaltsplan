@@ -7,7 +7,12 @@ import {
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
 import { holeHtmlMitBrowser } from '@/lib/radwerkstatt/radwerkstatt-browser-server'
-import { extrahiereProduktHinweise, seiteWirktGesperrt, type ProduktSeitenHinweis } from '@/lib/radwerkstatt/radwerkstatt-html'
+import {
+  extrahiereProduktHinweise,
+  hinweisReicht,
+  seiteWirktGesperrt,
+  type ProduktSeitenHinweis,
+} from '@/lib/radwerkstatt/radwerkstatt-html'
 import type { RadwerkstattArt, RadwerkstattEntwurf } from '@/lib/radwerkstatt/radwerkstatt-types'
 import { istPrivateOderLokaleIp, pruefeHttpUrlForm } from '@/lib/radwerkstatt/radwerkstatt-url'
 
@@ -190,7 +195,7 @@ async function kiEntwurf(
 ): Promise<Record<string, unknown> | null> {
   const resolved = resolveGeminiFreeTierProvider()
   if (!resolved) return null
-  const kurztext = seite?.text && seite.text.length < 1200 ? seite.text : ''
+  const kurztext = (seite?.text ?? '').slice(0, 1800)
   const user = [
     `Produktlink: ${produktUrl}`,
     seite?.name ? `Produktname (verbindlich): ${seite.name}` : '',
@@ -216,12 +221,20 @@ async function kiEntwurf(
   return parseKi(result.reply)
 }
 
-function htmlSiehtNachProduktseiteAus(html: string): boolean {
-  if (!html || seiteWirktGesperrt(html)) return false
-  return /<title[\s>]/i.test(html) || /ld\+json/i.test(html) || /property=["']og:/i.test(html)
+function seiteIstVollstaendig(h: ProduktSeitenHinweis): boolean {
+  return Boolean(h.bildUrl) && (h.preisEur != null || h.preisText.length > 0) && hinweisReicht(h)
 }
 
-/** Öffentliche Lesehilfe, wenn der Shop den direkten Abruf sperrt (z. B. Bike24). */
+function seitenPunkte(h: ProduktSeitenHinweis): number {
+  let p = 0
+  if (hinweisReicht(h)) p += 2
+  if (h.bildUrl) p += 3
+  if (h.preisEur != null || h.preisText) p += 2
+  if (h.beschreibung.length > 40) p += 1
+  return p
+}
+
+/** Öffentliche Lesehilfe, wenn der direkte Abruf leer oder gesperrt ist. Gilt für jeden Shop. */
 async function holeHtmlUeberLeser(produktUrl: string): Promise<{ finalUrl: string; html: string } | null> {
   let host = ''
   try {
@@ -235,6 +248,7 @@ async function holeHtmlUeberLeser(produktUrl: string): Promise<{ finalUrl: strin
       headers: {
         Accept: 'text/html',
         'X-Return-Format': 'html',
+        'X-No-Cache': 'true',
         'X-Timeout': '20',
       },
       cache: 'no-store',
@@ -242,34 +256,84 @@ async function holeHtmlUeberLeser(produktUrl: string): Promise<{ finalUrl: strin
     })
     if (!res.ok) return null
     const html = await res.text()
-    if (!htmlSiehtNachProduktseiteAus(html)) return null
+    if (!html || seiteWirktGesperrt(html)) return null
     return { finalUrl: produktUrl, html }
   } catch {
     return null
   }
 }
 
-async function ladeProduktHtml(start: string): Promise<{ finalUrl: string; html: string }> {
+const LESE_FEHLER = 'Die Seite ließ sich nicht lesen. Name, Preis und Bild kannst du von Hand eintragen.'
+
+type GeladeneSeite = { finalUrl: string; html: string; seite: ProduktSeitenHinweis }
+
+function bessereSeite(bisher: GeladeneSeite | null, finalUrl: string, html: string): GeladeneSeite | null {
+  if (!html || seiteWirktGesperrt(html)) return bisher
+  const seite = extrahiereProduktHinweise(html, finalUrl)
+  if (!bisher || seitenPunkte(seite) > seitenPunkte(bisher.seite)) return { finalUrl, html, seite }
+  return bisher
+}
+
+function ersteBrauchbareSeite(
+  quellen: Array<Promise<{ finalUrl: string; html: string } | null>>,
+): Promise<GeladeneSeite | null> {
+  return new Promise((resolve) => {
+    let offen = quellen.length
+    let beste: GeladeneSeite | null = null
+    let fertig = false
+    const ende = (wert: GeladeneSeite | null) => {
+      if (fertig) return
+      fertig = true
+      resolve(wert)
+    }
+    if (offen === 0) {
+      ende(null)
+      return
+    }
+    for (const quelle of quellen) {
+      quelle
+        .then((roh) => {
+          if (fertig || !roh) return
+          const kandidat = bessereSeite(null, roh.finalUrl, roh.html)
+          if (!kandidat) return
+          if (seiteIstVollstaendig(kandidat.seite)) {
+            ende(kandidat)
+            return
+          }
+          if (!beste || seitenPunkte(kandidat.seite) > seitenPunkte(beste.seite)) beste = kandidat
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          offen -= 1
+          if (!fertig && offen === 0) ende(beste)
+        })
+    }
+  })
+}
+
+async function ladeProduktHtml(start: string): Promise<GeladeneSeite> {
+  let beste: GeladeneSeite | null = null
   try {
     const geladen = await holeHtml(start)
-    if (htmlSiehtNachProduktseiteAus(geladen.html)) return geladen
+    beste = bessereSeite(beste, geladen.finalUrl, geladen.html)
   } catch {
-    /* Shop blockt den einfachen Abruf. */
+    /* Nächste Quelle: gesperrter oder leerer Direktabruf. */
   }
-  const leser = await holeHtmlUeberLeser(start)
-  if (leser) return leser
-  const browser = await holeHtmlMitBrowser(start)
-  if (browser && htmlSiehtNachProduktseiteAus(browser.html)) return { finalUrl: start, html: browser.html }
-  throw new Error('Der Shop hat die Seite gesperrt. Name, Preis und Bild kannst du von Hand eintragen.')
+  if (!beste || !seiteIstVollstaendig(beste.seite)) {
+    const weitere = await ersteBrauchbareSeite([holeHtmlUeberLeser(start), holeHtmlMitBrowser(start)])
+    if (weitere && (!beste || seitenPunkte(weitere.seite) > seitenPunkte(beste.seite))) beste = weitere
+  }
+  const name = beste?.seite.name.trim() ?? ''
+  const nurShop = /^(home|start|startseite|shop|warenkorb|cart|search|suche|anmelden|login)$/i.test(name)
+  if (!beste || nurShop || name.length < 2) throw new Error(LESE_FEHLER)
+  if (!hinweisReicht(beste.seite) && name.length < 8) throw new Error(LESE_FEHLER)
+  return beste
 }
 
 export async function liesProduktAusLink(rawUrl: string): Promise<RadwerkstattEntwurf> {
   const start = await pruefeOeffentlicheUrl(rawUrl)
   const geladen = await ladeProduktHtml(start)
-  const seite = extrahiereProduktHinweise(geladen.html, geladen.finalUrl)
-  if (!seite.name || /access denied|just a moment|captcha/i.test(seite.name)) {
-    throw new Error('Der Shop hat die Seite gesperrt. Name, Preis und Bild kannst du von Hand eintragen.')
-  }
+  const seite = geladen.seite
   const ki = await kiEntwurf(geladen.finalUrl, seite, false)
   const entwurf = entwurfAus(
     seite,

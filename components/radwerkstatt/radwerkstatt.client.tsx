@@ -670,9 +670,42 @@ function ArtWahl({ aktiv, onClick, children }: { aktiv: boolean; onClick: () => 
 }
 
 function ProduktBild({ url, name, className = '' }: { url: string; name: string; className?: string }) {
+  const [src, setSrc] = useState('')
   const [ok, setOk] = useState(true)
   useEffect(() => {
     setOk(true)
+    if (!url) {
+      setSrc('')
+      return
+    }
+    if (url.startsWith('data:') || url.startsWith('blob:')) {
+      setSrc(url)
+      return
+    }
+    let aktiv = true
+    let blob = ''
+    const ctrl = new AbortController()
+    fetch(`/api/radwerkstatt/bild?url=${encodeURIComponent(url)}`, { signal: ctrl.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error('bild')
+        const datei = await res.blob()
+        if (!datei.type.startsWith('image/') || datei.size < 32) throw new Error('bild')
+        const objekt = URL.createObjectURL(datei)
+        if (!aktiv) {
+          URL.revokeObjectURL(objekt)
+          return
+        }
+        blob = objekt
+        setSrc(objekt)
+      })
+      .catch(() => {
+        if (aktiv) setSrc(url)
+      })
+    return () => {
+      aktiv = false
+      ctrl.abort()
+      if (blob) URL.revokeObjectURL(blob)
+    }
   }, [url])
   if (!url || !ok) {
     return (
@@ -684,9 +717,12 @@ function ProduktBild({ url, name, className = '' }: { url: string; name: string;
       </div>
     )
   }
+  if (!src) {
+    return <div className={`aspect-[4/3] bg-[var(--app-surface-muted)] ${className}`} aria-hidden />
+  }
   return (
     <img
-      src={url}
+      src={src}
       alt={name}
       referrerPolicy="no-referrer"
       loading="lazy"

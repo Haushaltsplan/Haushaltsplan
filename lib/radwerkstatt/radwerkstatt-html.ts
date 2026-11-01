@@ -70,8 +70,11 @@ export function sichtbarerText(html: string): string {
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<nav\b[\s\S]*?<\/nav>/gi, ' ')
+    .replace(/<header\b[\s\S]*?<\/header>/gi, ' ')
+    .replace(/<footer\b[\s\S]*?<\/footer>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
-  return decodeHtml(ohne).replace(/\s+/g, ' ').trim().slice(0, 6000)
+  return decodeHtml(ohne).replace(/\s+/g, ' ').trim().slice(0, 4000)
 }
 
 function jsonLdBloecke(html: string): unknown[] {
@@ -104,9 +107,18 @@ function gehJson(node: unknown, besuch: (o: Record<string, unknown>) => void, ti
   }
   const o = node as Record<string, unknown>
   besuch(o)
-  for (const key of ['@graph', 'hasVariant', 'isVariantOf']) {
+  for (const key of ['@graph', 'hasVariant', 'isVariantOf', 'mainEntity']) {
     if (o[key]) gehJson(o[key], besuch, tiefe + 1)
   }
+}
+
+function istProduktObjekt(o: Record<string, unknown>): boolean {
+  return (
+    typPasst(o, 'Product') ||
+    typPasst(o, 'ProductGroup') ||
+    typPasst(o, 'IndividualProduct') ||
+    typPasst(o, 'SomeProducts')
+  )
 }
 
 function angebotUrl(offers: unknown): string {
@@ -127,21 +139,56 @@ function pfadVon(url: string): string {
   }
 }
 
-function nameOhneShop(name: string): string {
-  return name
-    .replace(
-      /\s*\|\s*(bike24|bike-components|bike-discount|rose bikes|canyon|amazon(?:\.[a-z]{2,3})+|ebay)\s*$/i,
-      '',
-    )
-    .replace(/\s+/g, ' ')
-    .trim()
+function nameOhneSite(name: string, siteName: string, seitenUrl: string): string {
+  const marker = new Set<string>()
+  const site = siteName.replace(/\s+/g, ' ').trim()
+  if (site && site.length <= 40) marker.add(site)
+  try {
+    const host = new URL(seitenUrl).hostname.replace(/^www\./, '')
+    const marke = host.split('.')[0] ?? ''
+    if (marke.length > 2) marker.add(marke)
+  } catch {
+    /* ohne Host bleibt der Name */
+  }
+  let out = name
+  for (const teil of marker) {
+    const esc = teil.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    out = out.replace(new RegExp(`\\s*[|·•]\\s*${esc}\\s*$`, 'i'), '')
+    out = out.replace(new RegExp(`\\s+[–—-]\\s*${esc}\\s*$`, 'i'), '')
+  }
+  return out.replace(/\s+/g, ' ').trim()
 }
 
 export function seiteWirktGesperrt(html: string): boolean {
-  const title = titelTag(html).toLowerCase()
-  if (/access denied|just a moment|attention required|captcha|forbidden/.test(title)) return true
-  if (html.length < 2500 && /access denied|edgesuite|cf-browser-verification|cloudflare/i.test(html)) return true
+  const title = titelTag(html).toLowerCase().replace(/\u00a0/g, ' ').trim()
+  if (/access denied|just a moment|attention required|captcha|forbidden|robot check|verify you are human/.test(title)) {
+    return true
+  }
+  if (
+    html.length < 12000 &&
+    /access denied|edgesuite|cf-browser-verification|challenge-platform|bm-verify|akamai-loading/i.test(html)
+  ) {
+    return true
+  }
   return false
+}
+
+function markenName(o: Record<string, unknown>): string {
+  const b = o.brand
+  if (typeof b === 'string') return decodeHtml(b).replace(/\s+/g, ' ').trim()
+  if (b && typeof b === 'object' && !Array.isArray(b)) {
+    const n = (b as Record<string, unknown>).name
+    if (typeof n === 'string') return decodeHtml(n).replace(/\s+/g, ' ').trim()
+  }
+  return ''
+}
+
+/** Variantenname enthält den Gruppennamen — dann ist es der volle Titel, kein Farb- oder Größenkürzel. */
+function nameIstAusfuehrlich(variante: string, gruppe: string): boolean {
+  const v = variante.trim().toLowerCase()
+  const g = gruppe.trim().toLowerCase()
+  if (!v || !g) return false
+  return v.includes(g)
 }
 
 function zahlAusPreis(raw: unknown): number | null {
@@ -200,8 +247,15 @@ function preisAusShopify(html: string): { betrag: number | null; waehrung: strin
   return { betrag: zahlAusPreis(m[1]), waehrung: m[2] ?? '' }
 }
 
+function bildIstLogo(url: string): boolean {
+  return /logo|icon|sprite|favicon|pixel|1x1|badge|flag|payment|trustpilot|placeholder/i.test(url)
+}
+
 function ersteBildUrl(image: unknown, basis: string): string {
-  if (typeof image === 'string') return absUrl(image, basis)
+  if (typeof image === 'string') {
+    const u = absUrl(image, basis)
+    return u && !bildIstLogo(u) ? u : ''
+  }
   if (Array.isArray(image)) {
     for (const x of image) {
       const u = ersteBildUrl(x, basis)
@@ -210,10 +264,64 @@ function ersteBildUrl(image: unknown, basis: string): string {
     return ''
   }
   if (image && typeof image === 'object') {
-    const url = (image as Record<string, unknown>).url ?? (image as Record<string, unknown>).contentUrl
-    if (typeof url === 'string') return absUrl(url, basis)
+    const o = image as Record<string, unknown>
+    const url = o.url ?? o.contentUrl ?? o.thumbnailUrl
+    if (typeof url === 'string') return ersteBildUrl(url, basis)
   }
   return ''
+}
+
+function tagAttribut(tag: string, name: string): string {
+  const m = tag.match(new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, 'i'))
+  return decodeHtml(m?.[2] ?? m?.[3] ?? '').trim()
+}
+
+function bildAusMarkup(html: string, basis: string): string {
+  const tags = html.match(/<(?:link|img|meta)\b[^>]*>/gi) ?? []
+  for (const tag of tags) {
+    const rel = tagAttribut(tag, 'rel').toLowerCase()
+    const prop = tagAttribut(tag, 'itemprop').toLowerCase()
+    if (rel !== 'image_src' && prop !== 'image') continue
+    const roh = tagAttribut(tag, 'href') || tagAttribut(tag, 'src') || tagAttribut(tag, 'content')
+    const u = ersteBildUrl(roh, basis)
+    if (u) return u
+  }
+  const re = /"(?:image|hiRes|imageUrl|contentUrl)"\s*:\s*"(https?:[^"\\]+)"/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html))) {
+    const roh = (m[1] ?? '').replace(/\\u0026/g, '&').replace(/\\\//g, '/')
+    const u = ersteBildUrl(roh, basis)
+    if (u && /\.(?:jpe?g|png|webp)(?:$|\?)/i.test(u)) return u
+  }
+  return ''
+}
+
+function preisAusMicrodata(html: string): { betrag: number | null; waehrung: string } {
+  const tags = html.match(/<[^>]+itemprop\s*=\s*["'](?:price|priceCurrency)["'][^>]*>/gi) ?? []
+  let betrag: number | null = null
+  let waehrung = ''
+  for (const tag of tags) {
+    const prop = tagAttribut(tag, 'itemprop').toLowerCase()
+    const content = tagAttribut(tag, 'content')
+    if (prop === 'price' && betrag == null) betrag = zahlAusPreis(content)
+    if (prop === 'pricecurrency' && content) waehrung = content.toUpperCase()
+  }
+  if (betrag == null) {
+    const inline = html.match(/itemprop=["']price["'][^>]*>\s*([^<]{1,24})/i)
+    if (inline) betrag = zahlAusPreis(inline[1] ?? '')
+  }
+  return { betrag, waehrung }
+}
+
+/** Nur wenn auf der Seite genau ein Euro-Betrag steht. */
+function einzigerEuroPreis(text: string): number | null {
+  const zahlen = new Set<number>()
+  for (const m of text.matchAll(/(?:€\s*(\d{1,5}(?:[.,]\d{2})?)|(\d{1,5}[.,]\d{2})\s*€)/g)) {
+    const n = zahlAusPreis(m[1] || m[2] || '')
+    if (n != null && n > 0 && n < 20000) zahlen.add(n)
+  }
+  if (zahlen.size !== 1) return null
+  return [...zahlen][0] ?? null
 }
 
 function preisTextAus(betrag: number | null, waehrung: string): string {
@@ -234,11 +342,14 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
   let anzeigeBetrag: number | null = null
   let waehrung = ''
   let varianteGetroffen = false
+  let gruppenName = ''
+  let marke = ''
   const seitenPfad = pfadVon(seitenUrl)
 
-  const merkePreis = (betrag: number | null, cur: string, erzwingen = false) => {
+  const merkePreis = (betrag: number | null, cur: string, erzwingen = false, nurWennKleiner = false) => {
     if (betrag == null) return
-    if (anzeigeBetrag != null && !erzwingen) return
+    if (nurWennKleiner && anzeigeBetrag != null && betrag >= anzeigeBetrag) return
+    if (anzeigeBetrag != null && !erzwingen && !nurWennKleiner) return
     const c = cur.trim().toUpperCase()
     anzeigeBetrag = betrag
     waehrung = c
@@ -247,30 +358,45 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
 
   for (const block of ld) {
     gehJson(block, (o) => {
-      if (!typPasst(o, 'Product') && !typPasst(o, 'ProductGroup')) return
+      if (!istProduktObjekt(o)) return
       const produktName = typeof o.name === 'string' ? decodeHtml(o.name).replace(/\s+/g, ' ').trim() : ''
       const passtZurSeite = Boolean(seitenPfad) && pfadVon(angebotUrl(o.offers)) === seitenPfad
-      const istVariante = typPasst(o, 'Product') && !typPasst(o, 'ProductGroup')
-      if (passtZurSeite) varianteGetroffen = true
+      const hatVarianten = o.hasVariant != null
+      const istGruppe = typPasst(o, 'ProductGroup') || hatVarianten
+      if (istGruppe && produktName) gruppenName = produktName
+      const gefundeneMarke = markenName(o)
+      if (gefundeneMarke) marke = gefundeneMarke
+      const vollerName = !istGruppe && (!gruppenName || nameIstAusfuehrlich(produktName, gruppenName))
       const nameUebernehmen =
-        !name ||
-        passtZurSeite ||
-        (istVariante && !varianteGetroffen && produktName.startsWith(name) && produktName.length > name.length)
-      if (produktName && nameUebernehmen) name = produktName
-      if ((!beschreibung || passtZurSeite) && typeof o.description === 'string' && o.description.trim()) {
+        vollerName &&
+        (!name ||
+          passtZurSeite ||
+          (!varianteGetroffen && produktName.startsWith(name) && produktName.length > name.length))
+      if (passtZurSeite) varianteGetroffen = true
+      if (produktName && (istGruppe || nameUebernehmen)) name = produktName
+      if (
+        (istGruppe || vollerName) &&
+        (!beschreibung || (vollerName && passtZurSeite)) &&
+        typeof o.description === 'string' &&
+        o.description.trim()
+      ) {
         beschreibung = decodeHtml(o.description).replace(/\s+/g, ' ').trim()
       }
-      const bild = ersteBildUrl(o.image, seitenUrl)
-      if (bild && (!bildUrl || passtZurSeite)) bildUrl = bild
+      const bild = ersteBildUrl(o.image ?? o.thumbnailUrl, seitenUrl)
+      if (bild && (!bildUrl || (passtZurSeite && vollerName))) bildUrl = bild
       const p = preisAusAngebot(o.offers ?? o.price)
-      merkePreis(p.betrag, p.waehrung, passtZurSeite)
+      merkePreis(p.betrag, p.waehrung, passtZurSeite && vollerName, passtZurSeite && !vollerName && !istGruppe)
     })
+  }
+
+  if (marke && name && !name.toLowerCase().includes(marke.toLowerCase())) {
+    name = `${marke} ${name}`
   }
 
   if (!name) name = metaWert(tags, 'og:title') || metaWert(tags, 'twitter:title') || titelTag(html)
   if (!beschreibung) beschreibung = metaWert(tags, 'og:description') || metaWert(tags, 'description')
   if (!bildUrl) {
-    bildUrl = absUrl(
+    const og = absUrl(
       metaWert(tags, 'og:image:secure_url') ||
         metaWert(tags, 'og:image:url') ||
         metaWert(tags, 'og:image') ||
@@ -278,6 +404,7 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
         metaWert(tags, 'twitter:image:src'),
       seitenUrl,
     )
+    bildUrl = og && !bildIstLogo(og) ? og : bildAusMarkup(html, seitenUrl)
   }
 
   if (anzeigeBetrag == null) {
@@ -286,11 +413,17 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
     merkePreis(zahlAusPreis(amount), cur)
   }
   if (anzeigeBetrag == null) {
+    const micro = preisAusMicrodata(html)
+    merkePreis(micro.betrag, micro.waehrung || 'EUR')
+  }
+  if (anzeigeBetrag == null) {
     const shop = preisAusShopify(html)
     merkePreis(shop.betrag, shop.waehrung)
   }
+  const text = sichtbarerText(html)
+  if (anzeigeBetrag == null) merkePreis(einzigerEuroPreis(text), 'EUR')
 
-  name = nameOhneShop(name).slice(0, 180)
+  name = nameOhneSite(name, metaWert(tags, 'og:site_name'), seitenUrl).slice(0, 180)
   beschreibung = beschreibung.replace(/\s+/g, ' ').trim().slice(0, 800)
 
   return {
@@ -300,6 +433,13 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
     preisEur,
     preisText: preisTextAus(anzeigeBetrag, waehrung || 'EUR'),
     waehrung: waehrung || (preisEur != null ? 'EUR' : ''),
-    text: sichtbarerText(html),
+    text,
   }
+}
+
+/** Name plus Bild oder Preis — erst dann ist die Seite brauchbar, sonst die nächste Quelle. */
+export function hinweisReicht(h: ProduktSeitenHinweis): boolean {
+  if (h.name.length < 2) return false
+  if (/access denied|just a moment|captcha|robot check|forbidden|zugriff verweigert/i.test(h.name)) return false
+  return Boolean(h.bildUrl) || h.preisEur != null || h.preisText.length > 0
 }
