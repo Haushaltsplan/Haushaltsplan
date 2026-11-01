@@ -3,6 +3,7 @@
  */
 import { bike24IdKandidaten } from '@/lib/radwerkstatt/radwerkstatt-bike24'
 import { extrahiereProduktHinweise, hinweisReicht, seiteWirktGesperrt } from '@/lib/radwerkstatt/radwerkstatt-html'
+import { betragAusShopifyPreis, shopifyHtmlAusProdukt, shopifyProduktPfad } from '@/lib/radwerkstatt/radwerkstatt-shopify'
 import { parseRadwerkstattListe } from '@/lib/radwerkstatt/radwerkstatt-store'
 import { istPrivateOderLokaleIp, normalisiereProduktUrl, pruefeHttpUrlForm } from '@/lib/radwerkstatt/radwerkstatt-url'
 
@@ -163,11 +164,81 @@ const einPreis = extrahiereProduktHinweise(
 )
 assert(einPreis.preisEur === 18.5, String(einPreis.preisEur))
 
-const zweiPreise = extrahiereProduktHinweise(
+const versand = extrahiereProduktHinweise(
   `<html><head><title>Unklarer Preis</title></head><body><p>12,99 € und Versand 4,90 €</p></body></html>`,
   'https://shop.example/unklar',
 )
+assert(versand.preisEur === 12.99, String(versand.preisEur))
+
+const zweiPreise = extrahiereProduktHinweise(
+  `<html><head><title>Unklarer Preis</title></head><body><p>12,99 € oder 19,99 €</p></body></html>`,
+  'https://shop.example/unklar',
+)
 assert(zweiPreise.preisEur === null, 'mehrere Euro-Beträge')
+
+const stattPreis = extrahiereProduktHinweise(
+  `<html><head><meta property="og:title" content="Muc-Off Dry Lube"><meta property="og:image" content="https://cdn.example/lube.jpg"></head><body><p>um 10,99 € statt 15,49 €</p></body></html>`,
+  'https://www.alltricks.de/p',
+)
+assert(stattPreis.preisEur === 10.99, String(stattPreis.preisEur))
+
+const ausfuehrung = extrahiereProduktHinweise(
+  `<html><head><script type="application/ld+json">
+{"@type":"ProductGroup","name":"CN-HG71C 6/7/8-speed Chain","brand":{"@type":"Brand","name":"Shimano"},"image":"https://cdn.example/hg71.jpg","hasVariant":[
+  {"@type":"Product","name":"CN-HG71C 6/7/8-speed Chain - 138 links","offers":{"@type":"Offer","price":"18.99","priceCurrency":"EUR","url":"https://www.bike-discount.de/en/shimano-cn-hg71c-6/7/8-speed-chain?number=138"}},
+  {"@type":"Product","name":"CN-HG71C 6/7/8-speed Chain - 116 links","offers":{"@type":"Offer","price":"16.99","priceCurrency":"EUR","url":"https://www.bike-discount.de/en/shimano-cn-hg71c-6/7/8-speed-chain?number=116"}}
+]}
+</script></head><body>Kette</body></html>`,
+  'https://www.bike-discount.de/en/shimano-cn-hg71c-6/7/8-speed-chain',
+)
+assert(ausfuehrung.name === 'Shimano CN-HG71C 6/7/8-speed Chain', ausfuehrung.name)
+assert(ausfuehrung.preisEur === 16.99, String(ausfuehrung.preisEur))
+assert(ausfuehrung.bildUrl === 'https://cdn.example/hg71.jpg', ausfuehrung.bildUrl)
+
+const markeDoppelt = extrahiereProduktHinweise(
+  `<html><head><script type="application/ld+json">
+{"@type":"Product","name":"Optimize Graphen-Kettenwachs","brand":{"@type":"Brand","name":"Optimize GmbH"},"image":"https://cdn.example/wachs.png","offers":{"@type":"Offer","price":"69.99","priceCurrency":"EUR"}}
+</script></head><body>Wachs</body></html>`,
+  'https://www.optimize.bike/products/optimize-graphene-chain-wax',
+)
+assert(markeDoppelt.name === 'Optimize Graphen-Kettenwachs', markeDoppelt.name)
+
+const shopifyPfad = shopifyProduktPfad('https://www.optimize.bike/products/optimize-graphene-chain-wax?variant=5')
+assert(shopifyPfad?.handle === 'optimize-graphene-chain-wax', shopifyPfad?.handle ?? '')
+assert(shopifyPfad?.variant === '5', shopifyPfad?.variant ?? '')
+assert(shopifyProduktPfad('https://www.bike-components.de/de/Shimano/Kette') === null, 'kein Shopify')
+assert(betragAusShopifyPreis(6999) === 69.99, String(betragAusShopifyPreis(6999)))
+
+const shopifySeite = extrahiereProduktHinweise(
+  shopifyHtmlAusProdukt(
+    {
+      title: 'Optimize Graphen-Kettenwachs',
+      vendor: 'Optimize GmbH',
+      description: '<p>Flüssiges Graphen-Kettenwachs für die Rennradkette.</p>',
+      price: 6999,
+      featured_image: '//cdn.shopify.com/s/files/wachs.png',
+      variants: [{ id: 5, title: 'Default Title', price: 6999 }],
+    },
+    'EUR',
+    'https://www.optimize.bike/products/optimize-graphene-chain-wax',
+  ),
+  'https://www.optimize.bike/products/optimize-graphene-chain-wax',
+)
+assert(shopifySeite.name === 'Optimize Graphen-Kettenwachs', shopifySeite.name)
+assert(shopifySeite.preisEur === 69.99, String(shopifySeite.preisEur))
+assert(shopifySeite.bildUrl.includes('cdn.shopify.com'), shopifySeite.bildUrl)
+assert(shopifySeite.beschreibung.includes('Graphen'), shopifySeite.beschreibung)
+
+const shopifyFremd = extrahiereProduktHinweise(
+  shopifyHtmlAusProdukt(
+    { title: 'Dry Lube', vendor: 'Muc-Off', price: 1299, featured_image: 'https://cdn.shopify.com/s/files/dry.png' },
+    'GBP',
+    'https://muc-off.com/products/dry-lube',
+  ),
+  'https://muc-off.com/products/dry-lube',
+)
+assert(shopifyFremd.preisEur === null, 'GBP bleibt ohne Euro')
+assert(shopifyFremd.preisText.includes('GBP'), shopifyFremd.preisText)
 
 const eingebettet = extrahiereProduktHinweise(
   `<html><head><title>Seite</title><script type="application/ld+json">

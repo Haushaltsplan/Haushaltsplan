@@ -183,12 +183,41 @@ function markenName(o: Record<string, unknown>): string {
   return ''
 }
 
-/** Variantenname enthält den Gruppennamen — dann ist es der volle Titel, kein Farb- oder Größenkürzel. */
+/** Nur Länge, Gebinde oder Farbe — dann bleibt der Gruppenname der Produktname. */
+function istNurAusfuehrung(rest: string): boolean {
+  const t = rest.trim().toLowerCase()
+  if (!t || t.length > 40) return false
+  if (/^(?:silber|schwarz|rot|blau|weiß|weiss|pink|lila|grün|gruen|gold|silver|black|red|blue|white|grey|gray|uni|universal)$/i.test(t)) {
+    return true
+  }
+  return /^\d+(?:[.,]\d+)?(?:\s*(?:links?|glieder|ml|cl|l|g|kg|mm|cm|zoll|inch))?(?:\s+(?:silber|schwarz|rot|blau|weiß|weiss|pink|lila|grün|gruen|gold|silver|black|red|blue|white))?$/i.test(t)
+}
+
+/** Variantenname enthält den Gruppennamen und ist mehr als eine Ausführung. */
 function nameIstAusfuehrlich(variante: string, gruppe: string): boolean {
   const v = variante.trim().toLowerCase()
   const g = gruppe.trim().toLowerCase()
-  if (!v || !g) return false
-  return v.includes(g)
+  if (!v || !g || !v.includes(g)) return false
+  const rest = v.slice(v.indexOf(g) + g.length).replace(/^[\s|·•\-–—:,/]+/, '').trim()
+  if (!rest) return true
+  return !istNurAusfuehrung(rest)
+}
+
+function markeSchonImNamen(name: string, marke: string): boolean {
+  const n = name.toLowerCase()
+  const m = marke.toLowerCase()
+  if (!m) return true
+  if (n.includes(m)) return true
+  const wort = m.split(/\s+/).find((teil) => teil.length > 2 && !/^(gmbh|ag|inc|ltd|kg|ug|sarl|sas|co)$/.test(teil)) ?? ''
+  return Boolean(wort) && n.includes(wort)
+}
+
+function nameBereinigen(name: string): string {
+  return name
+    .replace(/\s+um\s+\d[\d.,]*\s*€\s*statt\s+\d[\d.,]*\s*€.*$/i, '')
+    .replace(/\s*[|]\s*\d{5,}\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function zahlAusPreis(raw: unknown): number | null {
@@ -313,10 +342,20 @@ function preisAusMicrodata(html: string): { betrag: number | null; waehrung: str
   return { betrag, waehrung }
 }
 
-/** Nur wenn auf der Seite genau ein Euro-Betrag steht. */
-function einzigerEuroPreis(text: string): number | null {
+/** Verkaufspreis. UVP, „statt“, Versand und Grundpreis zählen nicht. Zwei unerklärte Beträge bleiben leer. */
+function verkaufsPreisEur(text: string): number | null {
+  const statt = text.match(/(\d{1,5}(?:[.,]\d{2})?)\s*€\s*statt\b/i)
+  if (statt) {
+    const n = zahlAusPreis(statt[1])
+    if (n != null && n > 0 && n < 20000) return n
+  }
   const zahlen = new Set<number>()
   for (const m of text.matchAll(/(?:€\s*(\d{1,5}(?:[.,]\d{2})?)|(\d{1,5}[.,]\d{2})\s*€)/g)) {
+    const start = m.index ?? 0
+    const davor = text.slice(Math.max(0, start - 18), start).toLowerCase()
+    const danach = text.slice(start + m[0].length, start + m[0].length + 14).toLowerCase()
+    if (/versand|shipping|uvp|rrp|msrp|grundpreis|statt/.test(davor)) continue
+    if (/^\s*(?:pro\b|\/\s*(?:l|kg|m)\b)/.test(danach)) continue
     const n = zahlAusPreis(m[1] || m[2] || '')
     if (n != null && n > 0 && n < 20000) zahlen.add(n)
   }
@@ -343,7 +382,9 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
   let waehrung = ''
   let varianteGetroffen = false
   let gruppenName = ''
+  let gruppenBild = ''
   let marke = ''
+  const treffer: Array<{ name: string; beschreibung: string; bild: string; betrag: number | null; waehrung: string }> = []
   const seitenPfad = pfadVon(seitenUrl)
 
   const merkePreis = (betrag: number | null, cur: string, erzwingen = false, nurWennKleiner = false) => {
@@ -360,7 +401,8 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
     gehJson(block, (o) => {
       if (!istProduktObjekt(o)) return
       const produktName = typeof o.name === 'string' ? decodeHtml(o.name).replace(/\s+/g, ' ').trim() : ''
-      const passtZurSeite = Boolean(seitenPfad) && pfadVon(angebotUrl(o.offers)) === seitenPfad
+      const adresse = angebotUrl(o.offers) || (typeof o.url === 'string' ? o.url : '')
+      const passtZurSeite = Boolean(seitenPfad) && pfadVon(adresse) === seitenPfad
       const hatVarianten = o.hasVariant != null
       const istGruppe = typPasst(o, 'ProductGroup') || hatVarianten
       if (istGruppe && produktName) gruppenName = produktName
@@ -383,13 +425,40 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
         beschreibung = decodeHtml(o.description).replace(/\s+/g, ' ').trim()
       }
       const bild = ersteBildUrl(o.image ?? o.thumbnailUrl, seitenUrl)
+      if (istGruppe && bild) gruppenBild = bild
       if (bild && (!bildUrl || (passtZurSeite && vollerName))) bildUrl = bild
       const p = preisAusAngebot(o.offers ?? o.price)
       merkePreis(p.betrag, p.waehrung, passtZurSeite && vollerName, passtZurSeite && !vollerName && !istGruppe)
+      if (!istGruppe && passtZurSeite) {
+        treffer.push({
+          name: produktName,
+          beschreibung: typeof o.description === 'string' ? decodeHtml(o.description).replace(/\s+/g, ' ').trim() : '',
+          bild,
+          betrag: p.betrag,
+          waehrung: p.waehrung,
+        })
+      }
     })
   }
 
-  if (marke && name && !name.toLowerCase().includes(marke.toLowerCase())) {
+  if (treffer.length === 1) {
+    const t = treffer[0]
+    if (t && t.name) name = t.name
+    if (t?.beschreibung) beschreibung = t.beschreibung
+    if (t?.bild) bildUrl = t.bild
+    if (t && t.betrag != null) merkePreis(t.betrag, t.waehrung || 'EUR', true)
+  } else if (treffer.length > 1 && gruppenName) {
+    name = gruppenName
+    if (gruppenBild) bildUrl = gruppenBild
+    const gueltig = treffer.filter((t) => t.betrag != null)
+    const min = gueltig.reduce<(typeof treffer)[number] | null>((best, t) => {
+      if (!best || (t.betrag != null && best.betrag != null && t.betrag < best.betrag)) return t
+      return best
+    }, null)
+    if (min?.betrag != null) merkePreis(min.betrag, min.waehrung || 'EUR', true)
+  }
+
+  if (marke && name && !markeSchonImNamen(name, marke)) {
     name = `${marke} ${name}`
   }
 
@@ -421,9 +490,9 @@ export function extrahiereProduktHinweise(html: string, seitenUrl: string): Prod
     merkePreis(shop.betrag, shop.waehrung)
   }
   const text = sichtbarerText(html)
-  if (anzeigeBetrag == null) merkePreis(einzigerEuroPreis(text), 'EUR')
+  if (anzeigeBetrag == null) merkePreis(verkaufsPreisEur(text), 'EUR')
 
-  name = nameOhneSite(name, metaWert(tags, 'og:site_name'), seitenUrl).slice(0, 180)
+  name = nameBereinigen(nameOhneSite(name, metaWert(tags, 'og:site_name'), seitenUrl)).slice(0, 180)
   beschreibung = beschreibung.replace(/\s+/g, ' ').trim().slice(0, 800)
 
   return {

@@ -6,7 +6,8 @@ import {
   resolveGeminiFreeTierProvider,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
-import { bike24Beschreibung, bike24IdKandidaten, bike24KatalogTreffer } from '@/lib/radwerkstatt/radwerkstatt-bike24'
+import { bike24Beschreibung, bike24Host, bike24IdKandidaten, bike24KatalogTreffer } from '@/lib/radwerkstatt/radwerkstatt-bike24'
+import { shopifyRohHtml } from '@/lib/radwerkstatt/radwerkstatt-shopify'
 import { holeHtmlMitBrowser } from '@/lib/radwerkstatt/radwerkstatt-browser-server'
 import {
   extrahiereProduktHinweise,
@@ -239,30 +240,60 @@ function htmlAttribut(wert: string): string {
   return wert.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 }
 
+function bildIstNebenbild(url: string): boolean {
+  return /logo|icon|sprite|favicon|badge|flag|rating|pixel|mail\.png|\.svg(?:$|\?)/i.test(url)
+}
+
 function bildAusMarkdown(md: string): string {
-  const re = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g
   let fallback = ''
-  for (const m of md.matchAll(re)) {
-    const url = m[1] ?? ''
-    if (/logo|icon|sprite|favicon|badge/i.test(url)) continue
+  for (const m of md.matchAll(/https?:\/\/[^)\s"'<>]+/g)) {
+    const url = (m[0] ?? '').replace(/[),.;]+$/, '')
+    if (!url || bildIstNebenbild(url)) continue
     if (/images\.bike24\.com\/media\/\d+\/i\//i.test(url)) return url
-    if (!fallback && /images\.bike24\.com\/i\//i.test(url) && /\.jpe?g(?:$|\?)/i.test(url)) {
-      fallback = url.replace('https://images.bike24.com/', 'https://images.bike24.com/media/1020/')
+    if (/images\.bike24\.com\/i\//i.test(url) && /\.jpe?g(?:$|\?)/i.test(url)) {
+      return url.replace('https://images.bike24.com/', 'https://images.bike24.com/media/1020/')
     }
-    if (!fallback && /^https:\/\//i.test(url)) fallback = url
+    if (/product-cdn[^)\s]*\/large\//i.test(url) || /\/media\/image\/product\/[^)\s]+\/(?:lg|md)\//i.test(url)) return url
+    if (!fallback && (/\.(?:jpe?g|webp|png)(?:$|\?)/i.test(url) || /\/large\/\d/i.test(url))) fallback = url
   }
   return fallback
 }
 
-/** Öffentliche Lesehilfe. Markdown, nicht das rohe HTML: viele Shops liefern sonst nur die Sperrseite. */
-async function holeHtmlUeberLeser(produktUrl: string): Promise<{ finalUrl: string; html: string } | null> {
-  let host = ''
+function nameAusTitel(title: string): string {
+  return title
+    .replace(/\s+um\s+\d[\d.,]*\s*€\s*statt\s+\d[\d.,]*\s*€.*$/i, '')
+    .replace(/\s*[|]\s*\d{5,}\s*$/, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function jinaHost(produktUrl: string): boolean {
   try {
-    host = new URL(produktUrl).hostname.toLowerCase()
+    const host = new URL(produktUrl).hostname.toLowerCase()
+    return host === 'r.jina.ai' || host.endsWith('.jina.ai')
+  } catch {
+    return true
+  }
+}
+
+/** Gerenderte Seite. Bike24 liefert hier nur die Sperrseite, deshalb dort Markdown plus Katalog. */
+async function holeJinaHtml(produktUrl: string): Promise<{ finalUrl: string; html: string } | null> {
+  try {
+    const res = await fetch(`https://r.jina.ai/${produktUrl}`, {
+      headers: { Accept: 'text/html', 'X-Return-Format': 'html', 'X-Timeout': '25' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(32_000),
+    })
+    if (!res.ok) return null
+    const html = await res.text()
+    if (!html || html.length > MAX_HTML || seiteWirktGesperrt(html)) return null
+    return { finalUrl: produktUrl, html }
   } catch {
     return null
   }
-  if (host === 'r.jina.ai' || host.endsWith('.jina.ai')) return null
+}
+
+async function holeJinaMarkdown(produktUrl: string): Promise<{ finalUrl: string; html: string } | null> {
   try {
     const res = await fetch(`https://r.jina.ai/${produktUrl}`, {
       headers: {
@@ -277,7 +308,7 @@ async function holeHtmlUeberLeser(produktUrl: string): Promise<{ finalUrl: strin
     if (!res.ok) return null
     const json = (await res.json()) as { data?: Record<string, unknown> }
     const data = json.data ?? (json as Record<string, unknown>)
-    const title = typeof data.title === 'string' ? data.title.replace(/\s+/g, ' ').trim() : ''
+    const title = nameAusTitel(typeof data.title === 'string' ? data.title : '')
     const description = bike24Beschreibung(typeof data.description === 'string' ? data.description : '')
     const content = typeof data.content === 'string' ? data.content : ''
     if (title.length < 2 || /access denied|just a moment|captcha/i.test(title)) return null
@@ -287,6 +318,19 @@ async function holeHtmlUeberLeser(produktUrl: string): Promise<{ finalUrl: strin
   } catch {
     return null
   }
+}
+
+/** Öffentliche Lesehilfe, wenn der Shop die direkte Anfrage sperrt. */
+async function holeHtmlUeberLeser(produktUrl: string): Promise<{ finalUrl: string; html: string } | null> {
+  if (jinaHost(produktUrl)) return null
+  if (!bike24Host(produktUrl)) {
+    const html = await holeJinaHtml(produktUrl)
+    if (html) {
+      const seite = extrahiereProduktHinweise(html.html, produktUrl)
+      if (seiteIstVollstaendig(seite)) return html
+    }
+  }
+  return holeJinaMarkdown(produktUrl)
 }
 
 async function mitKatalogPreis(finalUrl: string, seite: ProduktSeitenHinweis): Promise<ProduktSeitenHinweis> {
@@ -370,11 +414,17 @@ function ersteBrauchbareSeite(
 
 async function ladeProduktHtml(start: string): Promise<GeladeneSeite> {
   let beste: GeladeneSeite | null = null
-  try {
-    const geladen = await holeHtml(start)
-    beste = await seiteAusRoh(geladen)
-  } catch {
-    /* Nächste Quelle: gesperrter oder leerer Direktabruf. */
+  const [direkt, shopify] = await Promise.all([
+    holeHtml(start)
+      .then((roh) => seiteAusRoh(roh))
+      .catch(() => null),
+    shopifyRohHtml(start)
+      .then((roh) => seiteAusRoh(roh))
+      .catch(() => null),
+  ])
+  for (const kandidat of [direkt, shopify]) {
+    if (!kandidat) continue
+    if (!beste || seitenPunkte(kandidat.seite) > seitenPunkte(beste.seite)) beste = kandidat
   }
   if (!beste || !seiteIstVollstaendig(beste.seite)) {
     const weitere = await ersteBrauchbareSeite([holeHtmlUeberLeser(start), holeHtmlMitBrowser(start)])
@@ -382,7 +432,8 @@ async function ladeProduktHtml(start: string): Promise<GeladeneSeite> {
   }
   const name = beste?.seite.name.trim() ?? ''
   const nurShop = /^(home|start|startseite|shop|warenkorb|cart|search|suche|anmelden|login)$/i.test(name)
-  if (!beste || nurShop || name.length < 2) throw new Error(LESE_FEHLER)
+  const nurFehler = /^(?:\d{3}\s+)?(?:gone|not found|page not found|seite nicht gefunden|nicht gefunden|error|bad gateway|service unavailable)$/i.test(name)
+  if (!beste || nurShop || nurFehler || name.length < 2) throw new Error(LESE_FEHLER)
   if (!hinweisReicht(beste.seite) && name.length < 8) throw new Error(LESE_FEHLER)
   return beste
 }
