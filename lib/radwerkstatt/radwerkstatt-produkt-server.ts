@@ -6,6 +6,7 @@ import {
   resolveGeminiFreeTierProvider,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
+import { bike24Beschreibung, bike24IdKandidaten, bike24KatalogTreffer } from '@/lib/radwerkstatt/radwerkstatt-bike24'
 import { holeHtmlMitBrowser } from '@/lib/radwerkstatt/radwerkstatt-browser-server'
 import {
   extrahiereProduktHinweise,
@@ -173,7 +174,7 @@ function entwurfAus(
   const name = seitenName || text(ki?.name, 160)
   return {
     name,
-    einsatzbereich: text(ki?.einsatzbereich, 80),
+    einsatzbereich: text(ki?.einsatzbereich, 80) || (seite?.beschreibung.split(/[.]/)[0] ?? '').replace(/\s+/g, ' ').trim().slice(0, 80),
     preisEur,
     preisText: preisEur != null && !preisText
       ? new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(preisEur)
@@ -211,8 +212,8 @@ async function kiEntwurf(
     geminiForceFreeApiKey: true,
     thinkingMinimal: true,
     maxOutputTokens: 1200,
-    timeoutMs: 40_000,
-    geminiTotalBudgetMs: 70_000,
+    timeoutMs: 18_000,
+    geminiTotalBudgetMs: 22_000,
     geminiModels: geminiFreeTierFlashModelKandidaten(),
     geminiGoogleSearch: mitSuche,
     jsonResponse: { schema: SCHEMA },
@@ -234,7 +235,26 @@ function seitenPunkte(h: ProduktSeitenHinweis): number {
   return p
 }
 
-/** Öffentliche Lesehilfe, wenn der direkte Abruf leer oder gesperrt ist. Gilt für jeden Shop. */
+function htmlAttribut(wert: string): string {
+  return wert.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
+}
+
+function bildAusMarkdown(md: string): string {
+  const re = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/g
+  let fallback = ''
+  for (const m of md.matchAll(re)) {
+    const url = m[1] ?? ''
+    if (/logo|icon|sprite|favicon|badge/i.test(url)) continue
+    if (/images\.bike24\.com\/media\/\d+\/i\//i.test(url)) return url
+    if (!fallback && /images\.bike24\.com\/i\//i.test(url) && /\.jpe?g(?:$|\?)/i.test(url)) {
+      fallback = url.replace('https://images.bike24.com/', 'https://images.bike24.com/media/1020/')
+    }
+    if (!fallback && /^https:\/\//i.test(url)) fallback = url
+  }
+  return fallback
+}
+
+/** Öffentliche Lesehilfe. Markdown, nicht das rohe HTML: viele Shops liefern sonst nur die Sperrseite. */
 async function holeHtmlUeberLeser(produktUrl: string): Promise<{ finalUrl: string; html: string } | null> {
   let host = ''
   try {
@@ -246,21 +266,58 @@ async function holeHtmlUeberLeser(produktUrl: string): Promise<{ finalUrl: strin
   try {
     const res = await fetch(`https://r.jina.ai/${produktUrl}`, {
       headers: {
-        Accept: 'text/html',
-        'X-Return-Format': 'html',
+        Accept: 'application/json',
+        'X-Return-Format': 'markdown',
         'X-No-Cache': 'true',
-        'X-Timeout': '20',
+        'X-Timeout': '25',
       },
       cache: 'no-store',
-      signal: AbortSignal.timeout(28_000),
+      signal: AbortSignal.timeout(32_000),
     })
     if (!res.ok) return null
-    const html = await res.text()
-    if (!html || seiteWirktGesperrt(html)) return null
+    const json = (await res.json()) as { data?: Record<string, unknown> }
+    const data = json.data ?? (json as Record<string, unknown>)
+    const title = typeof data.title === 'string' ? data.title.replace(/\s+/g, ' ').trim() : ''
+    const description = bike24Beschreibung(typeof data.description === 'string' ? data.description : '')
+    const content = typeof data.content === 'string' ? data.content : ''
+    if (title.length < 2 || /access denied|just a moment|captcha/i.test(title)) return null
+    const bild = bildAusMarkdown(content)
+    const html = `<!doctype html><html><head><title>${htmlAttribut(title)}</title><meta property="og:title" content="${htmlAttribut(title)}"><meta property="og:description" content="${htmlAttribut(description)}"><meta property="og:image" content="${htmlAttribut(bild)}"></head><body><p>${htmlAttribut(description)}</p></body></html>`
     return { finalUrl: produktUrl, html }
   } catch {
     return null
   }
+}
+
+async function mitKatalogPreis(finalUrl: string, seite: ProduktSeitenHinweis): Promise<ProduktSeitenHinweis> {
+  const ids = bike24IdKandidaten(finalUrl)
+  if (!ids.length || seite.name.length < 3) return seite
+  const term = seite.name.replace(/\s*[|·]\s*bike24\s*$/i, '').trim()
+  const treffer = await bike24KatalogTreffer(term, ids)
+  if (!treffer) return seite
+  const name =
+    seite.name.length > treffer.name.length && seite.name.toLowerCase().includes(treffer.name.slice(0, 24).toLowerCase())
+      ? seite.name.replace(/\s*[|·]\s*bike24\s*$/i, '').trim()
+      : treffer.name
+  const preisEur = seite.preisEur ?? treffer.preisEur
+  return {
+    ...seite,
+    name,
+    bildUrl: seite.bildUrl || treffer.bildUrl,
+    preisEur,
+    preisText:
+      seite.preisEur != null
+        ? seite.preisText
+        : new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(treffer.preisEur),
+    waehrung: seite.preisEur != null ? seite.waehrung || 'EUR' : 'EUR',
+  }
+}
+
+async function seiteAusRoh(roh: { finalUrl: string; html: string } | null): Promise<GeladeneSeite | null> {
+  if (!roh) return null
+  const basis = bessereSeite(null, roh.finalUrl, roh.html)
+  if (!basis) return null
+  return { ...basis, seite: await mitKatalogPreis(basis.finalUrl, basis.seite) }
 }
 
 const LESE_FEHLER = 'Die Seite ließ sich nicht lesen. Name, Preis und Bild kannst du von Hand eintragen.'
@@ -292,10 +349,10 @@ function ersteBrauchbareSeite(
     }
     for (const quelle of quellen) {
       quelle
-        .then((roh) => {
+        .then(async (roh) => {
           if (fertig || !roh) return
-          const kandidat = bessereSeite(null, roh.finalUrl, roh.html)
-          if (!kandidat) return
+          const kandidat = await seiteAusRoh(roh)
+          if (!kandidat || fertig) return
           if (seiteIstVollstaendig(kandidat.seite)) {
             ende(kandidat)
             return
@@ -315,7 +372,7 @@ async function ladeProduktHtml(start: string): Promise<GeladeneSeite> {
   let beste: GeladeneSeite | null = null
   try {
     const geladen = await holeHtml(start)
-    beste = bessereSeite(beste, geladen.finalUrl, geladen.html)
+    beste = await seiteAusRoh(geladen)
   } catch {
     /* Nächste Quelle: gesperrter oder leerer Direktabruf. */
   }

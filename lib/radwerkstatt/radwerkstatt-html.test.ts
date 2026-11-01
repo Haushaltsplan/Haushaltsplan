@@ -1,6 +1,7 @@
 /**
  *   npx tsx lib/radwerkstatt/radwerkstatt-html.test.ts
  */
+import { bike24IdKandidaten } from '@/lib/radwerkstatt/radwerkstatt-bike24'
 import { extrahiereProduktHinweise, hinweisReicht, seiteWirktGesperrt } from '@/lib/radwerkstatt/radwerkstatt-html'
 import { parseRadwerkstattListe } from '@/lib/radwerkstatt/radwerkstatt-store'
 import { istPrivateOderLokaleIp, normalisiereProduktUrl, pruefeHttpUrlForm } from '@/lib/radwerkstatt/radwerkstatt-url'
@@ -16,6 +17,9 @@ assert(istPrivateOderLokaleIp('172.16.0.1'), 'rfc1918 172.16')
 assert(istPrivateOderLokaleIp('169.254.169.254'), 'link-local')
 assert(!istPrivateOderLokaleIp('1.1.1.1'), 'öffentlich')
 assert(istPrivateOderLokaleIp('::1'), 'ipv6 loopback')
+assert(bike24IdKandidaten('https://www.bike24.de/p1144433.html?origin=CP').includes('144433'), 'bike24 id')
+assert(bike24IdKandidaten('https://www.bike24.de/p1928720.html').includes('928720'), 'bike24 kette')
+assert(bike24IdKandidaten('https://www.bike-components.de/de/x').length === 0, 'kein bike24')
 
 let abgelehnt = false
 try {
