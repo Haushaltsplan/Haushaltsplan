@@ -28,27 +28,42 @@ export function moatShortSprechtext(zeilen: ShortSprechzeile[]): string {
   return zeilen.map((z) => z.text.trim()).join('\n')
 }
 
-/**
- * Regie nur für die Stimme. Untertitel bleiben der geschriebene Satz.
- * Gedankenstrich = kurze Pause vor der Zahl. Ausrufezeichen hebt die Zahl an.
- */
-export function regieFuerElevenLabs<T extends string>(zeilen: ShortSprechzeile<T>[]): ShortSprechzeile<T>[] {
-  return zeilen.map((z) => ({ ...z, text: regieZeile(String(z.id), z.text) }))
+export type StimmeRegie = { pause: number; betonung: number }
+
+/** 0 aus, bis 40 Komma, bis 70 Gedankenstrich, darüber eine längere Pause. */
+export function pauseZeichen(pause: number): string {
+  if (pause <= 0) return ''
+  if (pause < 41) return ', '
+  if (pause < 71) return ' — '
+  return ' — … '
 }
 
-function regieZeile(id: string, text: string): string {
+/**
+ * Regie nur für die Stimme. Untertitel bleiben der geschriebene Satz.
+ * Pause 50 und Betonung 100 sind der bisherige Stand.
+ */
+export function regieFuerElevenLabs<T extends string>(
+  zeilen: ShortSprechzeile<T>[],
+  regie: StimmeRegie = { pause: 50, betonung: 100 },
+): ShortSprechzeile<T>[] {
+  return zeilen.map((z) => ({ ...z, text: regieZeile(String(z.id), z.text, regie) }))
+}
+
+function regieZeile(id: string, text: string, regie: StimmeRegie): string {
   const t = text.replace(/\s+/g, ' ').trim()
-  if (id === 'proof') return regieBeweis(t)
-  if (id === 'verdict' && /\bno moat\b/i.test(t)) return t.replace(/no moat[.!]?/i, 'no moat!')
+  if (id === 'proof') return regieBeweis(t, regie)
+  if (regie.betonung > 0 && id === 'verdict' && /\bno moat\b/i.test(t)) return t.replace(/no moat[.!]?/i, 'no moat!')
   return t
 }
 
-function regieBeweis(text: string): string {
+function regieBeweis(text: string, regie: StimmeRegie): string {
   let t = text
-  if (!t.includes('—')) {
-    const mitPause = t.replace(/\s+(an?\s+\d)/i, ' — $1')
-    if (mitPause !== t) t = mitPause
+  const zeichen = pauseZeichen(regie.pause)
+  if (zeichen && !/[—…]/.test(t)) {
+    const mitPause = t.replace(/\s+(an?\s+\d)/i, `${zeichen}$1`)
+    if (mitPause !== t) t = mitPause.replace(/\s+/g, ' ').trim()
   }
+  if (regie.betonung <= 0) return t
   if (/\.$/.test(t)) return `${t.slice(0, -1)}!`
   if (!/[!?]$/.test(t)) return `${t}!`
   return t
@@ -58,6 +73,69 @@ export function moatShortSprechFingerprint(
   props: Pick<MoatShortProps, 'hook' | 'proof' | 'hookLoop' | 'pillars' | 'crack' | 'closing'>,
 ): string {
   return moatShortSprechtext(moatShortSprechzeilen(props))
+}
+
+export type StimmeRegler = {
+  stabilitaet: number
+  aehnlichkeit: number
+  stil: number
+  /** ElevenLabs speed, 0,70–1,20. */
+  tempo: number
+  pause: number
+  betonung: number
+}
+
+export const STIMME_REGLER_STANDARD: StimmeRegler = {
+  stabilitaet: 40,
+  aehnlichkeit: 80,
+  stil: 20,
+  tempo: 1.15,
+  pause: 50,
+  betonung: 100,
+}
+
+const STIMME_REGLER_KEYS: Record<keyof StimmeRegler, string> = {
+  stabilitaet: 'moat-short-stimme-stabilitaet',
+  aehnlichkeit: 'moat-short-stimme-aehnlichkeit',
+  stil: 'moat-short-stimme-stil',
+  tempo: 'moat-short-stimme-tempo',
+  pause: 'moat-short-stimme-pause',
+  betonung: 'moat-short-stimme-betonung',
+}
+
+function reglerZahl(roh: string | null, standard: number): number {
+  if (roh == null || roh.trim() === '') return standard
+  const n = Number(roh)
+  if (!Number.isFinite(n)) return standard
+  return Math.max(0, Math.min(100, Math.round(n)))
+}
+
+/** 1,15 bleibt 1,15. Werte über 3 sind die Balkenstellung 70–120. */
+export function tempoAusRegler(roh: string | number | null, standard = STIMME_REGLER_STANDARD.tempo): number {
+  if (roh == null || (typeof roh === 'string' && roh.trim() === '')) return standard
+  const n = typeof roh === 'number' ? roh : Number(roh)
+  if (!Number.isFinite(n)) return standard
+  const wert = n > 3 ? n / 100 : n
+  return Math.min(1.2, Math.max(0.7, Math.round(wert * 100) / 100))
+}
+
+/** 0 bleibt 0. Fehlt der Eintrag, gilt der Standard. */
+export function gespeicherteStimmeRegler(): StimmeRegler {
+  if (typeof window === 'undefined') return { ...STIMME_REGLER_STANDARD }
+  return {
+    stabilitaet: reglerZahl(window.localStorage.getItem(STIMME_REGLER_KEYS.stabilitaet), STIMME_REGLER_STANDARD.stabilitaet),
+    aehnlichkeit: reglerZahl(window.localStorage.getItem(STIMME_REGLER_KEYS.aehnlichkeit), STIMME_REGLER_STANDARD.aehnlichkeit),
+    stil: reglerZahl(window.localStorage.getItem(STIMME_REGLER_KEYS.stil), STIMME_REGLER_STANDARD.stil),
+    tempo: tempoAusRegler(window.localStorage.getItem(STIMME_REGLER_KEYS.tempo)),
+    pause: reglerZahl(window.localStorage.getItem(STIMME_REGLER_KEYS.pause), STIMME_REGLER_STANDARD.pause),
+    betonung: reglerZahl(window.localStorage.getItem(STIMME_REGLER_KEYS.betonung), STIMME_REGLER_STANDARD.betonung),
+  }
+}
+
+export function speichereStimmeRegler(teil: keyof StimmeRegler, wert: number): void {
+  if (typeof window === 'undefined') return
+  const gespeichert = teil === 'tempo' ? tempoAusRegler(wert) : reglerZahl(String(wert), STIMME_REGLER_STANDARD[teil])
+  window.localStorage.setItem(STIMME_REGLER_KEYS[teil], String(gespeichert))
 }
 
 export function woerterAusZeichen(

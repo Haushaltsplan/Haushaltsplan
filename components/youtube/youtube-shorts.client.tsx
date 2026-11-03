@@ -18,7 +18,7 @@ import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { istOffeneBruecke, kuerzeGesprocheneZeile, ohneKennzahlId, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
-import { moatShortSprechFingerprint } from '@/lib/youtube/moat-short-voice'
+import { gespeicherteStimmeRegler, moatShortSprechFingerprint, speichereStimmeRegler } from '@/lib/youtube/moat-short-voice'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortVoiceWort } from '@/remotion/moat-short-types'
@@ -267,6 +267,12 @@ export function YoutubeShortsClient() {
   const [stimmeLaedt, setStimmeLaedt] = useState(false)
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null)
   const [stimmeFp, setStimmeFp] = useState<string | null>(null)
+  const [stabilitaet, setStabilitaet] = useState(40)
+  const [aehnlichkeit, setAehnlichkeit] = useState(80)
+  const [stil, setStil] = useState(20)
+  const [tempo, setTempo] = useState(1.15)
+  const [pause, setPause] = useState(50)
+  const [betonung, setBetonung] = useState(100)
   const [moatWahl, setMoatWahl] = useState<MoatRichtung>('ki')
   const [richtungLaedt, setRichtungLaedt] = useState<Extract<MoatRichtung, 'groesser' | 'kleiner'> | null>(null)
 
@@ -292,6 +298,13 @@ export function YoutubeShortsClient() {
       setMusikPegel(v)
       setMusikPegelCommit(v)
     }
+    const regler = gespeicherteStimmeRegler()
+    setStabilitaet(regler.stabilitaet)
+    setAehnlichkeit(regler.aehnlichkeit)
+    setStil(regler.stil)
+    setTempo(regler.tempo)
+    setPause(regler.pause)
+    setBetonung(regler.betonung)
     void ladeYtStatus()
     void fetch('/api/youtube/voice')
       .then((r) => r.json() as Promise<{ configured?: boolean }>)
@@ -377,7 +390,17 @@ export function YoutubeShortsClient() {
       const res = await fetch('/api/youtube/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ props }),
+        body: JSON.stringify({
+          props,
+          stimme: {
+            stability: stabilitaet / 100,
+            similarity: aehnlichkeit / 100,
+            style: stil / 100,
+            speed: tempo,
+            pause,
+            betonung,
+          },
+        }),
       })
       const j = (await res.json()) as { ok?: boolean; audioBase64?: string; woerter?: MoatShortVoiceWort[]; fehler?: string; error?: string }
       if (!res.ok || !j.ok || !j.audioBase64 || !j.woerter?.length) {
@@ -1170,14 +1193,63 @@ export function YoutubeShortsClient() {
                   Stimme: ELEVENLABS_API_KEY und ELEVENLABS_VOICE_ID in .env.local — Klon bleibt bei ElevenLabs.
                 </p>
               ) : (
-                <button
-                  type="button"
-                  disabled={stimmeLaedt || !props}
-                  onClick={() => void stimmeErzeugen()}
-                  className="w-full rounded-xl border border-[var(--app-border)] px-4 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:opacity-50"
-                >
-                  {stimmeLaedt ? 'Stimme wird erzeugt…' : stimmePasst ? 'Stimme neu erzeugen' : 'Stimme erzeugen'}
-                </button>
+                <>
+                  <div className="space-y-2">
+                    {(
+                      [
+                        ['stabilitaet', 'Stabilität', stabilitaet, setStabilitaet, 0, 100, String(stabilitaet)],
+                        ['aehnlichkeit', 'Ähnlichkeit', aehnlichkeit, setAehnlichkeit, 0, 100, String(aehnlichkeit)],
+                        ['stil', 'Stil', stil, setStil, 0, 100, String(stil)],
+                        ['pause', 'Pause vor der Zahl', pause, setPause, 0, 100, pause <= 0 ? 'aus' : pause < 41 ? 'kurz' : pause < 71 ? 'Gedankenstrich' : 'lang'],
+                        ['betonung', 'Betonung der Zahl', betonung, setBetonung, 0, 100, betonung <= 0 ? 'Punkt' : 'Ausrufezeichen'],
+                      ] as const
+                    ).map(([teil, label, wert, setze, min, max, anzeige]) => (
+                      <label key={teil} className="block text-xs text-[var(--app-text-muted)]">
+                        {label} {anzeige}
+                        <input
+                          type="range"
+                          min={min}
+                          max={max}
+                          step={1}
+                          value={wert}
+                          onChange={(e) => {
+                            const v = Number(e.target.value)
+                            setze(v)
+                            speichereStimmeRegler(teil, v)
+                          }}
+                          className="mt-1 w-full accent-red-600"
+                        />
+                      </label>
+                    ))}
+                    <label className="block text-xs text-[var(--app-text-muted)]">
+                      Tempo {tempo.toFixed(2)}
+                      <input
+                        type="range"
+                        min={70}
+                        max={120}
+                        step={1}
+                        value={Math.round(tempo * 100)}
+                        onChange={(e) => {
+                          const v = Number(e.target.value) / 100
+                          setTempo(v)
+                          speichereStimmeRegler('tempo', v)
+                        }}
+                        className="mt-1 w-full accent-red-600"
+                      />
+                    </label>
+                    <p className="text-xs text-[var(--app-text-muted)]">
+                      Start ist der jetzige Klang: Stabilität 40, Ähnlichkeit 80, Stil 20, Tempo 1,15, Pause als Gedankenstrich, Zahl mit Ausrufezeichen. Tempo geht von 0,70 bis 1,20. Wirkt nach „Stimme neu erzeugen“.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={stimmeLaedt || !props}
+                    onClick={() => void stimmeErzeugen()}
+                    className="w-full rounded-xl border border-[var(--app-border)] px-4 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:opacity-50"
+                  >
+                    {stimmeLaedt ? 'Stimme wird erzeugt…' : stimmePasst ? 'Stimme neu erzeugen' : 'Stimme erzeugen'}
+                  </button>
+                </>
               )}
               {stimmePasst ? (
                 <p className="text-xs text-[var(--app-text-muted)]">Untertitel und Schnitte folgen der Aufnahme. Script ändern = Stimme neu.</p>

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { earningsShortSprechzeilen } from '@/lib/youtube/earnings-short-voice'
 import { moatShortSprechzeilen } from '@/lib/youtube/moat-short-voice'
+import { tempoAusRegler } from '@/lib/youtube/moat-short-voice'
 import { elevenLabsKonfiguriert, erzeugeMoatShortStimme, MOAT_STIMME_SPEED } from '@/lib/youtube/moat-short-voice-server'
 import type { EarningsShortProps } from '@/remotion/earnings-short-types'
 import type { MoatShortProps } from '@/remotion/moat-short-types'
@@ -35,11 +36,25 @@ export async function POST(req: Request) {
         ? earningsShortSprechzeilen(props as EarningsShortProps)
         : moatShortSprechzeilen(props as MoatShortProps)
     if (zeilen.length < 3) return { ok: false as const, fehler: 'Zu wenig Sprechtext.' }
+    const stimmeRoh = body.stimme
+    const roh = stimmeRoh && typeof stimmeRoh === 'object' ? (stimmeRoh as Record<string, unknown>) : null
+    const stimme = roh
+      ? {
+          stability: Number(roh.stability),
+          similarity: Number(roh.similarity),
+          style: Number(roh.style),
+        }
+      : undefined
+    const pause = roh && Number.isFinite(Number(roh.pause)) ? Math.max(0, Math.min(100, Number(roh.pause))) : 50
+    const betonung = roh && Number.isFinite(Number(roh.betonung)) ? Math.max(0, Math.min(100, Number(roh.betonung))) : 100
+    const tempo = art === 'moat' ? tempoAusRegler(roh ? Number(roh.speed) : null, MOAT_STIMME_SPEED) : 1
     try {
-      const stimme = await erzeugeMoatShortStimme(zeilen, art === 'moat' ? MOAT_STIMME_SPEED : 1, {
+      const audio = await erzeugeMoatShortStimme(zeilen, tempo, {
         regie: art === 'moat',
+        stimme: art === 'moat' ? stimme : undefined,
+        regieWerte: art === 'moat' ? { pause, betonung } : undefined,
       })
-      return { ok: true as const, ...stimme }
+      return { ok: true as const, ...audio }
     } catch (e) {
       return { ok: false as const, fehler: e instanceof Error ? e.message : 'Stimme fehlgeschlagen' }
     }
