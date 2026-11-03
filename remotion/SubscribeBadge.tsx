@@ -3,6 +3,9 @@ import { SHORT_MONO } from './short-look'
 
 /** Auf dem 1080er-Frame, damit die Zeile unter dem Stempel lesbar bleibt. */
 const SCHRIFT = 26
+/** Gleiche Innenluft links. Rechts fehlt die mitlaufende Laufweite, sonst steht die Zeile optisch links. */
+const PAD_X = 20
+const LAUFWEITE = 0.16
 
 /**
  * Erscheint kurz nach dem Verdict-Stempel.
@@ -34,13 +37,16 @@ export function SubscribeBadge() {
 
   return (
     <div
-      className="mx-auto mt-4 inline-flex items-center gap-2.5 rounded-full border border-neutral-800 bg-neutral-950/90 px-4 py-2 font-mono uppercase tracking-wider text-neutral-200 shadow-lg backdrop-blur-sm"
+      className="mx-auto mt-4 inline-flex items-center gap-2.5 rounded-full border border-neutral-800 bg-neutral-950/90 py-2 pl-5 pr-4 font-mono uppercase tracking-wider text-neutral-200 shadow-lg backdrop-blur-sm"
       style={{
         marginTop: 16,
         display: 'inline-flex',
         alignItems: 'center',
         gap: 12,
-        padding: '10px 18px',
+        paddingTop: 10,
+        paddingBottom: 10,
+        paddingLeft: PAD_X,
+        paddingRight: PAD_X - SCHRIFT * LAUFWEITE,
         borderRadius: 999,
         border: '1px solid #262626',
         background: 'rgba(10, 10, 10, 0.9)',
@@ -48,7 +54,7 @@ export function SubscribeBadge() {
         backdropFilter: 'blur(6px)',
         fontFamily: SHORT_MONO,
         fontSize: SCHRIFT,
-        letterSpacing: '0.16em',
+        letterSpacing: `${LAUFWEITE}em`,
         textTransform: 'uppercase',
         color: '#E5E5E5',
         opacity,

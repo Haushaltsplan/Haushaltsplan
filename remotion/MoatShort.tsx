@@ -35,11 +35,12 @@ const BRAND = '#E9B44C'
 const VERDICT_FARBE: Record<MoatShortVerdict, string> = { wide: '#6FD39A', narrow: '#E9B44C', none: '#EF6A5A' }
 const VERDICT_LABEL: Record<MoatShortVerdict, string> = { wide: 'Wide moat', narrow: 'Narrow moat', none: 'No moat' }
 const STEMPEL_AUFPRALL = 9
-/** YouTube-UI: oben 15 %, unten 22 %, rechts 15 % für die Buttons. */
+/** YouTube-UI: oben 15 %, unten 22 %. Links und rechts gleich 15 %, sonst liegt die Mitte links der Leinwand. */
 const SAFE_TOP = Math.round(MOAT_SHORT_HEIGHT * 0.15)
 const SAFE_BOTTOM = Math.round(MOAT_SHORT_HEIGHT * 0.22)
-const SAFE_LEFT = 80
-const SAFE_RIGHT = Math.round(1080 * 0.15)
+const SAFE_X = Math.round(1080 * 0.15)
+const SAFE_LEFT = SAFE_X
+const SAFE_RIGHT = SAFE_X
 const CAPTION_YELLOW = '#FFE14A'
 const CAPTION_SIZE = 76
 const CAPTION_LINE = 1.05
