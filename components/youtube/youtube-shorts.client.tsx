@@ -491,7 +491,9 @@ export function YoutubeShortsClient() {
       setVideoId(id)
       toast.success(privacy === 'unlisted' ? 'Unlisted auf YouTube.' : 'Auf YouTube hochgeladen.')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Upload fehlgeschlagen.')
+      const msg = e instanceof Error ? e.message : 'Upload fehlgeschlagen.'
+      if (/erneut verbinden/i.test(msg)) setYt((s) => ({ ...s, connected: false, channelTitle: null }))
+      toast.error(msg)
     } finally {
       setUploadLaedt(false)
     }
@@ -776,7 +778,9 @@ export function YoutubeShortsClient() {
         </div>
       </section>
 
-      {modus === 'earnings' ? <EarningsShortsClient yt={yt} /> : null}
+      {modus === 'earnings' ? (
+        <EarningsShortsClient yt={yt} onVerbindungWeg={() => setYt((s) => ({ ...s, connected: false, channelTitle: null }))} />
+      ) : null}
 
       {modus === 'moat' ? (
       <>

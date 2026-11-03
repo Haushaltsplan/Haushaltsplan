@@ -67,6 +67,11 @@ export async function leseYoutubeTokensAdmin(ownerUserId: string): Promise<Youtu
   }
 }
 
+export async function loescheYoutubeTokensAdmin(ownerUserId: string): Promise<void> {
+  if (!ownerUserId) return
+  await createSupabaseAdmin().from('youtube_oauth_tokens').delete().eq('owner_user_id', ownerUserId)
+}
+
 export async function loescheYoutubeTokensDb(sb: SupabaseClient): Promise<void> {
   const {
     data: { user },

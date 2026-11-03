@@ -103,7 +103,7 @@ function beispielErgebnis(): EarningsShortErgebnis {
 const feldKlasse =
   'w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] focus:outline-none focus:ring-2 focus:ring-red-500/40'
 
-export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
+export function EarningsShortsClient({ yt, onVerbindungWeg }: { yt: YoutubeKanalStand; onVerbindungWeg?: () => void }) {
   const [ticker, setTicker] = useState('')
   const [firmenname, setFirmenname] = useState('')
   const [isin, setIsin] = useState<string | null>(null)
@@ -259,7 +259,9 @@ export function EarningsShortsClient({ yt }: { yt: YoutubeKanalStand }) {
       setVideoId(id)
       toast.success(privacy === 'unlisted' ? 'Unlisted auf YouTube.' : 'Auf YouTube hochgeladen.')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Upload fehlgeschlagen.')
+      const msg = e instanceof Error ? e.message : 'Upload fehlgeschlagen.'
+      if (/erneut verbinden/i.test(msg)) onVerbindungWeg?.()
+      toast.error(msg)
     } finally {
       setUploadLaedt(false)
     }

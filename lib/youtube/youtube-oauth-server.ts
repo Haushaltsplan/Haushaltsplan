@@ -10,6 +10,7 @@ import { createHash, randomBytes } from 'crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   leseYoutubeTokensAdmin,
+  loescheYoutubeTokensAdmin,
   loescheYoutubeTokensDb,
   speichereYoutubeTokensAdmin,
   type YoutubeStoredTokens,
@@ -116,10 +117,19 @@ export async function frischesYoutubeAccessToken(ownerUserId: string): Promise<Y
     client_id: youtubeClientId(),
     client_secret: youtubeClientSecret(),
   })
-  const neu = await tokenRequest(body, bisher)
-  if (!neu.refreshToken) neu.refreshToken = bisher.refreshToken
-  await speichereYoutubeTokensAdmin(ownerUserId, neu)
-  return neu
+  try {
+    const neu = await tokenRequest(body, bisher)
+    if (!neu.refreshToken) neu.refreshToken = bisher.refreshToken
+    await speichereYoutubeTokensAdmin(ownerUserId, neu)
+    return neu
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : ''
+    if (/invalid_grant/i.test(msg)) {
+      await loescheYoutubeTokensAdmin(ownerUserId)
+      throw new Error('YouTube-Zugang ist abgelaufen oder widerrufen. Bitte den Kanal erneut verbinden.')
+    }
+    throw e
+  }
 }
 
 async function ladeKanalInfo(accessToken: string): Promise<{ channelId: string | null; channelTitle: string | null }> {
