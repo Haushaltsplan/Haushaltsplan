@@ -20,6 +20,7 @@ import { gesamtScoreAusPfeilern } from '../lib/portfolio-analyse/moat-ki-types'
 import { ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-script'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline } from './moat-short-timeline'
+import { SubscribeBadge } from './SubscribeBadge'
 import { MOAT_SHORT_HEIGHT, type MoatShortBeat, type MoatShortProps, type MoatShortVerdict } from './moat-short-types'
 
 const { fontFamily: DISPLAY } = loadInterTight('normal', { weights: ['600', '800', '900'], subsets: ['latin'] })
@@ -470,6 +471,7 @@ function VerdictSzene({ verdict, score, fadeOut }: { verdict: MoatShortVerdict; 
           {score.toFixed(1)}
           <span style={{ color: MUTED, fontSize: 30 }}> / 10</span>
         </div>
+        <SubscribeBadge />
       </div>
     </AbsoluteFill>
   )
