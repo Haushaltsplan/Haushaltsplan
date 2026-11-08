@@ -259,7 +259,7 @@ function Ton({
   dauer: number
   beats: MoatShortBeat[]
 }) {
-  /** SFX leise unter der Stimme. Der erste Frame bleibt ohne Whoosh, damit das erste Wort frei ist. */
+  /** Schnitt-Sounds bleiben leise. Der Hook-Impact liegt nur auf Frame 0, unter der Stimme. */
   const sfxPegel = 0.21
   const whooshPegel = 0.1
   const cues: { from: number; src: string; volume: number }[] = []
@@ -286,6 +286,11 @@ function Ton({
         />
       ) : null}
       {voiceSrc ? <Stimme src={voiceSrc} trim={voiceTrim} schnitte={voiceSchnitte} dauer={dauer} /> : null}
+      {sfx ? (
+        <Sequence from={0} durationInFrames={8} layout="none">
+          <Audio src={hookImpactSrc()} volume={0.5} />
+        </Sequence>
+      ) : null}
       {sfx
         ? cues.map((c, i) => (
             <Sequence key={i} from={c.from} durationInFrames={24} layout="none">
@@ -302,6 +307,13 @@ function logoSrc(url: string): string {
   const play = logoPlaySrc(url)
   if (play && (/^(data:|blob:|https?:)/i.test(play) || play.startsWith('/api/'))) return play
   return staticFile((play ?? url).replace(/^\/+/, ''))
+}
+
+function hookImpactSrc(): string {
+  if (typeof window !== 'undefined' && !('remotion_staticBase' in window && window.remotion_staticBase)) {
+    return `${window.location.origin}/sfx/hook-impact.mp3`
+  }
+  return staticFile('sfx/hook-impact.mp3')
 }
 
 function stimmeAudioSrc(src: string): string {

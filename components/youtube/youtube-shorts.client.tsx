@@ -8,7 +8,7 @@ import { YoutubeEigeneTags } from '@/components/youtube/youtube-eigene-tags'
 import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { gesamtScoreAusPfeilern } from '@/lib/portfolio-analyse/moat-ki-types'
-import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
+import type { MoatShortAntwort, MoatShortErgebnis } from '@/lib/youtube/moat-short-types'
 import { gespeicherterMusikPegel, ladeVorhandeneTracks, liesMusikDatei, musikTrack, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { phrasePasst } from '@/lib/youtube/youtube-keywords'
 import { tagsSichtbar } from '@/lib/youtube/youtube-tags'
@@ -54,6 +54,35 @@ const WINKEL_LABEL: Record<string, string> = {
   number_shock: 'Zahl schockt',
   contrast: 'Kontrast',
   stakes: 'Was auf dem Spiel steht',
+}
+
+const HOOK_PRESETS = [
+  {
+    winkel: 'number_shock',
+    frage: "Why do McDonald's's fees outlast the product?",
+    antwort: 'Franchise fees drive a massive 46.2% operating margin, proving unmatched pricing power.',
+  },
+  {
+    winkel: 'contrast',
+    frage: "Is McDonald's a restaurant or a landlord?",
+    antwort: 'Land ownership drives a massive 46.2% operating margin, proving structural durability.',
+  },
+  {
+    winkel: 'stakes',
+    frage: "How deep is McDonald's real estate monopoly?",
+    antwort: 'Network effects drive a massive 46.2% operating margin, proving unmatched pricing power.',
+  },
+] as const
+
+function scriptZumKopieren(p: MoatShortProps): string {
+  return [
+    `Blickfang: ${p.kicker}`,
+    `Frage: ${p.hook}`,
+    `Antwort: ${p.proof}`,
+    ...p.pillars.map((x) => `${x.label}: ${x.line}`),
+    `Crack: ${p.crack}`,
+    `Landung: ${p.closing}`,
+  ].join('\n')
 }
 
 const MoatShortPreview = dynamic(() => import('@/components/youtube/moat-short-preview.client'), {
@@ -558,21 +587,10 @@ export function YoutubeShortsClient() {
     }
   }
 
-  function waehleHook(h: MoatShortHookVariante) {
-    const m = ergebnis?.metriken.find((x) => x.id === h.metrikId)
-    setProps((p) =>
-      p
-        ? {
-            ...p,
-            kicker: h.kicker,
-            hook: h.claim,
-            proof: h.proof,
-            hookLoop: h.loop,
-            closing: h.land,
-            ...(m ? { metricValue: m.value, metricLabel: m.label } : {}),
-          }
-        : p,
-    )
+  function waehleHook(winkel: (typeof HOOK_PRESETS)[number]['winkel']) {
+    const preset = HOOK_PRESETS.find((h) => h.winkel === winkel)
+    if (!preset) return
+    setProps((p) => (p ? { ...p, hook: preset.frage, proof: preset.antwort } : p))
   }
 
   async function dateiGewaehlt(datei: File | undefined) {
@@ -990,7 +1008,21 @@ export function YoutubeShortsClient() {
 
               <div className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_16px_40px_rgba(0,0,0,0.35)] backdrop-blur-md">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-neutral-400">Script studio</p>
+                  <div className="flex items-center gap-2">
+                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-neutral-400">Script studio</p>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void navigator.clipboard.writeText(scriptZumKopieren(props)).then(
+                          () => toast.success('Script kopiert'),
+                          () => toast.error('Kopieren fehlgeschlagen.'),
+                        )
+                      }
+                      className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-200 hover:border-neutral-600"
+                    >
+                      Script kopieren
+                    </button>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${dauerImFenster ? 'border-emerald-500/40 text-emerald-200' : 'border-amber-500/40 text-amber-200'}`}>
                       ~{sprechSekunden.toFixed(0)}s · Ziel 27–30s
@@ -1002,14 +1034,14 @@ export function YoutubeShortsClient() {
                 </div>
                 {doppelHinweis ? <p className="font-mono text-[11px] text-amber-200/90">{doppelHinweis}</p> : null}
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                {ergebnis.hookVarianten.map((h, i) => {
-                  const aktiv = h.claim === props.hook && h.proof === props.proof
+                {HOOK_PRESETS.map((h) => {
+                  const aktiv = props.hook === h.frage && props.proof === h.antwort
                   return (
                     <button
-                      key={i}
+                      key={h.winkel}
                       type="button"
                       aria-pressed={aktiv}
-                      onClick={() => waehleHook(h)}
+                      onClick={() => waehleHook(h.winkel)}
                       className={`rounded-xl border px-3 py-3 text-left transition ${
                         aktiv
                           ? 'border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_24px_rgba(52,211,153,0.16)]'
@@ -1017,11 +1049,10 @@ export function YoutubeShortsClient() {
                       }`}
                     >
                       <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">
-                        {WINKEL_LABEL[h.winkel] ?? h.winkel}
+                        {WINKEL_LABEL[h.winkel]}
                       </span>
-                      {h.kicker ? <span className="mt-1 block font-mono text-[10px] uppercase tracking-wider text-neutral-500">{h.kicker}</span> : null}
-                      <span className="mt-2 block text-sm font-medium text-neutral-100">{h.claim}</span>
-                      <span className="mt-1 block font-mono text-[11px] leading-relaxed text-neutral-400">{h.proof}</span>
+                      <span className="mt-2 block text-sm font-medium text-neutral-100">{h.frage}</span>
+                      <span className="mt-1 block font-mono text-[11px] leading-relaxed text-neutral-400">{h.antwort}</span>
                     </button>
                   )
                 })}
