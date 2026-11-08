@@ -6,6 +6,7 @@ import {
   type MoatShortCaption,
   type MoatShortProps,
   type MoatShortTimeline,
+  type MoatShortVoiceSchnitt,
   type MoatShortVoiceWort,
 } from './moat-short-types'
 
@@ -157,6 +158,69 @@ function ersterBlockAufFrameNull(captions: MoatShortCaption[]): MoatShortCaption
   ]
 }
 
+const ZAHL_PAUSE_MS = 180
+
+function zahlKern(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9.]/g, '')
+}
+
+/** Wortindex der Kennzahl. Steht davor „a“ oder „an“, beginnt die Phrase dort. */
+function indexDerZahl(worte: { text: string }[], wert: string): number {
+  const ziel = zahlKern(wert)
+  if (!ziel) return -1
+  const idx = worte.findIndex((w) => {
+    const kern = zahlKern(w.text)
+    return kern === ziel || kern.startsWith(ziel)
+  })
+  if (idx <= 0) return idx
+  const davor = zahlKern(worte[idx - 1]!.text)
+  return davor === 'a' || davor === 'an' ? idx - 1 : idx
+}
+
+function metricFrameAusWoertern(worte: MoatShortVoiceWort[], wert: string): number | null {
+  const idx = indexDerZahl(worte, wert)
+  if (idx < 0) return null
+  return msZuFrame(worte[idx]!.startMs)
+}
+
+/**
+ * Eine Hörpause direkt vor der Kennzahl fällt aus der Timeline.
+ * Die Wortzeiten dahinter rücken auf das Ende des Wortes davor.
+ * Die Quelle-Frames der Pause bleiben als Schnitt für die Audiodatei.
+ */
+function schliessePauseVorZahl(
+  zeilen: { id: string }[],
+  geschoben: Map<string, MoatShortVoiceWort[]>,
+  wert: string,
+  offsetMs: number,
+): { metricFrame: number | null; schnitte: MoatShortVoiceSchnitt[] } {
+  const proof = zeilen.find((z) => z.id === 'proof')
+  const worte = proof ? geschoben.get(proof.id) : undefined
+  if (!worte?.length || !wert) return { metricFrame: null, schnitte: [] }
+  const idx = indexDerZahl(worte, wert)
+  if (idx <= 0) return { metricFrame: metricFrameAusWoertern(worte, wert), schnitte: [] }
+  const davor = worte[idx - 1]!
+  const zahl = worte[idx]!
+  const zahlStart = zahl.startMs
+  const luecke = zahlStart - davor.endMs
+  if (luecke < ZAHL_PAUSE_MS) return { metricFrame: msZuFrame(zahlStart), schnitte: [] }
+  const vonFrame = Math.round(((davor.endMs + offsetMs) / 1000) * MOAT_SHORT_FPS)
+  const bisFrame = Math.round(((zahlStart + offsetMs) / 1000) * MOAT_SHORT_FPS)
+  for (const z of zeilen) {
+    const liste = geschoben.get(z.id)
+    if (!liste) continue
+    for (const w of liste) {
+      if (w.startMs < zahlStart) continue
+      w.startMs -= luecke
+      w.endMs -= luecke
+    }
+  }
+  return {
+    metricFrame: msZuFrame(zahl.startMs),
+    schnitte: bisFrame > vonFrame ? [{ vonFrame, bisFrame }] : [],
+  }
+}
+
 function timelineAusAlignment(props: MoatShortProps): MoatShortTimeline | null {
   const alignment = props.voiceAlignment
   if (!alignment?.length) return null
@@ -177,6 +241,7 @@ function timelineAusAlignment(props: MoatShortProps): MoatShortTimeline | null {
     ]),
   )
 
+  const { metricFrame, schnitte } = schliessePauseVorZahl(zeilen, geschoben, props.metricValue, offset)
   const beats: MoatShortBeat[] = []
   const captions: MoatShortCaption[] = []
   const starts = zeilen.map((z, i) => {
@@ -197,7 +262,14 @@ function timelineAusAlignment(props: MoatShortProps): MoatShortTimeline | null {
   }
 
   const cursor = beats[beats.length - 1]!.from + beats[beats.length - 1]!.duration
-  return schliesseTimeline(beats, ersterBlockAufFrameNull(captions), cursor, Math.round((offset / 1000) * MOAT_SHORT_FPS))
+  return schliesseTimeline(
+    beats,
+    ersterBlockAufFrameNull(captions),
+    cursor,
+    Math.round((offset / 1000) * MOAT_SHORT_FPS),
+    schnitte,
+    metricFrame,
+  )
 }
 
 function timelineGeschaetzt(props: MoatShortProps): MoatShortTimeline {
@@ -216,7 +288,19 @@ function timelineGeschaetzt(props: MoatShortProps): MoatShortTimeline {
     cursor += duration
   }
 
-  return schliesseTimeline(beats, ersterBlockAufFrameNull(captions), cursor, 0)
+  const proof = beats.find((b) => b.id === 'proof')
+  const metricFrame = proof ? metricFrameGeschaetzt(proof.text, proof.from, props.metricValue) : null
+  return schliesseTimeline(beats, ersterBlockAufFrameNull(captions), cursor, 0, [], metricFrame)
+}
+
+function metricFrameGeschaetzt(text: string, from: number, wert: string): number | null {
+  const liste = woerter(text).map((wort, i) => ({
+    text: wort,
+    startMs: i * (1000 / WOERTER_PRO_SEKUNDE),
+    endMs: (i + 1) * (1000 / WOERTER_PRO_SEKUNDE),
+  }))
+  const frame = metricFrameAusWoertern(liste, wert)
+  return frame == null ? null : from + frame
 }
 
 function legeCaptionsOhneUeberlappung(captions: MoatShortCaption[]): MoatShortCaption[] {
@@ -257,12 +341,14 @@ function schliesseTimeline(
   captions: MoatShortCaption[],
   cursor: number,
   voiceTrimFrames: number,
+  voiceSchnitte: MoatShortVoiceSchnitt[],
+  metricFrame: number | null,
 ): MoatShortTimeline {
   const durationInFrames = Math.max(1, cursor)
   const saubereCaptions = legeCaptionsOhneUeberlappung(captions)
     .map((c) => ({ ...c, duration: Math.min(c.duration, Math.max(1, durationInFrames - c.from)) }))
     .filter((c) => c.from < durationInFrames && c.duration >= 1)
-  return { beats, captions: saubereCaptions, durationInFrames, voiceTrimFrames }
+  return { beats, captions: saubereCaptions, durationInFrames, voiceTrimFrames, voiceSchnitte, metricFrame }
 }
 
 export function berechneMoatShortTimeline(props: MoatShortProps): MoatShortTimeline {

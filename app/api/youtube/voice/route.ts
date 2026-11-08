@@ -45,7 +45,7 @@ export async function POST(req: Request) {
           style: Number(roh.style),
         }
       : undefined
-    const pause = roh && Number.isFinite(Number(roh.pause)) ? Math.max(0, Math.min(100, Number(roh.pause))) : 50
+    const pause = roh && Number.isFinite(Number(roh.pause)) ? Math.max(0, Math.min(100, Number(roh.pause))) : 0
     const betonung = roh && Number.isFinite(Number(roh.betonung)) ? Math.max(0, Math.min(100, Number(roh.betonung))) : 100
     const tempo = art === 'moat' ? tempoAusRegler(roh ? Number(roh.speed) : null, MOAT_STIMME_SPEED) : 1
     try {

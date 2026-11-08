@@ -248,6 +248,20 @@ function artikelVorGesprochen(wert: string): 'a' | 'an' {
   return 'a'
 }
 
+/** „print. A 71.5%“ und „print — a 82.4%“ werden ein Atemzug: „print an 82.4%“. */
+export function flussZurZahl(text: string): string {
+  const t = text
+    .replace(/\s+/g, ' ')
+    .replace(/[.!?…,:;—–-]+\s+(?:an?\s+)?(\d[\d.]*%?)/gi, (_m, num: string) => {
+      const wert = /%$/.test(num) ? num : `${num}%`
+      return ` ${artikelVorGesprochen(wert)} ${num}`
+    })
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([.!?])/g, '$1')
+    .trim()
+  return t
+}
+
 function kennzahlGesprochen(label: string, id: string): string {
   return (KENNZAHL_NAME[id] ?? label).replace(/\s+/g, ' ').trim()
 }
@@ -288,7 +302,7 @@ export type MoatUrsacheId = 'network' | 'switching' | 'patent' | 'barrier'
  */
 export function moatUrsacheAusText(text: string): MoatUrsacheId {
   const t = text.toLowerCase()
-  if (/pharma|biotech|biotechn|medtech|medizintechnik|medizinprodukt|arznei|wirkstoff|therapeutic|implant/.test(t)) {
+  if (/pharma|biotech|biotechn|medtech|medizintechnik|medizinprodukt|arznei|wirkstoff|therapeutic|implant|veterin|tierarz|tiergesundheit|animal health|animal-health/.test(t)) {
     return 'patent'
   }
   if (/zahlungs|payment|kreditkarte|kartenzahlung|card network|interchange|bezahl|acquiring|netzwerkeffekt|network effect/.test(t)) {
@@ -308,10 +322,77 @@ function druckKopf(ursache: MoatUrsacheId): string {
   return 'High barrier to entry lets them print'
 }
 
+function analyseKlausel(label: string, id: string): string {
+  const art = hookKennzahlArt(label, id)
+  if (art === 'marge') return ', proving strong pricing power'
+  if (art === 'kapital') return ', proving the market lock'
+  return ', and that lead holds'
+}
+
+/** Die Kennzahl steht einmal, der Nebensatz folgt im selben Atemzug. */
+function mitAnalyse(satz: string, label: string, id: string): string {
+  const t = flussZurZahl(satz)
+  if (!t) return t
+  if (/,/.test(t) || /\bproving\b/i.test(t)) return /[.!?]$/.test(t) ? t : `${t}.`
+  return `${t.replace(/[.]+$/g, '').trim()}${analyseKlausel(label, id)}.`
+}
+
+function escapeReg(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** „a 71.5% gross margin“ — Artikel, Zahl, dann der Kennzahlname. */
+function kennzahlWendung(wert: string, namen: string[]): RegExp | null {
+  const v = wert.trim()
+  if (!v) return null
+  const namenRe = [...new Set(namen.map((n) => n.trim()).filter((n) => n.length > 2))].map((n) =>
+    n.split(/\s+/).map(escapeReg).join('\\s+'),
+  )
+  if (!namenRe.length) return null
+  const kern = `${escapeReg(v)}\\s+(?:${namenRe.join('|')})`
+  return new RegExp(`\\b(?:an?|the)\\s+${kern}\\b|\\b${kern}\\b`, 'i')
+}
+
+function wendungFuer(wert: string, label: string, id: string): RegExp | null {
+  return kennzahlWendung(wert, [label, kennzahlGesprochen(label, id)])
+}
+
+/** Zweites Vorkommen derselben Wendung im selben Satz streichen. */
+export function satzOhneDoppelteZahl(text: string, wert: string, label: string, id = ''): string {
+  const re = wendungFuer(wert, label, id)
+  if (!re) return text
+  const treffer = text.match(new RegExp(re.source, 'gi'))
+  if (!treffer || treffer.length < 2) return text
+  let gesehen = 0
+  return text
+    .replace(new RegExp(re.source, 'gi'), (fund) => (++gesehen === 1 ? fund : ''))
+    .replace(/\.\s+(proves|shows|means)\b/i, ', proving')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/,\s*,/g, ',')
+    .trim()
+}
+
+/**
+ * Steht die Wendung schon im Satz davor, fällt sie aus dem nächsten.
+ * „A 71.5% gross margin proves pricing power.“ wird zu „That proves pricing power.“
+ */
+export function ohneDoppelteWendung(vorher: string, zeile: string, wert: string, label: string, id = ''): string {
+  const re = wendungFuer(wert, label, id)
+  if (!re || !re.test(vorher) || !re.test(zeile)) return zeile
+  const roh = zeile.replace(/\s+/g, ' ').trim()
+  const amStart = new RegExp(`^(?:${re.source})`, 'i')
+  let t = amStart.test(roh) ? roh.replace(amStart, 'That') : roh.replace(re, 'that')
+  t = t.replace(/\s+/g, ' ').replace(/\s+([,.;!?])/g, '$1').replace(/,\s*,/g, ',').trim()
+  if (!/[.!?]$/.test(t)) t = `${t}.`
+  if (t.split(/\s+/).filter(Boolean).length < 4) return zeile
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 export function antwortFuerKennzahl(wert: string, label: string, id = '', kontext = ''): string {
   const name = kennzahlGesprochen(label, id)
   const artikel = artikelVorGesprochen(wert)
-  return `${druckKopf(moatUrsacheAusText(kontext))} ${artikel} ${wert} ${name}.`
+  return mitAnalyse(`${druckKopf(moatUrsacheAusText(kontext))} ${artikel} ${wert} ${name}.`, label, id)
 }
 
 function proofIstDruck(text: string, wert: string, label: string, id: string): boolean {
@@ -350,6 +431,7 @@ export function hookPaar(
   }
   if (satzUnbrauchbar(frage)) frage = frageFuerKennzahl(firma, label, id)
   if (!proofIstDruck(antwort, wert, label, id)) antwort = antwortFuerKennzahl(wert, label, id, kontext)
+  antwort = flussZurZahl(mitAnalyse(satzOhneDoppelteZahl(antwort, wert, label, id), label, id))
   return { claim: frage, proof: antwort }
 }
 

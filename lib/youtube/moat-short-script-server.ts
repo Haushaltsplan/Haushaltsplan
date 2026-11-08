@@ -22,6 +22,7 @@ import {
   ohneKennzahlId,
   ohneKiBindestrich,
   hookPaar,
+  ohneDoppelteWendung,
   kickerFuerBild,
   kuerzeGesprocheneZeile,
   landZurFrage,
@@ -178,17 +179,17 @@ Causality
 - A verb such as losing, charging, or paying needs its object. "losing market share", never "losing".
 - kicker: 2 to 5 words, under 28 characters, one line a viewer can read in under a second. On screen only. Never spoken. No invented number, no market cap, no dollar figure unless that exact figure is in the metrics list.
 - claim: the first spoken line. 6 to 10 words, so the number lands around second 3 to 4. A complete question. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know".
-- proof: the second spoken line, around second 3. Shape: [moat cause] + "lets them print a" + the metric, exactly as written, with its English name. 8 to 14 words. Plural causes use "let" ("costs let"). Never "Because a 47.1%". Never the metricId. Never "an ltm_ebit of 47.1%".
+- proof: the second spoken line, around second 3. One sentence, one breath. Shape: [moat cause] + "lets them print a" + the metric immediately, then a comma and the analysis. Example: "Patented tech lets them print a 71.5% gross margin, proving strong pricing power." Numbers 8, 11, 18 and 80-89 take "an" ("print an 82.4% gross margin"). No period, comma, dash, or ellipsis between "print" and the number. Never "lets them print. A 71.5%". Plural causes use "let" ("costs let"). Never "Because a 47.1%". Never the metricId. Never "an ltm_ebit of 47.1%". Never say "a [X]% [metric]" again in this sentence or in the next one.
 
 ## Story order, do not skip ahead
 There is no "what they sell" line. Do not describe the business model as its own beat. There is no teaser between the number and the pillars. Do not say "one thing could break that lock" or hint at the threat before the crack.
-1. claim (the question, no number). Logo and the on-screen kicker only. No pillar, no score, no bar yet.
-2. proof (the number, as the answer)
+1. claim (the question, no number). The number is already on screen beside the question. No pillar, no score, no bar yet. The spoken question still does not say the number.
+2. proof (say the number once, then the analysis in the same sentence)
 3. four pillars, in order, each its own sentence
 4. crack (the FIRST and only time the threat is named)
 5. land (bridge into the question, then stop)
 
-The number is the proof, not the hook. It is spoken only in proof, around the third second. The crack comes after all four pillars.
+The number is spoken once, in proof, around the third second, then the analysis follows in that same sentence. The next sentence must not repeat that metric phrase. The crack comes after all four pillars.
 
 ## Each hook
 Write THREE hooks. Each has these fields:
@@ -211,7 +212,7 @@ Good: "Government fee caps and instant payments threaten margins."
 Bad: "Stricter government fee caps and direct account to account payment rails could compress margins."
 Same move for every company: name the threat and stop. Do not explain the mechanism in the same sentence.
 
-- pillarLines: one per pillar, 8-9 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none".
+- pillarLines: one per pillar, 8-9 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none". The first pillar must not repeat the proof's metric phrase ("a 71.5% gross margin" said once, then stop). A later pillar may use a different metric.
 - crack: 8-9 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. No sign-off.
 
 ## Hard rules
@@ -469,6 +470,15 @@ export async function generiereMoatShort(opts: {
   )
   props.hook = repariert.claim
   props.proof = repariert.proof
+  let vorher = props.proof
+  props.pillars = props.pillars.map((p) => {
+    const line = ohneDoppelteWendung(vorher, p.line, props.metricValue, props.metricLabel, start.metrikId)
+    vorher = line
+    return line === p.line ? p : { ...p, line }
+  })
+  props.crack = ohneDoppelteWendung(vorher, props.crack, props.metricValue, props.metricLabel, start.metrikId)
+  vorher = props.crack
+  props.closing = ohneDoppelteWendung(vorher, props.closing, props.metricValue, props.metricLabel, start.metrikId)
   start.kicker = props.kicker
   start.claim = props.hook
   start.proof = props.proof

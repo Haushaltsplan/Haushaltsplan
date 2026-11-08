@@ -21,7 +21,7 @@ import { ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-scr
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline } from './moat-short-timeline'
 import { SubscribeBadge } from './SubscribeBadge'
-import { MOAT_SHORT_HEIGHT, type MoatShortBeat, type MoatShortProps, type MoatShortVerdict } from './moat-short-types'
+import { MOAT_SHORT_HEIGHT, type MoatShortBeat, type MoatShortProps, type MoatShortTimeline, type MoatShortVerdict } from './moat-short-types'
 
 const { fontFamily: DISPLAY } = loadInterTight('normal', { weights: ['600', '800', '900'], subsets: ['latin'] })
 const { fontFamily: SANS } = loadInter('normal', { weights: ['600', '700'], subsets: ['latin'] })
@@ -142,7 +142,13 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
           logoUrl={props.logoUrl}
           value={props.metricValue}
           label={props.metricLabel}
-          proofAb={proof && proof.text.trim() ? proof.from - hook.from : 0}
+          proofAb={
+            timeline.metricFrame != null
+              ? Math.max(0, timeline.metricFrame - hook.from)
+              : proof && proof.text.trim()
+                ? proof.from - hook.from
+                : 0
+          }
         />
       </Sequence>
       <Sequence from={p0.from} durationInFrames={p3.from + p3.duration - p0.from} layout="none">
@@ -181,9 +187,52 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
         sfx={props.sfx}
         voiceSrc={props.voiceSrc}
         voiceTrim={timeline.voiceTrimFrames}
+        voiceSchnitte={timeline.voiceSchnitte}
+        metricFrame={timeline.metricFrame}
+        dauer={durationInFrames}
         beats={beats}
       />
     </AbsoluteFill>
+  )
+}
+
+function Stimme({
+  src,
+  trim,
+  schnitte,
+  dauer,
+}: {
+  src: string
+  trim: number
+  schnitte: MoatShortTimeline['voiceSchnitte']
+  dauer: number
+}) {
+  const datei = stimmeAudioSrc(src)
+  const lead = Math.max(0, trim)
+  const cuts = schnitte.filter((s) => s.bisFrame > s.vonFrame && s.vonFrame >= lead)
+  if (!cuts.length) {
+    return <Audio src={datei} volume={1} trimBefore={lead > 0 ? lead : undefined} />
+  }
+  const teile: { from: number; trimBefore: number; duration: number }[] = []
+  let cursor = lead
+  let komposition = 0
+  for (const s of cuts) {
+    const spanne = s.vonFrame - cursor
+    if (spanne > 0) {
+      teile.push({ from: komposition, trimBefore: cursor, duration: spanne })
+      komposition += spanne
+    }
+    cursor = Math.max(cursor, s.bisFrame)
+  }
+  teile.push({ from: komposition, trimBefore: cursor, duration: Math.max(1, dauer - komposition) })
+  return (
+    <>
+      {teile.map((t, i) => (
+        <Sequence key={i} from={t.from} durationInFrames={t.duration} layout="none">
+          <Audio src={datei} volume={1} trimBefore={t.trimBefore > 0 ? t.trimBefore : undefined} durationInFrames={t.duration} />
+        </Sequence>
+      ))}
+    </>
   )
 }
 
@@ -194,6 +243,9 @@ function Ton({
   sfx,
   voiceSrc,
   voiceTrim,
+  voiceSchnitte,
+  metricFrame,
+  dauer,
   beats,
 }: {
   musicSrc: string | null
@@ -202,6 +254,9 @@ function Ton({
   sfx: boolean
   voiceSrc: string | null
   voiceTrim: number
+  voiceSchnitte: MoatShortTimeline['voiceSchnitte']
+  metricFrame: number | null
+  dauer: number
   beats: MoatShortBeat[]
 }) {
   /** SFX leise unter der Stimme. Der erste Frame bleibt ohne Whoosh, damit das erste Wort frei ist. */
@@ -210,7 +265,7 @@ function Ton({
   const cues: { from: number; src: string; volume: number }[] = []
   for (const b of beats) {
     if (b.from > 0 && b.id !== 'proof' && b.id !== 'crack') cues.push({ from: b.from, src: whoosh, volume: whooshPegel })
-    if (b.id === 'proof') cues.push({ from: b.from, src: mouseClick, volume: sfxPegel })
+    if (b.id === 'proof') cues.push({ from: metricFrame ?? b.from, src: mouseClick, volume: sfxPegel })
     if (b.id.startsWith('pillar')) cues.push({ from: b.from + PILLAR_ZAHL_FRAME, src: mouseClick, volume: sfxPegel * 0.7 })
     if (b.id === 'crack') cues.push({ from: b.from, src: shutterOld, volume: 0.48 })
     if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: sfxPegel })
@@ -230,7 +285,7 @@ function Ton({
           trimBefore={musicTrim > 0 ? musicTrim : undefined}
         />
       ) : null}
-      {voiceSrc ? <Audio src={stimmeAudioSrc(voiceSrc)} volume={1} trimBefore={voiceTrim > 0 ? voiceTrim : undefined} /> : null}
+      {voiceSrc ? <Stimme src={voiceSrc} trim={voiceTrim} schnitte={voiceSchnitte} dauer={dauer} /> : null}
       {sfx
         ? cues.map((c, i) => (
             <Sequence key={i} from={c.from} durationInFrames={24} layout="none">
@@ -318,9 +373,12 @@ function HookSzene({
   proofAb: number
 }) {
   const frame = useCurrentFrame()
-  const zahlAn = proofAb <= 0 || frame >= proofAb
-  const zahlScale = !zahlAn ? 1 : interpolate(frame - proofAb, [0, 4], [1.12, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const kickerGroesse = kicker.length <= 16 ? 84 : kicker.length <= 24 ? 70 : 56
+  const zahlScale =
+    frame >= proofAb
+      ? interpolate(frame - proofAb, [0, 4], [1.12, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+      : 1
+  const kickerGroesse = kicker.length <= 16 ? 64 : kicker.length <= 24 ? 52 : 44
+  const buehneOben = logoUrl ? SAFE_TOP + 248 : SAFE_TOP
   return (
     <AbsoluteFill style={{ transform: `scale(${kamera(frame)})`, transformOrigin: `center ${SAFE_TOP + 12}px` }}>
       {logoUrl ? (
@@ -351,41 +409,32 @@ function HookSzene({
           </div>
         </div>
       ) : null}
-      {!zahlAn ? (
-        <div
-          style={{
-            position: 'absolute',
-            top: logoUrl ? SAFE_TOP + 256 : '18%',
-            left: SAFE_LEFT,
-            right: SAFE_RIGHT,
-            textAlign: 'center',
-            fontSize: kickerGroesse,
-            fontWeight: 900,
-            letterSpacing: -1.5,
-            lineHeight: 0.98,
-          }}
-        >
-          {kicker}
-        </div>
-      ) : null}
-      {zahlAn ? (
-        <div
-          style={{
-            position: 'absolute',
-            top: '34%',
-            left: SAFE_LEFT,
-            right: SAFE_RIGHT,
-            textAlign: 'center',
-            transform: `scale(${zahlScale})`,
-            transformOrigin: 'center top',
-          }}
-        >
-          <div style={{ fontSize: value.length > 7 ? 160 : 210, fontWeight: 900, letterSpacing: -6, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+      <div
+        style={{
+          position: 'absolute',
+          top: buehneOben,
+          left: SAFE_LEFT,
+          right: SAFE_RIGHT,
+          bottom: MOAT_SHORT_HEIGHT - 860,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          textAlign: 'center',
+        }}
+      >
+        <div style={{ transform: `scale(${zahlScale})`, transformOrigin: 'center center' }}>
+          <div style={{ fontSize: value.length > 7 ? 132 : 168, fontWeight: 900, letterSpacing: -6, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
             {value}
           </div>
           <div style={{ marginTop: 14, fontFamily: MONO, fontSize: 26, letterSpacing: 6, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
         </div>
-      ) : null}
+        {kicker ? (
+          <div style={{ marginTop: 28, maxWidth: 820, fontSize: kickerGroesse, fontWeight: 900, letterSpacing: -1.5, lineHeight: 0.98 }}>
+            {kicker}
+          </div>
+        ) : null}
+      </div>
     </AbsoluteFill>
   )
 }

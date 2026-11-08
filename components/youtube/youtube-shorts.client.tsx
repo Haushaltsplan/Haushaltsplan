@@ -271,7 +271,6 @@ export function YoutubeShortsClient() {
   const [aehnlichkeit, setAehnlichkeit] = useState(80)
   const [stil, setStil] = useState(20)
   const [tempo, setTempo] = useState(1.15)
-  const [pause, setPause] = useState(50)
   const [betonung, setBetonung] = useState(100)
   const [moatWahl, setMoatWahl] = useState<MoatRichtung>('ki')
   const [richtungLaedt, setRichtungLaedt] = useState<Extract<MoatRichtung, 'groesser' | 'kleiner'> | null>(null)
@@ -303,7 +302,6 @@ export function YoutubeShortsClient() {
     setAehnlichkeit(regler.aehnlichkeit)
     setStil(regler.stil)
     setTempo(regler.tempo)
-    setPause(regler.pause)
     setBetonung(regler.betonung)
     void ladeYtStatus()
     void fetch('/api/youtube/voice')
@@ -397,7 +395,7 @@ export function YoutubeShortsClient() {
             similarity: aehnlichkeit / 100,
             style: stil / 100,
             speed: tempo,
-            pause,
+            pause: 0,
             betonung,
           },
         }),
@@ -1204,7 +1202,6 @@ export function YoutubeShortsClient() {
                         ['stabilitaet', 'Stabilität', stabilitaet, setStabilitaet, 0, 100, String(stabilitaet)],
                         ['aehnlichkeit', 'Ähnlichkeit', aehnlichkeit, setAehnlichkeit, 0, 100, String(aehnlichkeit)],
                         ['stil', 'Stil', stil, setStil, 0, 100, String(stil)],
-                        ['pause', 'Pause vor der Zahl', pause, setPause, 0, 100, pause <= 0 ? 'aus' : pause < 41 ? 'kurz' : pause < 71 ? 'Gedankenstrich' : 'lang'],
                         ['betonung', 'Betonung der Zahl', betonung, setBetonung, 0, 100, betonung <= 0 ? 'Punkt' : 'Ausrufezeichen'],
                       ] as const
                     ).map(([teil, label, wert, setze, min, max, anzeige]) => (
@@ -1242,7 +1239,7 @@ export function YoutubeShortsClient() {
                       />
                     </label>
                     <p className="text-xs text-[var(--app-text-muted)]">
-                      Start ist der jetzige Klang: Stabilität 40, Ähnlichkeit 80, Stil 20, Tempo 1,15, Pause als Gedankenstrich, Zahl mit Ausrufezeichen. Tempo geht von 0,70 bis 1,20. Wirkt nach „Stimme neu erzeugen“.
+                      Start ist der jetzige Klang: Stabilität 40, Ähnlichkeit 80, Stil 20, Tempo 1,15, die Zahl ohne Pause im selben Satz, mit Ausrufezeichen. Tempo geht von 0,70 bis 1,20. Wirkt nach „Stimme neu erzeugen“.
                     </p>
                   </div>
                   <button

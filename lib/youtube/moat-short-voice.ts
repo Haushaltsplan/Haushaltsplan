@@ -1,6 +1,7 @@
 /** Spoken lines + ElevenLabs-Wortzeiten — client- und servertauglich. */
 
 import type { MoatShortBeatId, MoatShortProps, MoatShortVoiceWort } from '@/remotion/moat-short-types'
+import { flussZurZahl } from '@/lib/youtube/moat-short-script'
 
 export type MoatShortSprechzeile = { id: Exclude<MoatShortBeatId, 'loop'>; text: string }
 
@@ -40,7 +41,7 @@ export function pauseZeichen(pause: number): string {
 
 /**
  * Regie nur für die Stimme. Untertitel bleiben der geschriebene Satz.
- * Pause 50 und Betonung 100 sind der bisherige Stand.
+ * Vor der Kennzahl steht kein Satzzeichen. Die Betonung setzt höchstens ein Ausrufezeichen ans Ende.
  */
 export function regieFuerElevenLabs<T extends string>(
   zeilen: ShortSprechzeile<T>[],
@@ -57,12 +58,7 @@ function regieZeile(id: string, text: string, regie: StimmeRegie): string {
 }
 
 function regieBeweis(text: string, regie: StimmeRegie): string {
-  let t = text
-  const zeichen = pauseZeichen(regie.pause)
-  if (zeichen && !/[—…]/.test(t)) {
-    const mitPause = t.replace(/\s+(an?\s+\d)/i, `${zeichen}$1`)
-    if (mitPause !== t) t = mitPause.replace(/\s+/g, ' ').trim()
-  }
+  const t = flussZurZahl(text)
   if (regie.betonung <= 0) return t
   if (/\.$/.test(t)) return `${t.slice(0, -1)}!`
   if (!/[!?]$/.test(t)) return `${t}!`

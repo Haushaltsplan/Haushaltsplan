@@ -76,12 +76,19 @@ export type MoatShortCaption = {
   woerter: MoatShortCaptionWort[]
 }
 
+/** Quelle-Frames, die zwischen zwei Wörtern übersprungen werden. `vonFrame` inklusive, `bisFrame` exklusive. */
+export type MoatShortVoiceSchnitt = { vonFrame: number; bisFrame: number }
+
 export type MoatShortTimeline = {
   beats: MoatShortBeat[]
   captions: MoatShortCaption[]
   durationInFrames: number
   /** Frames Stille vor dem ersten Wort. Die Stimme wird um genau so viel vorgezogen. */
   voiceTrimFrames: number
+  /** Stille direkt vor der Kennzahl, aus der einen Stimmdatei geschnitten. */
+  voiceSchnitte: MoatShortVoiceSchnitt[]
+  /** Absoluter Frame, an dem die Kennzahl gesprochen wird. */
+  metricFrame: number | null
 }
 
 export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
