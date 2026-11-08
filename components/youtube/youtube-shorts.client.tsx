@@ -8,7 +8,7 @@ import { YoutubeEigeneTags } from '@/components/youtube/youtube-eigene-tags'
 import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { gesamtScoreAusPfeilern } from '@/lib/portfolio-analyse/moat-ki-types'
-import type { MoatShortAntwort, MoatShortErgebnis } from '@/lib/youtube/moat-short-types'
+import type { MoatShortAntwort, MoatShortErgebnis, MoatShortHookVariante } from '@/lib/youtube/moat-short-types'
 import { gespeicherterMusikPegel, ladeVorhandeneTracks, liesMusikDatei, musikTrack, trackZumUrteil } from '@/lib/youtube/moat-short-musik'
 import { phrasePasst } from '@/lib/youtube/youtube-keywords'
 import { tagsSichtbar } from '@/lib/youtube/youtube-tags'
@@ -56,23 +56,24 @@ const WINKEL_LABEL: Record<string, string> = {
   stakes: 'Was auf dem Spiel steht',
 }
 
-const HOOK_PRESETS = [
-  {
-    winkel: 'number_shock',
-    frage: "Why do McDonald's's fees outlast the product?",
-    antwort: 'Franchise fees drive a massive 46.2% operating margin, proving unmatched pricing power.',
-  },
-  {
-    winkel: 'contrast',
-    frage: "Is McDonald's a restaurant or a landlord?",
-    antwort: 'Land ownership drives a massive 46.2% operating margin, proving structural durability.',
-  },
-  {
-    winkel: 'stakes',
-    frage: "How deep is McDonald's real estate monopoly?",
-    antwort: 'Network effects drive a massive 46.2% operating margin, proving unmatched pricing power.',
-  },
-] as const
+const HOOK_WINKEL = ['number_shock', 'contrast', 'stakes'] as const
+
+function hookKarten(varianten: MoatShortHookVariante[]): MoatShortHookVariante[] {
+  const geordnet: MoatShortHookVariante[] = []
+  const gesehen = new Set<MoatShortHookVariante>()
+  for (const winkel of HOOK_WINKEL) {
+    const treffer = varianten.find((h) => h.winkel === winkel && !gesehen.has(h))
+    if (!treffer) continue
+    gesehen.add(treffer)
+    geordnet.push(treffer)
+  }
+  for (const h of varianten) {
+    if (gesehen.has(h)) continue
+    gesehen.add(h)
+    geordnet.push(h)
+  }
+  return geordnet
+}
 
 function scriptZumKopieren(p: MoatShortProps): string {
   return [
@@ -449,6 +450,25 @@ export function YoutubeShortsClient() {
     setUploadBeschreibung(track?.credit ? `${ergebnis.description}\n\n${track.credit}` : ergebnis.description)
   }, [ergebnis, track?.credit])
 
+  useEffect(() => {
+    if (!props || !ergebnis) return
+    if (/mcdonald/i.test(props.firmenname)) return
+    if (!/mcdonald/i.test(`${props.hook}\n${props.proof}`)) return
+    const h = hookKarten(ergebnis.hookVarianten)[0]
+    if (!h || h.claim === props.hook) return
+    const m = ergebnis.metriken.find((x) => x.id === h.metrikId)
+    setProps((p) =>
+      p
+        ? {
+            ...p,
+            hook: h.claim,
+            proof: h.proof,
+            ...(m ? { metricValue: m.value, metricLabel: m.label } : {}),
+          }
+        : p,
+    )
+  }, [props, ergebnis])
+
   function leereStimme() {
     setVoiceUrl((alt) => {
       if (alt) URL.revokeObjectURL(alt)
@@ -587,10 +607,18 @@ export function YoutubeShortsClient() {
     }
   }
 
-  function waehleHook(winkel: (typeof HOOK_PRESETS)[number]['winkel']) {
-    const preset = HOOK_PRESETS.find((h) => h.winkel === winkel)
-    if (!preset) return
-    setProps((p) => (p ? { ...p, hook: preset.frage, proof: preset.antwort } : p))
+  function waehleHook(h: MoatShortHookVariante) {
+    const m = ergebnis?.metriken.find((x) => x.id === h.metrikId)
+    setProps((p) =>
+      p
+        ? {
+            ...p,
+            hook: h.claim,
+            proof: h.proof,
+            ...(m ? { metricValue: m.value, metricLabel: m.label } : {}),
+          }
+        : p,
+    )
   }
 
   async function dateiGewaehlt(datei: File | undefined) {
@@ -1034,14 +1062,14 @@ export function YoutubeShortsClient() {
                 </div>
                 {doppelHinweis ? <p className="font-mono text-[11px] text-amber-200/90">{doppelHinweis}</p> : null}
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                {HOOK_PRESETS.map((h) => {
-                  const aktiv = props.hook === h.frage && props.proof === h.antwort
+                {hookKarten(ergebnis.hookVarianten).map((h) => {
+                  const aktiv = props.hook === h.claim && props.proof === h.proof
                   return (
                     <button
-                      key={h.winkel}
+                      key={`${h.winkel}-${h.metrikId}`}
                       type="button"
                       aria-pressed={aktiv}
-                      onClick={() => waehleHook(h.winkel)}
+                      onClick={() => waehleHook(h)}
                       className={`rounded-xl border px-3 py-3 text-left transition ${
                         aktiv
                           ? 'border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_24px_rgba(52,211,153,0.16)]'
@@ -1051,8 +1079,8 @@ export function YoutubeShortsClient() {
                       <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">
                         {WINKEL_LABEL[h.winkel]}
                       </span>
-                      <span className="mt-2 block text-sm font-medium text-neutral-100">{h.frage}</span>
-                      <span className="mt-1 block font-mono text-[11px] leading-relaxed text-neutral-400">{h.antwort}</span>
+                      <span className="mt-2 block text-sm font-medium text-neutral-100">{h.claim}</span>
+                      <span className="mt-1 block font-mono text-[11px] leading-relaxed text-neutral-400">{h.proof}</span>
                     </button>
                   )
                 })}
