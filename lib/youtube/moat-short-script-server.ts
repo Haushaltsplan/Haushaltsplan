@@ -23,6 +23,8 @@ import {
   ohneKiBindestrich,
   hookPaar,
   ohneDoppelteWendung,
+  ohneGeteiltePhrase,
+  ohneNackteKennzahl,
   kickerFuerBild,
   kuerzeGesprocheneZeile,
   landZurFrage,
@@ -109,7 +111,7 @@ Talk like a person at a table. Same move for ASML, Hermès, a railroad, a card n
 
 Every spoken line is a normal human sentence: subject, verb, one thought. 8 to 10 words, and under 70 characters. Count the words. A comma is fine. One breath. The subtitle sits on 2 lines. If it would wrap to a third, the line is too long.
 
-Good proof: "Network effect lets them print a 47.1% operating margin."
+Good proof: "Land ownership drives a massive 46.2% operating margin, proving unmatched pricing power."
 Good: "Ripping that stack out is a nightmare."
 Bad: "Because they print a 47.1% operating margin."
 Bad: "Ripping active directory and azure out of a Fortune 500 company is a nightmare."
@@ -130,7 +132,7 @@ Do not bark 3 to 6 word punches. Do not write a memo. Prefer verbs and pictures 
 
 - Active voice. Concrete nouns from THIS business. The number has to mean something.
 - Metaphors stay ordinary: "only shop in town", "tollbooth" only if it fits. Never "integrated settlement network".
-- FORBIDDEN words: delve, game-changer, unbelievable, testament, revolutionizing, mind-blowing, pivotal, furthermore, consequently, moreover, therefore, thus, additionally, revolutionary, insane, crazy, massive, juggernaut, powerhouse, unstoppable, incredible, groundbreaking, synergy.
+- FORBIDDEN words: delve, game-changer, unbelievable, testament, revolutionizing, mind-blowing, pivotal, furthermore, consequently, moreover, therefore, thus, additionally, revolutionary, insane, crazy, juggernaut, powerhouse, unstoppable, incredible, groundbreaking, synergy. The word "massive" may appear once, immediately before the hook number, and nowhere else.
 - Cut "basically", "essentially", "secret".
 - NEVER use an em-dash, en-dash, or a hyphen with spaces around it. That is AI punctuation. Use a comma, or a second full sentence.
 
@@ -142,7 +144,7 @@ Draft the pair as one spoken sentence, then split it.
 Good pair (read land, then the question, no pause):
 - kicker: "No way out"
 - claim: "Why can Microsoft raise prices every year and nobody leaves?"
-- proof: "Network effect lets them print a 47.1% operating margin."
+- proof: "Network effects drive a massive 47.1% operating margin, proving unmatched pricing power."
 - land: "Nobody else has a lock like this, so the question is"
 - Heard loop: "...so the question is why can Microsoft raise prices every year and nobody leaves?"
 
@@ -168,28 +170,33 @@ Grammar
 - Bad: "causes legal and operational friction." That is a chopped list of two adjectives. Name one concrete thing, or two complete things. Good: "Ripping the system out takes years."
 
 Causality
-- proof is the direct reason for THAT question. A viewer who hears only these two lines must see why the number answers the question.
-- If proof is a margin or a return on capital, the question asks about pricing power or dominance. A growth rate does not answer a fee question, and a margin does not answer "how fast are they growing?".
-- Patterns, same shape for every company. The cause is the class, not a ticker to copy:
-  * Card network: "Network effect lets them print a [X]% margin."
-  * B2B software: "High switching costs let them print a [X]% margin."
-  * Medtech or pharma: "Patented tech lets them print a [X]% margin."
-  * Infrastructure: "High barrier to entry lets them print a [X]% margin."
-- Never open the answer with Because. Because in front of the bare number is forbidden.
+- The question names the economic engine, not the product the customer thinks they buy. A franchisor that owns land is about the land, not burger sales. A card network is about the network, not a fee slogan copied from a restaurant. A drug company is about the patent, not "they sell medicine".
+- proof is one cause-and-effect sentence for THAT question. Shape: [business driver] + drives/drive + "a massive" + the metric once + ", proving" + the consequence. Example: "Land ownership drives a massive 46.2% operating margin, proving unmatched pricing power."
+- The driver is never the metric name. Forbidden: "Operating margin lets them print a 46.2% operating margin." Forbidden: "Operating margin drives a 46.2% operating margin."
+- Same shape for every company. The driver is the class, not a ticker to copy:
+  * Land owner: "Land ownership drives a massive [X]% operating margin, proving unmatched pricing power."
+  * Franchise royalties: "Franchise fees drive a massive [X]% operating margin, proving unmatched pricing power."
+  * Card network: "Network effects drive a massive [X]% operating margin, proving unmatched pricing power."
+  * B2B software: "Switching costs drive a massive [X]% operating margin, proving unmatched pricing power."
+  * Pharma: "Patented drugs drive a massive [X]% gross margin, proving unmatched pricing power."
+  * Chip equipment: "Tool monopoly drives a massive [X]% return on capital, proving the market lock."
+- Plural subjects use "drive". Singular subjects use "drives".
+- Never open the answer with Because. No period, comma, dash, or ellipsis between the verb and the number. "drives a massive 46.2%", never "drives. A 46.2%".
+- Do not repeat the driver, the metric name, or "pricing power" in the next sentence.
 - A verb such as losing, charging, or paying needs its object. "losing market share", never "losing".
-- kicker: 2 to 5 words, under 28 characters, one line a viewer can read in under a second. On screen only. Never spoken. No invented number, no market cap, no dollar figure unless that exact figure is in the metrics list.
-- claim: the first spoken line. 6 to 10 words, so the number lands around second 3 to 4. A complete question. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know".
-- proof: the second spoken line, around second 3. One sentence, one breath. Shape: [moat cause] + "lets them print a" + the metric immediately, then a comma and the analysis. Example: "Patented tech lets them print a 71.5% gross margin, proving strong pricing power." Numbers 8, 11, 18 and 80-89 take "an" ("print an 82.4% gross margin"). No period, comma, dash, or ellipsis between "print" and the number. Never "lets them print. A 71.5%". Plural causes use "let" ("costs let"). Never "Because a 47.1%". Never the metricId. Never "an ltm_ebit of 47.1%". Never say "a [X]% [metric]" again in this sentence or in the next one.
+- kicker: 2 to 5 words, under 28 characters, the engine not the product ("Owns the land", not "Burger sales"). On screen only. Never spoken. No invented number.
+- claim: the first spoken line, seconds 0 to 3. 6 to 10 words. A complete question about that engine. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know". The number is already on screen; the question does not say it.
+- proof: the second spoken line. One breath. The number is spoken once, then the consequence in the same sentence. Never the metricId. Never "an ltm_ebit of 47.1%". Never the metric phrase a second time.
 
 ## Story order, do not skip ahead
 There is no "what they sell" line. Do not describe the business model as its own beat. There is no teaser between the number and the pillars. Do not say "one thing could break that lock" or hint at the threat before the crack.
 1. claim (the question, no number). The number is already on screen beside the question. No pillar, no score, no bar yet. The spoken question still does not say the number.
-2. proof (say the number once, then the analysis in the same sentence)
+2. proof (driver, then the number once, then the consequence, in the same sentence)
 3. four pillars, in order, each its own sentence
 4. crack (the FIRST and only time the threat is named)
 5. land (bridge into the question, then stop)
 
-The number is spoken once, in proof, around the third second, then the analysis follows in that same sentence. The next sentence must not repeat that metric phrase. The crack comes after all four pillars.
+The number is spoken once, in proof, around the third second, in the same breath as the driver. The next sentence must not repeat the driver, the metric name, or the consequence. The crack comes after all four pillars.
 
 ## Each hook
 Write THREE hooks. Each has these fields:
@@ -212,7 +219,7 @@ Good: "Government fee caps and instant payments threaten margins."
 Bad: "Stricter government fee caps and direct account to account payment rails could compress margins."
 Same move for every company: name the threat and stop. Do not explain the mechanism in the same sentence.
 
-- pillarLines: one per pillar, 8-9 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none". The first pillar must not repeat the proof's metric phrase ("a 71.5% gross margin" said once, then stop). A later pillar may use a different metric.
+- pillarLines: one per pillar, 8-9 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none". No pillar may repeat a phrase from the sentence before it. The first pillar must not say the hook metric, the driver, or "pricing power" again. A later pillar may use a different metric.
 - crack: 8-9 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. No sign-off.
 
 ## Hard rules
@@ -472,13 +479,31 @@ export async function generiereMoatShort(opts: {
   props.proof = repariert.proof
   let vorher = props.proof
   props.pillars = props.pillars.map((p) => {
-    const line = ohneDoppelteWendung(vorher, p.line, props.metricValue, props.metricLabel, start.metrikId)
+    const line = ohneNackteKennzahl(
+      vorher,
+      ohneGeteiltePhrase(vorher, ohneDoppelteWendung(vorher, p.line, props.metricValue, props.metricLabel, start.metrikId)),
+      props.metricValue,
+      props.metricLabel,
+      start.metrikId,
+    )
     vorher = line
     return line === p.line ? p : { ...p, line }
   })
-  props.crack = ohneDoppelteWendung(vorher, props.crack, props.metricValue, props.metricLabel, start.metrikId)
+  props.crack = ohneNackteKennzahl(
+    vorher,
+    ohneGeteiltePhrase(vorher, ohneDoppelteWendung(vorher, props.crack, props.metricValue, props.metricLabel, start.metrikId)),
+    props.metricValue,
+    props.metricLabel,
+    start.metrikId,
+  )
   vorher = props.crack
-  props.closing = ohneDoppelteWendung(vorher, props.closing, props.metricValue, props.metricLabel, start.metrikId)
+  props.closing = ohneNackteKennzahl(
+    vorher,
+    ohneGeteiltePhrase(vorher, ohneDoppelteWendung(vorher, props.closing, props.metricValue, props.metricLabel, start.metrikId)),
+    props.metricValue,
+    props.metricLabel,
+    start.metrikId,
+  )
   start.kicker = props.kicker
   start.claim = props.hook
   start.proof = props.proof

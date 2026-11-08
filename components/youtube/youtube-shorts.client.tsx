@@ -15,7 +15,7 @@ import { tagsSichtbar } from '@/lib/youtube/youtube-tags'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
-import { istOffeneBruecke, kuerzeGesprocheneZeile, ohneKennzahlId, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
+import { doppelteWendung, istOffeneBruecke, kuerzeGesprocheneZeile, ohneKennzahlId, sanitiereMoatFuerStimme, schaetzeSprechsekunden, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
 import { gespeicherteStimmeRegler, moatShortSprechFingerprint, speichereStimmeRegler } from '@/lib/youtube/moat-short-voice'
@@ -199,7 +199,7 @@ function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
       frage: alsFrage,
     }),
     proof: p.proof.trim()
-      ? /\b(?:lets|let) them print\b/i.test(p.proof)
+      ? /\b(?:lets|let) them print\b|\b(?:drives|drive)\b/i.test(p.proof)
         ? p.proof.replace(/\s+/g, ' ').trim()
         : zeileWennNoetig(p.proof, { behalten: p.metricValue, maxWoerter: 14 })
       : p.proof,
@@ -213,6 +213,52 @@ function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
 
 const feldKlasse =
   'w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] focus:outline-none focus:ring-2 focus:ring-red-500/40'
+
+const studioFeld =
+  'w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-[13px] text-neutral-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] focus:border-emerald-400/40 focus:outline-none focus:ring-2 focus:ring-emerald-400/25'
+
+function Wellenform({ aktiv, peaks }: { aktiv: boolean; peaks: number[] | null }) {
+  const balken = peaks ?? Array.from({ length: 28 }, () => 0.28)
+  return (
+    <div className="flex h-10 items-end justify-center gap-[3px]" aria-hidden>
+      {balken.map((p, i) => (
+        <span
+          key={i}
+          className={`w-[3px] rounded-full ${aktiv ? 'animate-pulse bg-emerald-300' : peaks ? 'bg-emerald-400/80' : 'bg-neutral-700'}`}
+          style={{
+            height: `${Math.max(4, Math.round((aktiv ? 0.3 + (i % 6) * 0.1 : p) * 36))}px`,
+            animationDelay: `${i * 45}ms`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+async function wellenformAusBlob(blob: Blob): Promise<number[] | null> {
+  const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+  if (!Ctx) return null
+  const ctx = new Ctx()
+  try {
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer())
+    const data = buf.getChannelData(0)
+    const n = 28
+    const sprung = Math.max(1, Math.floor(data.length / n))
+    const out: number[] = []
+    for (let i = 0; i < n; i++) {
+      let max = 0
+      const start = i * sprung
+      for (let j = 0; j < sprung; j += 24) max = Math.max(max, Math.abs(data[start + j] ?? 0))
+      out.push(max)
+    }
+    const decke = Math.max(...out, 0.01)
+    return out.map((v) => v / decke)
+  } catch {
+    return null
+  } finally {
+    await ctx.close()
+  }
+}
 
 export function YoutubeShortsClient() {
   const [modus, setModus] = useState<YoutubeModus>('moat')
@@ -272,6 +318,7 @@ export function YoutubeShortsClient() {
   const [stil, setStil] = useState(20)
   const [tempo, setTempo] = useState(1.15)
   const [betonung, setBetonung] = useState(100)
+  const [wellenform, setWellenform] = useState<number[] | null>(null)
   const [moatWahl, setMoatWahl] = useState<MoatRichtung>('ki')
   const [richtungLaedt, setRichtungLaedt] = useState<Extract<MoatRichtung, 'groesser' | 'kleiner'> | null>(null)
 
@@ -359,6 +406,13 @@ export function YoutubeShortsClient() {
   const loopWarnung = props
     ? [...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof, props.metricLabel), ...scriptStoryWarnungen(props.hookLoop, props.crack)]
     : []
+  const doppelHinweis = props ? doppelteWendung(props) : null
+  const stoppVorZahl = props ? /[.!?…,:;—–-]\s+(?:an?\s+)?\d/.test([props.proof, props.hook, props.crack, props.closing].join(' ')) : false
+  const flussOk = !doppelHinweis && !stoppVorZahl
+  const sprechSekunden = props
+    ? schaetzeSprechsekunden([props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing], tempo)
+    : 0
+  const dauerImFenster = sprechSekunden >= 27 && sprechSekunden <= 30
 
   useEffect(() => {
     if (!ergebnis) return
@@ -372,6 +426,7 @@ export function YoutubeShortsClient() {
       return null
     })
     setStimmeFp(null)
+    setWellenform(null)
     setProps((p) => (p ? { ...p, voiceSrc: null, voiceAlignment: null, voiceLeadMs: undefined } : p))
   }
 
@@ -383,13 +438,15 @@ export function YoutubeShortsClient() {
 
   async function stimmeErzeugen() {
     if (!props) return
+    const sauber = sanitiereMoatFuerStimme(props)
     setStimmeLaedt(true)
+    setWellenform(null)
     try {
       const res = await fetch('/api/youtube/voice', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          props,
+          props: sauber,
           stimme: {
             stability: stabilitaet / 100,
             similarity: aehnlichkeit / 100,
@@ -407,13 +464,17 @@ export function YoutubeShortsClient() {
       }
       const blob = base64ZuMp3(j.audioBase64)
       const url = URL.createObjectURL(blob)
-      const voiceLeadMs = await fuehrendeStilleMs(blob).catch(() => undefined)
+      const [voiceLeadMs, peaks] = await Promise.all([
+        fuehrendeStilleMs(blob).catch(() => undefined),
+        wellenformAusBlob(blob),
+      ])
       setVoiceUrl((alt) => {
         if (alt) URL.revokeObjectURL(alt)
         return url
       })
-      setStimmeFp(moatShortSprechFingerprint(props))
-      setProps((p) => (p ? { ...p, voiceSrc: url, voiceAlignment: j.woerter ?? null, voiceLeadMs } : p))
+      setWellenform(peaks)
+      setStimmeFp(moatShortSprechFingerprint(sauber))
+      setProps({ ...sauber, voiceSrc: url, voiceAlignment: j.woerter ?? null, voiceLeadMs })
       toast.success('Stimme liegt auf der Timeline.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Stimme fehlgeschlagen.')
@@ -927,55 +988,59 @@ export function YoutubeShortsClient() {
                 </ul>
               ) : null}
 
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-[var(--app-text-muted)]">
-                  Hook-Kreis — Frage, die Zahl als Antwort, Landung mündet in die Frage
-                </p>
+              <div className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_16px_40px_rgba(0,0,0,0.35)] backdrop-blur-md">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-neutral-400">Script studio</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${dauerImFenster ? 'border-emerald-500/40 text-emerald-200' : 'border-amber-500/40 text-amber-200'}`}>
+                      ~{sprechSekunden.toFixed(0)}s · Ziel 27–30s
+                    </span>
+                    <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${flussOk ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-amber-400/60 bg-amber-400/10 text-amber-100'}`}>
+                      {doppelHinweis ? 'Warning: Duplicate Phrase Detected' : stoppVorZahl ? 'Warning: Pause Before Number' : 'Grammar & Pacing OK'}
+                    </span>
+                  </div>
+                </div>
+                {doppelHinweis ? <p className="font-mono text-[11px] text-amber-200/90">{doppelHinweis}</p> : null}
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                 {ergebnis.hookVarianten.map((h, i) => {
                   const aktiv = h.claim === props.hook && h.proof === props.proof
                   return (
                     <button
                       key={i}
                       type="button"
+                      aria-pressed={aktiv}
                       onClick={() => waehleHook(h)}
-                      className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
+                      className={`rounded-xl border px-3 py-3 text-left transition ${
                         aktiv
-                          ? 'border-red-500/60 bg-red-500/10'
-                          : 'border-[var(--app-border)] bg-[var(--app-surface)] hover:bg-[var(--app-surface-muted)]'
+                          ? 'border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_24px_rgba(52,211,153,0.16)]'
+                          : 'border-neutral-800 bg-neutral-950 hover:border-neutral-600'
                       }`}
                     >
-                      <span className="text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">
+                      <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">
                         {WINKEL_LABEL[h.winkel] ?? h.winkel}
-                        {h.kicker ? ` · ${h.kicker}` : ''}
                       </span>
-                      <span className="mt-0.5 block font-medium text-[var(--app-text)]">{h.claim}</span>
-                      <span className="block text-[var(--app-text-muted)]">{h.proof}</span>
-                      <span className="mt-1 block text-[11px] text-[var(--app-text-muted)]">
-                        Ende → {h.land}
-                      </span>
+                      {h.kicker ? <span className="mt-1 block font-mono text-[10px] uppercase tracking-wider text-neutral-500">{h.kicker}</span> : null}
+                      <span className="mt-2 block text-sm font-medium text-neutral-100">{h.claim}</span>
+                      <span className="mt-1 block font-mono text-[11px] leading-relaxed text-neutral-400">{h.proof}</span>
                     </button>
                   )
                 })}
+                </div>
 
-                <label className="block pt-1 text-xs font-medium text-[var(--app-text-muted)]">
-                  Blickfang, nur im Bild, Sekunde 1. 2–5 Wörter.
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                  Blickfang, nur im Bild. 2–5 Wörter.
+                  <input value={props.kicker} onChange={(e) => setze('kicker', e.target.value)} className={`${studioFeld} mt-1`} />
                 </label>
-                <input value={props.kicker} onChange={(e) => setze('kicker', e.target.value)} className={feldKlasse} />
-                <label className="block text-xs font-medium text-[var(--app-text-muted)]">
-                  Frage, gesprochen ab Sekunde 0. Ohne die Zahl.
-                </label>
-                <textarea value={props.hook} onChange={(e) => setze('hook', e.target.value)} rows={2} className={feldKlasse} />
-                <label className="block text-xs font-medium text-[var(--app-text-muted)]">
-                  Antwort mit der Zahl, gesprochen ab Sekunde 3.
-                </label>
-                <textarea value={props.proof} onChange={(e) => setze('proof', e.target.value)} rows={2} className={feldKlasse} />
+                <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                  Große Zahl, ab Frame 0 im Bild.
                 <select
                   value={ergebnis.metriken.find((m) => m.value === props.metricValue && m.label === props.metricLabel)?.id ?? ''}
                   onChange={(e) => {
                     const m = ergebnis.metriken.find((x) => x.id === e.target.value)
                     if (m) setProps((p) => (p ? { ...p, metricValue: m.value, metricLabel: m.label } : p))
                   }}
-                  className={feldKlasse}
+                  className={`${studioFeld} mt-1`}
                 >
                   {ergebnis.metriken
                     .filter((m) => m.hook)
@@ -985,17 +1050,27 @@ export function YoutubeShortsClient() {
                       </option>
                     ))}
                 </select>
+                </label>
+                <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500 md:col-span-2">
+                  Frage, gesprochen ab Sekunde 0. Ohne die Zahl.
+                  <textarea value={props.hook} onChange={(e) => setze('hook', e.target.value)} rows={2} className={`${studioFeld} mt-1`} />
+                </label>
+                <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500 md:col-span-2">
+                  Antwort: Treiber, Zahl, Folge. Ein Atemzug.
+                  <textarea value={props.proof} onChange={(e) => setze('proof', e.target.value)} rows={2} className={`${studioFeld} mt-1`} />
+                </label>
+                </div>
                 {loopWarnung.map((w) => (
                   <p key={w} className="text-xs text-amber-300">
                     {w}
                   </p>
                 ))}
-                {zahlenWarnung ? <p className="text-xs text-amber-300">{zahlenWarnung}</p> : null}
-              </div>
+                {zahlenWarnung ? <p className="font-mono text-[11px] text-amber-200">{zahlenWarnung}</p> : null}
 
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
               {props.pillars.map((p, i) => (
-                <div key={p.id}>
-                  <label className="text-xs font-medium text-[var(--app-text-muted)]">
+                <div key={p.id} className="rounded-xl border border-neutral-800 bg-neutral-950 p-2">
+                  <label className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">
                     {p.label} · {p.score}/10
                   </label>
                   <input
@@ -1006,7 +1081,7 @@ export function YoutubeShortsClient() {
                         props.pillars.map((x, j) => (j === i ? { ...x, line: e.target.value } : x)),
                       )
                     }
-                    className={`${feldKlasse} mt-1`}
+                    className={`${studioFeld} mt-1`}
                   />
                   <select
                     value={ergebnis.metriken.find((m) => m.value === p.stat?.value && m.label === p.stat?.label)?.id ?? ''}
@@ -1017,7 +1092,7 @@ export function YoutubeShortsClient() {
                         props.pillars.map((x, j) => (j === i ? { ...x, stat: m ? { value: m.value, label: m.label } : null } : x)),
                       )
                     }}
-                    className={`${feldKlasse} mt-1 text-xs`}
+                    className={`${studioFeld} mt-1 text-xs`}
                   >
                     <option value="">Kein Zahlen-Schild</option>
                     {ergebnis.metriken.map((m) => (
@@ -1028,22 +1103,22 @@ export function YoutubeShortsClient() {
                   </select>
                 </div>
               ))}
-
-              <div>
-                <label className="text-xs font-medium text-[var(--app-text-muted)]">The crack — löst den Spannungssatz</label>
-                <textarea value={props.crack} onChange={(e) => setze('crack', e.target.value)} rows={2} className={`${feldKlasse} mt-1`} />
               </div>
 
-              <div>
-                <label className="text-xs font-medium text-[var(--app-text-muted)]">
-                  Landung — offene Brücke, kein Schlusssatz. Danach beginnt die Behauptung.
-                </label>
-                <textarea value={props.closing} onChange={(e) => setze('closing', e.target.value)} rows={2} className={`${feldKlasse} mt-1`} />
-                <p className="mt-2 rounded-lg bg-[var(--app-surface-muted)] px-3 py-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
-                  <span className="font-medium text-[var(--app-text)]">{props.closing}</span>
-                  {' → '}
-                  {props.hook}
-                </p>
+              <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                The crack — löst den Spannungssatz
+                <textarea value={props.crack} onChange={(e) => setze('crack', e.target.value)} rows={2} className={`${studioFeld} mt-1`} />
+              </label>
+
+              <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                Landung — offene Brücke, kein Schlusssatz.
+                <textarea value={props.closing} onChange={(e) => setze('closing', e.target.value)} rows={2} className={`${studioFeld} mt-1`} />
+              </label>
+              <p className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-[11px] leading-relaxed text-neutral-400">
+                <span className="text-neutral-100">{props.closing}</span>
+                {' → '}
+                {props.hook}
+              </p>
               </div>
 
               <div className="rounded-xl border border-[var(--app-border)] p-3 text-sm">
@@ -1242,13 +1317,29 @@ export function YoutubeShortsClient() {
                       Start ist der jetzige Klang: Stabilität 40, Ähnlichkeit 80, Stil 20, Tempo 1,15, die Zahl ohne Pause im selben Satz, mit Ausrufezeichen. Tempo geht von 0,70 bis 1,20. Wirkt nach „Stimme neu erzeugen“.
                     </p>
                   </div>
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-2">
+                    <Wellenform aktiv={stimmeLaedt} peaks={wellenform} />
+                  </div>
                   <button
                     type="button"
                     disabled={stimmeLaedt || !props}
                     onClick={() => void stimmeErzeugen()}
-                    className="w-full rounded-xl border border-[var(--app-border)] px-4 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:opacity-50"
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm disabled:opacity-50 ${
+                      stimmeLaedt
+                        ? 'animate-pulse border-emerald-400/50 bg-emerald-400/10 text-emerald-100'
+                        : 'border-neutral-800 bg-neutral-950 text-neutral-100 hover:border-neutral-600'
+                    }`}
                   >
-                    {stimmeLaedt ? 'Stimme wird erzeugt…' : stimmePasst ? 'Stimme neu erzeugen' : 'Stimme erzeugen'}
+                    {stimmeLaedt ? (
+                      <>
+                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-neutral-600 border-t-emerald-300" />
+                        Stimme wird erzeugt…
+                      </>
+                    ) : stimmePasst ? (
+                      'Stimme neu erzeugen'
+                    ) : (
+                      'Stimme erzeugen'
+                    )}
                   </button>
                 </>
               )}

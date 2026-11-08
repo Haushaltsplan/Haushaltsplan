@@ -1,4 +1,4 @@
-import type { MoatShortVerdict } from '@/remotion/moat-short-types'
+import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
 import { firmenKurzname, phrasePasst } from '@/lib/youtube/youtube-keywords'
 
 const ABSCHIED =
@@ -32,7 +32,6 @@ const VERBOTENE_WOERTER = [
   'incredible',
   'insane',
   'crazy',
-  'massive',
   'juggernaut',
   'powerhouse',
   'unstoppable',
@@ -315,18 +314,65 @@ export function moatUrsacheAusText(text: string): MoatUrsacheId {
   return 'barrier'
 }
 
-function druckKopf(ursache: MoatUrsacheId): string {
-  if (ursache === 'network') return 'Network effect lets them print'
-  if (ursache === 'switching') return 'High switching costs let them print'
-  if (ursache === 'patent') return 'Patented tech lets them print'
-  return 'High barrier to entry lets them print'
+type TreiberId = 'land' | 'franchise' | 'patent' | 'network' | 'switching' | 'tools' | 'routes' | 'barrier'
+
+type Treiber = {
+  id: TreiberId
+  subjekt: string
+  verb: 'drives' | 'drive'
+  frage: (name: string) => string
+}
+
+/**
+ * Der ökonomische Motor, nicht die Kennzahl und nicht das Endprodukt.
+ * Ein Franchise-Vermieter steht für die Klasse, nicht für einen Ticker.
+ */
+export function treiberAusText(text: string): Treiber {
+  const t = text.toLowerCase()
+  if (/\breal estate\b|\blandlord\b|\bland ownership\b|owns the land|\bimmobilien\b|\bgrundst|\bmieteinnahm|\brental income\b|\bproperty portfolio\b/.test(t)) {
+    return { id: 'land', subjekt: 'Land ownership', verb: 'drives', frage: (name) => `Why does ${name} own the land under every shop?` }
+  }
+  if (/\bfranchise|\broyalt/.test(t)) {
+    return { id: 'franchise', subjekt: 'Franchise fees', verb: 'drive', frage: (name) => `Why do ${name}'s fees outlast the product?` }
+  }
+  if (/pharma|biotech|biotechn|medtech|medizintechnik|medizinprodukt|arznei|wirkstoff|therapeutic|implant|veterin|tierarz|tiergesundheit|animal health|animal-health/.test(t)) {
+    const geraet = /implant|device|medizinprodukt|medizintechnik|medtech/.test(t)
+    return geraet
+      ? { id: 'patent', subjekt: 'Patented devices', verb: 'drive', frage: (name) => `Why can ${name} charge for the same device for years?` }
+      : { id: 'patent', subjekt: 'Patented drugs', verb: 'drive', frage: (name) => `Why can ${name} charge for the same drug for years?` }
+  }
+  if (/zahlungs|payment|kreditkarte|kartenzahlung|card network|interchange|bezahl|acquiring|netzwerkeffekt|network effect/.test(t)) {
+    return { id: 'network', subjekt: 'Network effects', verb: 'drive', frage: (name) => `Why does every new ${name} customer strengthen the network?` }
+  }
+  if (/halbleiter|semiconductor|lithograph|wafer/.test(t)) {
+    return { id: 'tools', subjekt: 'Tool monopoly', verb: 'drives', frage: (name) => `Why can no fab build chips without ${name}?` }
+  }
+  if (/eisenbahn|railroad|pipeline|flughafen|hafen|netzbetreiber|energieversorg/.test(t)) {
+    return { id: 'routes', subjekt: 'The route network', verb: 'drives', frage: (name) => `Why can no rival copy ${name}'s routes?` }
+  }
+  if (/\b(software|saas|cloud|enterprise|lizenzsoftware|b2b)\b/.test(t)) {
+    return { id: 'switching', subjekt: 'Switching costs', verb: 'drive', frage: (name) => `Why do ${name}'s customers stay when contracts end?` }
+  }
+  return { id: 'barrier', subjekt: 'High barriers', verb: 'drive', frage: (name) => `Why can no rival rebuild what ${name} owns?` }
+}
+
+function fragePasstZumTreiber(frage: string, id: TreiberId): boolean {
+  const t = frage.toLowerCase()
+  if (id === 'land') return /\bland\b|real estate|property\b/.test(t)
+  if (id === 'franchise') return /franchise|royalt|\bfees?\b/.test(t)
+  if (id === 'patent') return /patent|drug|device|formula/.test(t)
+  if (id === 'network') return /\bnetwork\b/.test(t)
+  if (id === 'switching') return /switch|contract|\bstay\b|\bleave\b/.test(t)
+  if (id === 'tools') return /machine|\bfab\b|\bchip|\btool\b/.test(t)
+  if (id === 'routes') return /route|\brail\b|track|pipeline/.test(t)
+  return /\brebuild|\brival\b|\bcopy\b|\bowns\b/.test(t) || fragtNachMachtOderDominanz(frage)
 }
 
 function analyseKlausel(label: string, id: string): string {
   const art = hookKennzahlArt(label, id)
-  if (art === 'marge') return ', proving strong pricing power'
+  if (art === 'marge') return ', proving unmatched pricing power'
   if (art === 'kapital') return ', proving the market lock'
-  return ', and that lead holds'
+  return ', proving the lead holds'
 }
 
 /** Die Kennzahl steht einmal, der Nebensatz folgt im selben Atemzug. */
@@ -389,16 +435,77 @@ export function ohneDoppelteWendung(vorher: string, zeile: string, wert: string,
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
+const GETEILTE_PHRASEN = [
+  'pricing power',
+  'market lock',
+  'land ownership',
+  'franchise fees',
+  'patented drugs',
+  'patented devices',
+  'network effects',
+  'switching costs',
+  'tool monopoly',
+  'route network',
+  'high barriers',
+]
+
+/** Dieselbe Inhaltsphrase nicht im nächsten Satz wiederholen. */
+export function ohneGeteiltePhrase(vorher: string, zeile: string): string {
+  let t = zeile
+  const vorherL = vorher.toLowerCase()
+  for (const phrase of GETEILTE_PHRASEN) {
+    if (!vorherL.includes(phrase)) continue
+    const re = new RegExp(`\\b${phrase}\\b`, 'ig')
+    if (!re.test(t)) continue
+    t = t.replace(new RegExp(`\\b${phrase}\\b`, 'ig'), phrase === 'pricing power' ? 'that edge' : 'that advantage')
+  }
+  t = t.replace(/\s+/g, ' ').replace(/\bthat that\b/gi, 'that').replace(/\s+([,.;!?])/g, '$1').trim()
+  if (!/[.!?]$/.test(t)) t = `${t}.`
+  if (t.split(/\s+/).filter(Boolean).length < 4) return zeile
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
+/** Steht die Kennzahl schon im Satz davor, heißt sie im nächsten nicht noch einmal beim Namen. */
+export function ohneNackteKennzahl(vorher: string, zeile: string, wert: string, label: string, id = ''): string {
+  const name = kennzahlGesprochen(label, id).trim()
+  if (!wert || !name || !vorher.includes(wert)) return zeile
+  if (zeile.includes(wert)) return zeile
+  const quelle = `\\b${name.split(/\s+/).map(escapeReg).join('\\s+')}\\b`
+  if (!new RegExp(quelle, 'i').test(zeile)) return zeile
+  let t = zeile.replace(new RegExp(quelle, 'ig'), 'That figure')
+  t = t.replace(/\s+/g, ' ').replace(/\bthat that\b/gi, 'that').replace(/\s+([,.;!?])/g, '$1').trim()
+  if (!/[.!?]$/.test(t)) t = `${t}.`
+  if (t.split(/\s+/).filter(Boolean).length < 4) return zeile
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
+function kennzahlVorDerZahl(text: string, wert: string, label: string, id = ''): boolean {
+  const idx = text.toLowerCase().indexOf(wert.toLowerCase())
+  if (idx < 0) return false
+  const kopf = text.slice(0, idx).toLowerCase()
+  const namen = kennzahlGesprochen(label, id)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 3 && !['year', 'average', 'return'].includes(w))
+  return namen.length > 0 && namen.every((w) => kopf.includes(w))
+}
+
 export function antwortFuerKennzahl(wert: string, label: string, id = '', kontext = ''): string {
-  const name = kennzahlGesprochen(label, id)
-  const artikel = artikelVorGesprochen(wert)
-  return mitAnalyse(`${druckKopf(moatUrsacheAusText(kontext))} ${artikel} ${wert} ${name}.`, label, id)
+  const rohName = kennzahlGesprochen(label, id)
+  const name = /[a-z]/.test(rohName) ? rohName.toLowerCase() : rohName
+  const treiber = treiberAusText(kontext)
+  const folge = analyseKlausel(label, id)
+  const voll = `${treiber.subjekt} ${treiber.verb} a massive ${wert} ${name}${folge}.`
+  const satz = woerter(voll).length <= 12 ? voll : `${treiber.subjekt} ${treiber.verb} a ${wert} ${name}${folge}.`
+  return flussZurZahl(mitAnalyse(satz, label, id))
 }
 
 function proofIstDruck(text: string, wert: string, label: string, id: string): boolean {
   if (!wert || !text.includes(wert) || satzUnbrauchbar(text) || /\?\s*$/.test(text.trim())) return false
   if (/^\s*because\b/i.test(text)) return false
-  if (!/\b(?:lets|let) them print\b/i.test(text)) return false
+  if (kennzahlVorDerZahl(text, wert, label, id)) return false
+  if (!/\b(?:drives|drive)\b/i.test(text)) return false
+  if (!/,/.test(text) && !/\bproving\b/i.test(text)) return false
   return nenntKennzahl(text, label, id)
 }
 
@@ -419,20 +526,91 @@ export function hookPaar(
   let frage = frageFuerHook(claim, firma, wert)
   const rohAntwort = proof.replace(/\s+/g, ' ').trim()
   let antwort =
-    proofIstDruck(rohAntwort, wert, label, id) && woerter(rohAntwort).length <= 14
+    proofIstDruck(rohAntwort, wert, label, id) && woerter(rohAntwort).length <= 16
       ? `${rohAntwort.replace(/[.]+$/g, '').trim()}.`
       : antwortFuerKennzahl(wert, label, id, kontext)
   const frageKaputt = !/\?\s*$/.test(frage) || satzUnbrauchbar(frage) || Boolean(wert && frage.includes(wert))
+  const treiber = treiberAusText(kontext)
+  const name = firmenwort(firma)
 
-  if (art === 'marge' || art === 'kapital') {
-    if (frageKaputt || !fragtNachMachtOderDominanz(frage)) frage = frageFuerKennzahl(firma, label, id)
+  if (treiber.id !== 'barrier' || art === 'marge' || art === 'kapital') {
+    if (frageKaputt || !fragePasstZumTreiber(frage, treiber.id)) frage = treiber.frage(name)
   } else if (frageKaputt || fragtNachMachtOderDominanz(frage)) {
     frage = frageFuerKennzahl(firma, label, id)
   }
-  if (satzUnbrauchbar(frage)) frage = frageFuerKennzahl(firma, label, id)
+  if (satzUnbrauchbar(frage)) frage = treiber.frage(name)
   if (!proofIstDruck(antwort, wert, label, id)) antwort = antwortFuerKennzahl(wert, label, id, kontext)
   antwort = flussZurZahl(mitAnalyse(satzOhneDoppelteZahl(antwort, wert, label, id), label, id))
   return { claim: frage, proof: antwort }
+}
+
+type MoatSprechProps = Pick<MoatShortProps, 'hook' | 'proof' | 'pillars' | 'crack' | 'closing' | 'metricValue' | 'metricLabel' | 'business'>
+
+/** Gesprochener Text vor ElevenLabs: keine doppelte Kennzahl, kein Punkt vor der Zahl. */
+export function sanitiereMoatFuerStimme<T extends MoatSprechProps>(props: T): T {
+  const wert = props.metricValue
+  const label = props.metricLabel
+  let proof = flussZurZahl(satzOhneDoppelteZahl(props.proof, wert, label))
+  if (wert && proof.includes(wert) && kennzahlVorDerZahl(proof, wert, label)) {
+    proof = antwortFuerKennzahl(wert, label, '', props.business)
+  }
+  const zeilen = [
+    { key: 'hook', text: flussZurZahl(props.hook) },
+    { key: 'proof', text: proof },
+    ...props.pillars.map((p, i) => ({ key: `p${i}`, text: flussZurZahl(p.line) })),
+    { key: 'crack', text: flussZurZahl(props.crack) },
+    { key: 'closing', text: flussZurZahl(props.closing) },
+  ]
+  let vorher = ''
+  const rein = zeilen.map((z) => {
+    let text = z.text
+    if (vorher) {
+      text = ohneNackteKennzahl(vorher, ohneGeteiltePhrase(vorher, ohneDoppelteWendung(vorher, text, wert, label)), wert, label)
+      text = flussZurZahl(text)
+    }
+    vorher = text
+    return { key: z.key, text }
+  })
+  const nachKey = new Map(rein.map((z) => [z.key, z.text]))
+  return {
+    ...props,
+    hook: nachKey.get('hook') ?? props.hook,
+    proof: nachKey.get('proof') ?? proof,
+    pillars: props.pillars.map((p, i) => {
+      const line = nachKey.get(`p${i}`) ?? p.line
+      return line === p.line ? p : { ...p, line }
+    }),
+    crack: nachKey.get('crack') ?? props.crack,
+    closing: nachKey.get('closing') ?? props.closing,
+  }
+}
+
+/** Null, wenn aufeinanderfolgende Sätze keine Wendung teilen. */
+export function doppelteWendung(props: MoatSprechProps): string | null {
+  if (props.metricValue && kennzahlVorDerZahl(props.proof, props.metricValue, props.metricLabel)) {
+    return 'Die Kennzahl steht zweimal im selben Satz.'
+  }
+  const zeilen = [props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing].filter((z) => z.trim())
+  let vorher = zeilen[0] ?? ''
+  for (let i = 1; i < zeilen.length; i++) {
+    const z = zeilen[i] ?? ''
+    const neu = ohneNackteKennzahl(
+      vorher,
+      ohneGeteiltePhrase(vorher, ohneDoppelteWendung(vorher, z, props.metricValue, props.metricLabel)),
+      props.metricValue,
+      props.metricLabel,
+    )
+    if (neu.replace(/\s+/g, ' ').trim() !== z.replace(/\s+/g, ' ').trim()) return 'Dieselbe Wendung in zwei Sätzen hintereinander.'
+    vorher = z
+  }
+  return null
+}
+
+/** Schätzung vor der Aufnahme. 2,3 Wörter/s bei Tempo 1, mal den Regler. */
+export function schaetzeSprechsekunden(texte: string[], tempo = 1.15): number {
+  const n = texte.join(' ').split(/\s+/).filter(Boolean).length
+  const t = Math.min(1.2, Math.max(0.7, tempo))
+  return n / (2.3 * t)
 }
 
 export function istOffeneBruecke(land: string, value?: string): boolean {
@@ -696,7 +874,11 @@ export function scriptTonWarnungen(texte: string[]): string[] {
       return n > 0 && n < SATZ_MIN_WOERTER && !/[?]$/.test(s) && !BRUECKE_ENDE.test(oeffneSprechende(s))
     })
   if (fetzen.length) w.push(`Zu kurz, klingt nach Slogan: „${fetzen[0]}“`)
-  const zuLang = texte.find((t) => t.replace(/\s+/g, ' ').trim().length > 78)
+  const zuLang = texte.find((t) => {
+    const s = t.replace(/\s+/g, ' ').trim()
+    const deckel = /\bproving\b/i.test(s) && /\d/.test(s) ? 110 : 78
+    return s.length > deckel
+  })
   if (zuLang) w.push(`Zu lang, der Untertitel bricht: „${zuLang}“`)
   const feld = alles.match(/\b[a-z][a-z0-9]*_[a-z0-9_]+\b/)
   if (feld) w.push(`Interner Feldname im Satz: „${feld[0]}“. Sag die Kennzahl auf Englisch.`)
@@ -854,14 +1036,17 @@ export function scriptLoopWarnungen(hook: string, land: string, value: string, p
     w.push('Die Antwort ist kein ganzer Satz. Das Substantiv muss stehen, zum Beispiel „endless fees“, nicht „endless“.')
   }
   const art = hookKennzahlArt(label)
-  if (proof.trim() && (art === 'marge' || art === 'kapital') && !fragtNachMachtOderDominanz(hook)) {
-    w.push('Marge oder Kapitalrendite beantwortet nur eine Frage nach Preismacht oder Dominanz.')
+  if (proof.trim() && (art === 'marge' || art === 'kapital') && !fragtNachMachtOderDominanz(hook) && !/\b(land|real estate|property|franchise|royalt|fees?|patent|drug|device|network|switch|contract|machine|fab|chip|tool|route|rail|rebuild|rival)\b/i.test(hook)) {
+    w.push('Die Frage muss den ökonomischen Motor treffen, zum Beispiel Grundbesitz, Franchise, Patent oder Netz, nicht den Verkauf des Endprodukts.')
   }
   if (proof.trim() && /^\s*because\b/i.test(proof)) {
-    w.push('Die Antwort stellt Because vor die Kennzahl. Erst die Ursache, dann „lets them print a“.')
+    w.push('Die Antwort stellt Because vor die Kennzahl. Erst der Treiber, dann die Zahl, dann die Folge.')
   }
-  if (proof.trim() && !/\b(?:lets|let) them print\b/i.test(proof)) {
-    w.push('Die Antwort muss lauten: Ursache, dann „lets them print a“, dann die Kennzahl.')
+  if (proof.trim() && kennzahlVorDerZahl(proof, value, label)) {
+    w.push('Die Antwort benutzt die Kennzahl als Ursache. Nicht „Operating margin … operating margin“. Der Treiber ist das Geschäftsmodell.')
+  }
+  if (proof.trim() && !/\b(?:drives|drive)\b/i.test(proof)) {
+    w.push('Die Antwort muss lauten: Treiber, dann „drives a“, dann die Kennzahl, dann „proving …“. Kein Punkt vor der Zahl.')
   }
   if (value && land.includes(value)) {
     w.push(`Die Landung wiederholt ${value} — der Restart stottert. Zahl nur in der Antwort.`)
