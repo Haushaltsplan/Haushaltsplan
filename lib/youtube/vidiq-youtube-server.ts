@@ -6,10 +6,12 @@ import {
   abstandTage,
   chanceStufe,
   chanceWert,
+  empfehlungenFuerShort,
   engagementQuote,
   median,
   nachfragePunkte,
   outlierGegen,
+  scoreFuerShort,
   tempoAusDelta,
   tempoSeitUpload,
   wettbewerbPunkte,
@@ -45,7 +47,7 @@ async function googleJson(url: string, accessToken: string): Promise<Roh> {
     const reason = fehler?.errors?.[0]?.reason ?? ''
     const msg = fehler?.message || text.slice(0, 240) || `YouTube ${res.status}`
     const reconnect = res.status === 403 && /insufficient|scope|permission/i.test(`${reason} ${msg}`)
-    throw new VidiqFehler(msg, reconnect)
+    throw new VidiqFehler(reconnect ? 'YouTube erneut verbinden. Der bisherige Zugang darf die Shorts nicht lesen.' : msg, reconnect)
   }
   return json
 }
@@ -417,10 +419,10 @@ function zeilenAusReport(json: Roh): Zeile[] {
   })
 }
 
-async function report(accessToken: string, channelId: string, params: Record<string, string>): Promise<Zeile[]> {
+async function report(accessToken: string, channelId: string, params: Record<string, string>, vonTagen = 28): Promise<Zeile[]> {
   const url = new URL(ANALYTICS)
   url.searchParams.set('ids', `channel==${channelId}`)
-  url.searchParams.set('startDate', isoTag(28))
+  url.searchParams.set('startDate', isoTag(vonTagen))
   url.searchParams.set('endDate', isoTag(2))
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
   const json = await googleJson(url.toString(), accessToken)
@@ -572,5 +574,155 @@ export async function pruefeRanking(opts: { ownerUserId: string; videoId: string
   const platz = ids.indexOf(opts.videoId)
   const payload = { ok: true, phrase: opts.phrase, platz: platz >= 0 ? platz + 1 : null, geprueft: ids.length }
   await cacheSchreiben(opts.ownerUserId, key, payload, 6)
+  return { ...payload, ausCache: false }
+}
+
+function dauerSekunden(iso: string): number {
+  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)
+  if (!m) return 0
+  return num(m[1]) * 3600 + num(m[2]) * 60 + num(m[3])
+}
+
+export async function ladeEigeneShorts(ownerUserId: string): Promise<Record<string, unknown>> {
+  const key = 'eigene:shorts:v2'
+  const cache = await cacheLesen(ownerUserId, key)
+  if (cache && typeof cache === 'object') return { ...(cache as Record<string, unknown>), ausCache: true }
+
+  const token = await frischesYoutubeAccessToken(ownerUserId)
+  if (!token.channelId) throw new VidiqFehler('Kein Kanal am Token. Bitte YouTube erneut verbinden.', true)
+  const playlist = uploadsPlaylist(token.channelId)
+  if (!playlist) throw new VidiqFehler('Die Upload-Liste des Kanals fehlt.')
+
+  const ids: string[] = []
+  let page = ''
+  for (let seite = 0; seite < 2 && ids.length < 100; seite++) {
+    const url = new URL(`${DATA}/playlistItems`)
+    url.searchParams.set('part', 'contentDetails')
+    url.searchParams.set('playlistId', playlist)
+    url.searchParams.set('maxResults', '50')
+    if (page) url.searchParams.set('pageToken', page)
+    const json = await googleJson(url.toString(), token.accessToken)
+    const items = Array.isArray(json.items) ? json.items : []
+    for (const item of items) {
+      const id = text(((item as Roh).contentDetails as Roh | undefined)?.videoId)
+      if (id) ids.push(id)
+    }
+    page = text(json.nextPageToken)
+    if (!page) break
+  }
+
+  const roh: {
+    id: string
+    titel: string
+    beschreibung: string
+    tags: string[]
+    views: number
+    likes: number
+    comments: number
+    veroeffentlicht: string
+    thumbnail: string
+  }[] = []
+  for (let i = 0; i < ids.length; i += 50) {
+    const url = new URL(`${DATA}/videos`)
+    url.searchParams.set('part', 'snippet,statistics,contentDetails')
+    url.searchParams.set('id', ids.slice(i, i + 50).join(','))
+    const json = await googleJson(url.toString(), token.accessToken)
+    const items = Array.isArray(json.items) ? json.items : []
+    for (const item of items) {
+      const zeile = item as Roh
+      const snippet = (zeile.snippet ?? {}) as Roh
+      const stats = (zeile.statistics ?? {}) as Roh
+      const details = (zeile.contentDetails ?? {}) as Roh
+      const thumbs = (snippet.thumbnails ?? {}) as Roh
+      const medium = (thumbs.medium ?? thumbs.default ?? {}) as Roh
+      const titel = text(snippet.title)
+      const beschreibung = text(snippet.description)
+      const dauer = dauerSekunden(text(details.duration))
+      if (dauer > 180 && !/#shorts/i.test(`${titel} ${beschreibung}`)) continue
+      const tags = Array.isArray(snippet.tags) ? snippet.tags.map((t) => text(t)).filter(Boolean) : []
+      roh.push({
+        id: text(zeile.id),
+        titel,
+        beschreibung: beschreibung.slice(0, 500),
+        tags,
+        views: num(stats.viewCount),
+        likes: num(stats.likeCount),
+        comments: num(stats.commentCount),
+        veroeffentlicht: text(snippet.publishedAt),
+        thumbnail: text(medium.url),
+      })
+    }
+  }
+
+  const prozent = new Map<string, { prozent: number; sekunden: number }>()
+  if (roh.length) {
+    try {
+      const zeilen = await report(
+        token.accessToken,
+        token.channelId,
+        {
+          dimensions: 'video',
+          metrics: 'averageViewPercentage,averageViewDuration',
+          filters: `video==${roh.slice(0, 50).map((v) => v.id).join(',')}`,
+          maxResults: '50',
+        },
+        365,
+      )
+      for (const zeile of zeilen) {
+        prozent.set(text(zeile.video), { prozent: num(zeile.averageViewPercentage), sekunden: num(zeile.averageViewDuration) })
+      }
+    } catch (e) {
+      if (e instanceof VidiqFehler && e.brauchtReconnect) throw e
+    }
+  }
+
+  const shorts = roh
+    .map((v) => {
+      const halt = prozent.get(v.id)
+      const andere = roh.filter((x) => x.id !== v.id).map((x) => x.views)
+      const score = scoreFuerShort({
+        titel: v.titel,
+        beschreibung: v.beschreibung,
+        tags: v.tags,
+        views: v.views,
+        likes: v.likes,
+        comments: v.comments,
+        gesehenProzent: halt ? halt.prozent : null,
+        vergleichsMedian: median(andere),
+      })
+      return {
+        id: v.id,
+        titel: v.titel,
+        views: v.views,
+        likes: v.likes,
+        comments: v.comments,
+        veroeffentlicht: v.veroeffentlicht,
+        thumbnail: v.thumbnail,
+        gesehenProzent: halt ? halt.prozent : null,
+        gesehenSekunden: halt ? halt.sekunden : null,
+        score,
+        empfehlungen: empfehlungenFuerShort({
+          titel: v.titel,
+          beschreibung: v.beschreibung,
+          tags: v.tags,
+          views: v.views,
+          likes: v.likes,
+          comments: v.comments,
+          gesehenProzent: halt ? halt.prozent : null,
+        }),
+      }
+    })
+    .sort((a, b) => a.score.gesamt - b.score.gesamt || Date.parse(b.veroeffentlicht) - Date.parse(a.veroeffentlicht))
+
+  const schnitt = shorts.length ? Math.round(shorts.reduce((summe, s) => summe + s.score.gesamt, 0) / shorts.length) : 0
+  const payload = {
+    ok: true,
+    verzug: 'Gesehener Anteil: Stand von vor 1–2 Tagen. Score ist 50 % SEO und 50 % Leistung, nicht das VidIQ-Suchvolumen.',
+    geprueft: ids.length,
+    schnitt,
+    stufe: chanceStufe(schnitt),
+    shorts,
+  }
+  await cacheSchreiben(ownerUserId, key, payload, 6)
   return { ...payload, ausCache: false }
 }

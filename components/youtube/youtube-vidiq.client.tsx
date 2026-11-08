@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { firmenKurzname } from '@/lib/youtube/youtube-keywords'
 import {
@@ -28,6 +28,27 @@ type Nische = {
   ausCache?: boolean
 }
 
+type EigenerShort = {
+  id: string
+  titel: string
+  views: number
+  likes: number
+  comments: number
+  veroeffentlicht: string
+  thumbnail: string
+  gesehenProzent: number | null
+  gesehenSekunden: number | null
+  score: {
+    gesamt: number
+    stufe: string
+    seo: number
+    leistung: number | null
+    outlier: number | null
+    teile: { name: string; punkte: number; max: number }[]
+  }
+  empfehlungen: { stufe: 'hoch' | 'mittel' | 'ok'; text: string }[]
+}
+
 type Analytics = {
   verzug: string
   shorts: {
@@ -51,6 +72,22 @@ type Analytics = {
 }
 
 const SPEICHER = 'youtube-vidiq-paket:'
+
+function scoreFarbe(wert: number): string {
+  if (wert >= 80) return 'text-emerald-300'
+  if (wert >= 60) return 'text-lime-300'
+  if (wert >= 40) return 'text-yellow-300'
+  if (wert >= 20) return 'text-orange-300'
+  return 'text-red-400'
+}
+
+function scoreBalken(wert: number): string {
+  if (wert >= 80) return 'bg-emerald-400'
+  if (wert >= 60) return 'bg-lime-400'
+  if (wert >= 40) return 'bg-yellow-300'
+  if (wert >= 20) return 'bg-orange-400'
+  return 'bg-red-500'
+}
 
 function zahl(n: number): string {
   return new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(n)
@@ -100,26 +137,29 @@ export function YoutubeVidiq({
   onTags: (tags: string[]) => void
   onReconnect: () => void
 }) {
+  const bereit = Boolean(ticker.trim() && firmenname.trim())
   const haupt = firmenKurzname(firmenname) || ticker
   const gruppen = useMemo(
-    () => tagGruppen({ ticker, firmenname, metricLabel, suchphrasen, isin }),
-    [ticker, firmenname, metricLabel, suchphrasen, isin],
+    () => (bereit ? tagGruppen({ ticker, firmenname, metricLabel, suchphrasen, isin }) : []),
+    [bereit, ticker, firmenname, metricLabel, suchphrasen, isin],
   )
   const empf = useMemo(() => empfohleneTags(gruppen), [gruppen])
   const zeichen = tagZeichen(empf)
   const titelListe = useMemo(
-    () => fuenfTitel({ ticker, firmenname, hook, kicker, metricValue, metricLabel }),
-    [ticker, firmenname, hook, kicker, metricValue, metricLabel],
+    () => (bereit ? fuenfTitel({ ticker, firmenname, hook, kicker, metricValue, metricLabel }) : []),
+    [bereit, ticker, firmenname, hook, kicker, metricValue, metricLabel],
   )
   const entwurf = useMemo(
-    () => beschreibungEntwurf({ hook, firmenname, ticker, metricValue, metricLabel }),
-    [hook, firmenname, ticker, metricValue, metricLabel],
+    () => (bereit ? beschreibungEntwurf({ hook, firmenname, ticker, metricValue, metricLabel }) : ''),
+    [bereit, hook, firmenname, ticker, metricValue, metricLabel],
   )
   const hashes = useMemo(() => hashtagsFuer(ticker, firmenname), [ticker, firmenname])
   const seo = useMemo(() => seoCheckliste({ titel, beschreibung, tags, haupt }), [titel, beschreibung, tags, haupt])
 
   const [nische, setNische] = useState<Nische | null>(null)
-  const [analytics, setAnalytics] = useState<Analytics | null>(null)
+  const [eigene, setEigene] = useState<EigenerShort[] | null>(null)
+  const [eigeneSchnitt, setEigeneSchnitt] = useState<number | null>(null)
+  const [eigeneHinweis, setEigeneHinweis] = useState<string | null>(null)
   const [inspekt, setInspekt] = useState<{ video: VidiqVideo; kanal: { abonnenten: number; letzteViews: number | null; abstandTage: number | null; letzterUpload: string } } | null>(null)
   const [link, setLink] = useState('')
   const [laedt, setLaedt] = useState<string | null>(null)
@@ -164,16 +204,27 @@ export function YoutubeVidiq({
     }
   }
 
-  async function analyticsLaden() {
-    setLaedt('analytics')
+  async function eigeneLaden() {
+    setLaedt('liste')
+    setEigeneHinweis(null)
     try {
-      setAnalytics((await posten('analytics', {})) as Analytics)
+      const json = (await posten('liste', {})) as { shorts: EigenerShort[]; verzug: string; geprueft: number; schnitt: number; stufe: string }
+      setEigene(json.shorts)
+      setEigeneSchnitt(json.schnitt)
+      setEigeneHinweis(`${json.shorts.length} Shorts. Kanal-Score ${json.schnitt}, ${json.stufe}. ${json.verzug}`)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Auswertung fehlgeschlagen')
+      setEigene([])
+      setEigeneHinweis(e instanceof Error ? e.message : 'Shorts nicht lesbar')
     } finally {
       setLaedt(null)
     }
   }
+
+  useEffect(() => {
+    void eigeneLaden()
+    // Einmal beim Öffnen. Der Server cached sechs Stunden.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function rankingPruefen() {
     if (!videoId) {
@@ -230,6 +281,67 @@ export function YoutubeVidiq({
         <span className="font-mono text-[10px] text-neutral-500">{ticker}</span>
       </div>
       <div className="space-y-4 px-4 py-3 text-neutral-200">
+        <div className="rounded-xl border border-neutral-800 p-3">
+          <div className="flex items-center justify-between gap-2">
+          {eigeneSchnitt != null ? (
+            <p className={`font-mono text-2xl leading-none ${scoreFarbe(eigeneSchnitt)}`}>{eigeneSchnitt}</p>
+          ) : (
+            <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">Deine Shorts</p>
+          )}
+            <button type="button" disabled={laedt === 'liste'} onClick={() => void eigeneLaden()} className="rounded-full border border-cyan-400/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-cyan-200 disabled:opacity-50">
+              {laedt === 'liste' ? 'Lädt…' : 'Neu laden'}
+            </button>
+          </div>
+          {eigeneHinweis ? <p className="mt-2 font-mono text-[10px] text-neutral-500">{eigeneHinweis}</p> : null}
+          {eigene == null ? <p className="mt-2 font-mono text-[10px] text-neutral-500">Shorts werden gelesen…</p> : null}
+          <ul className="mt-2 space-y-2">
+            {(eigene ?? []).map((s) => (
+              <li key={s.id} className="rounded-lg border border-neutral-800 p-2">
+                <div className="flex gap-2">
+                  <div className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-lg border border-neutral-800 ${scoreFarbe(s.score.gesamt)}`}>
+                    <span className="font-mono text-xl leading-none">{s.score.gesamt}</span>
+                    <span className="mt-0.5 font-mono text-[8px] uppercase tracking-wider text-neutral-500">{s.score.stufe}</span>
+                  </div>
+                  <a href={`https://www.youtube.com/shorts/${s.id}`} target="_blank" rel="noreferrer" className="min-w-0 flex-1">
+                    <span className="line-clamp-2 text-xs text-neutral-100">{s.titel}</span>
+                    <span className="mt-1 block font-mono text-[10px] text-neutral-500">
+                      {zahl(s.views)} Views
+                      {s.gesehenProzent != null ? ` · ${Math.round(s.gesehenProzent)} % gesehen` : ''}
+                      {s.score.outlier != null ? ` · ${zahl(s.score.outlier)}× Kanal` : ''}
+                    </span>
+                  </a>
+                  {s.thumbnail ? <img src={s.thumbnail} alt="" className="h-14 w-9 rounded object-cover" /> : null}
+                </div>
+                <div className="mt-2 space-y-1">
+                  <div>
+                    <div className="flex justify-between font-mono text-[10px] text-neutral-500">
+                      <span>SEO {s.score.seo}</span>
+                      <span>{s.score.leistung == null ? 'Leistung fehlt' : `Leistung ${s.score.leistung}`}</span>
+                    </div>
+                    <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-neutral-800">
+                      <div className={`h-full ${scoreBalken(s.score.gesamt)}`} style={{ width: `${s.score.gesamt}%` }} />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {s.score.teile.filter((t) => t.punkte < t.max).slice(0, 3).map((t) => (
+                      <span key={t.name} className="rounded-full border border-neutral-800 px-1.5 py-0.5 font-mono text-[9px] text-neutral-400">
+                        {t.name} {t.punkte}/{t.max}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <ul className="mt-2 space-y-0.5">
+                  {s.empfehlungen.slice(0, 3).map((e) => (
+                    <li key={e.text} className={`font-mono text-[10px] ${e.stufe === 'hoch' ? 'text-amber-300' : e.stufe === 'ok' ? 'text-emerald-300' : 'text-cyan-300'}`}>
+                      {e.text}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
+        {bereit ? (
         <div className="flex flex-wrap gap-1.5">
           <button type="button" onClick={paketKopieren} className="rounded-full border border-neutral-800 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-200 hover:border-neutral-600">
             Paket kopieren
@@ -241,19 +353,28 @@ export function YoutubeVidiq({
             Gemerkte laden
           </button>
         </div>
+        ) : null}
 
         <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-3">
           <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">Feed</p>
-          <div className="mt-2 grid grid-cols-3 gap-1">
-            {[kicker || 'Hook', metricValue, `${urteil} ${score.toFixed(1)}`].map((zeile) => (
-              <div key={zeile} className="flex h-16 items-center justify-center rounded-md bg-black px-1 text-center font-mono text-[10px] text-white">
-                {zeile}
+          {bereit ? (
+            <>
+              <div className="mt-2 grid grid-cols-3 gap-1">
+                {[kicker || 'Hook', metricValue, `${urteil} ${score.toFixed(1)}`].map((zeile) => (
+                  <div key={zeile} className="flex h-16 items-center justify-center rounded-md bg-black px-1 text-center font-mono text-[10px] text-white">
+                    {zeile}
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <p className="mt-2 line-clamp-2 text-xs text-neutral-100">{titel || 'Titel fehlt'}</p>
+              <p className="mt-2 line-clamp-2 text-xs text-neutral-100">{titel || 'Titel fehlt'}</p>
+            </>
+          ) : (
+            <p className="mt-2 font-mono text-[11px] text-neutral-500">Titel, Tags und Nische kommen mit dem Short. Video prüfen und eigene Shorts gehen sofort.</p>
+          )}
         </div>
 
+        {bereit ? (
+        <>
         <div>
           <div className="flex items-center justify-between">
             <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">Titel</p>
@@ -357,6 +478,8 @@ export function YoutubeVidiq({
           </button>
           {ranking ? <p className="mt-1 font-mono text-[10px] text-neutral-300">{ranking}</p> : null}
         </div>
+        </>
+        ) : null}
 
         <div>
           <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">Video prüfen</p>
@@ -383,32 +506,6 @@ export function YoutubeVidiq({
               </button>
             </div>
           ) : null}
-        </div>
-
-        <div className="rounded-xl border border-neutral-800 p-3">
-          <div className="flex items-center justify-between">
-            <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">Eigene Shorts</p>
-            <button type="button" disabled={laedt === 'analytics'} onClick={() => void analyticsLaden()} className="rounded-full border border-cyan-400/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-cyan-200 disabled:opacity-50">
-              {laedt === 'analytics' ? 'Lädt…' : 'Laden'}
-            </button>
-          </div>
-          {analytics ? (
-            <div className="mt-2 space-y-1 font-mono text-[10px] text-neutral-300">
-              <p className="text-amber-200/90">{analytics.verzug}{analytics.ausCache ? ' · Cache' : ''}</p>
-              <p>{zahl(analytics.shorts.views)} Views · {zahl(analytics.shorts.engagedViews)} engaged · {analytics.shorts.averageViewPercentage.toFixed(1)} % gesehen · {sekunden(analytics.shorts.averageViewDuration)}</p>
-              <p>+{zahl(analytics.shorts.subscribersGained)} / −{zahl(analytics.shorts.subscribersLost)} Abos · {zahl(analytics.shorts.minutes)} Minuten</p>
-              {analytics.quellen.slice(0, 5).map((q) => (
-                <p key={q.quelle}>{q.quelle}: {zahl(q.views)}</p>
-              ))}
-              {analytics.laender.length ? <p>Länder: {analytics.laender.map((l) => `${l.land} ${zahl(l.views)}`).join(' · ')}</p> : null}
-              {analytics.halte ? <p>Halt: {analytics.halte.map((h) => `${h.bei}% ${Math.round(h.quote * 100)}%`).join(' · ')}</p> : null}
-              {analytics.nichtVerfuegbar.map((n) => (
-                <p key={n} className="text-neutral-500">{n}: nicht verfügbar</p>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-2 font-mono text-[10px] text-neutral-500">Nach dem erneuten Verbinden. Der Upload-Token allein reicht für Analytics nicht.</p>
-          )}
         </div>
       </div>
     </section>

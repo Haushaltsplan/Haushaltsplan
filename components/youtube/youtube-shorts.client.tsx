@@ -887,6 +887,36 @@ export function YoutubeShortsClient() {
 
       {modus === 'moat' ? (
       <>
+      <YoutubeVidiq
+        ticker={props?.ticker ?? ''}
+        firmenname={props?.firmenname ?? ''}
+        isin={ergebnis?.moat.isin ?? null}
+        hook={props?.hook ?? ''}
+        kicker={props?.kicker ?? ''}
+        metricValue={props?.metricValue ?? ''}
+        metricLabel={props?.metricLabel ?? ''}
+        verdict={props?.verdict ?? 'none'}
+        score={props?.score ?? 0}
+        suchphrasen={ergebnis?.suchphrasen ?? []}
+        titel={uploadTitel}
+        beschreibung={uploadBeschreibung}
+        tags={youtubeTags}
+        videoId={videoId}
+        onTitel={setUploadTitel}
+        onBeschreibung={setUploadBeschreibung}
+        onTags={(neu) => {
+          setOhneTags((ohne) => ohne.filter((w) => !neu.some((n) => n.toLowerCase() === w.toLowerCase())))
+          setEigeneTags((alt) => {
+            const next = [...alt]
+            for (const tag of neu) {
+              if (next.some((t) => t.toLowerCase() === tag.toLowerCase())) continue
+              next.push(tag)
+            }
+            return next
+          })
+        }}
+        onReconnect={() => setYt((s) => ({ ...s, connected: false, channelTitle: null }))}
+      />
       <section className="app-section-shell">
         <div className="app-surface-card-header px-4 py-2.5 sm:px-5">
           <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">1 · Export einfügen</h2>
@@ -964,7 +994,7 @@ export function YoutubeShortsClient() {
       </section>
 
       {ergebnis && props ? (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] xl:grid-cols-[minmax(0,1fr)_340px_360px]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
           <section className="app-section-shell">
             <div className="app-surface-card-header flex items-center justify-between px-4 py-2.5 sm:px-5">
               <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">2 · Script prüfen</h2>
@@ -1254,40 +1284,7 @@ export function YoutubeShortsClient() {
             </div>
           </section>
 
-          <div className="lg:col-span-2 xl:col-span-1 xl:col-start-2 xl:row-start-1">
-            <YoutubeVidiq
-              ticker={props.ticker}
-              firmenname={props.firmenname}
-              isin={ergebnis.moat.isin}
-              hook={props.hook}
-              kicker={props.kicker}
-              metricValue={props.metricValue}
-              metricLabel={props.metricLabel}
-              verdict={props.verdict}
-              score={props.score}
-              suchphrasen={ergebnis.suchphrasen}
-              titel={uploadTitel}
-              beschreibung={uploadBeschreibung}
-              tags={youtubeTags}
-              videoId={videoId}
-              onTitel={setUploadTitel}
-              onBeschreibung={setUploadBeschreibung}
-              onTags={(neu) => {
-                setOhneTags((ohne) => ohne.filter((w) => !neu.some((n) => n.toLowerCase() === w.toLowerCase())))
-                setEigeneTags((alt) => {
-                  const next = [...alt]
-                  for (const tag of neu) {
-                    if (next.some((t) => t.toLowerCase() === tag.toLowerCase())) continue
-                    next.push(tag)
-                  }
-                  return next
-                })
-              }}
-              onReconnect={() => setYt((s) => ({ ...s, connected: false, channelTitle: null }))}
-            />
-          </div>
-
-          <section className="app-section-shell lg:col-start-2 lg:row-start-1 xl:col-start-3 xl:row-start-1">
+          <section className="app-section-shell">
             <div className="app-surface-card-header px-4 py-2.5 sm:px-5">
               <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">3 · Vorschau</h2>
             </div>

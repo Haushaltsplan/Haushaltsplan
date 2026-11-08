@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseFuerRequest, ownerUserIdAusRequest } from '@/lib/supabase-user'
 import { videoIdAusText } from '@/lib/youtube/vidiq-engine'
-import { VidiqFehler, ladeAnalytics, ladeNische, ladeVideo, pruefeRanking } from '@/lib/youtube/vidiq-youtube-server'
+import { VidiqFehler, ladeAnalytics, ladeEigeneShorts, ladeNische, ladeVideo, pruefeRanking } from '@/lib/youtube/vidiq-youtube-server'
 import { youtubeApiKonfiguriert } from '@/lib/youtube/youtube-oauth-server'
 
 export const runtime = 'nodejs'
@@ -46,6 +46,7 @@ export async function POST(req: Request) {
       return NextResponse.json(await ladeVideo({ ownerUserId: owner, videoId }))
     }
     if (action === 'analytics') return NextResponse.json(await ladeAnalytics(owner))
+    if (action === 'liste') return NextResponse.json(await ladeEigeneShorts(owner))
     if (action === 'ranking') {
       const videoId = videoIdAusText(String(body.videoId ?? ''))
       const phrase = String(body.phrase ?? '').trim()

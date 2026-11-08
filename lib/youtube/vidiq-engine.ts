@@ -250,6 +250,126 @@ function metricWertDrin(beschreibung: string): boolean {
   return /\d/.test(beschreibung)
 }
 
+export type ShortScoreTeil = { name: string; punkte: number; max: number }
+
+export type ShortScore = {
+  gesamt: number
+  stufe: string
+  seo: number
+  leistung: number | null
+  outlier: number | null
+  teile: ShortScoreTeil[]
+}
+
+function kappen(wert: number, max: number): number {
+  return Math.max(0, Math.min(max, Math.round(wert)))
+}
+
+/** 50 % SEO aus den Metadaten, 50 % Leistung aus Halt, Reaktion und Outlier. */
+export function scoreFuerShort(opts: {
+  titel: string
+  beschreibung: string
+  tags: string[]
+  views: number
+  likes: number
+  comments: number
+  gesehenProzent: number | null
+  vergleichsMedian: number | null
+}): ShortScore {
+  const titel = opts.titel.trim()
+  const beschreibung = opts.beschreibung.trim()
+  const wort = hauptwort(titel).toLowerCase()
+  const kopf = titel.slice(0, 60).toLowerCase()
+  const imTitel = wort.length > 3 && kopf.includes(wort)
+  const inTags = wort.length > 3 && opts.tags.some((t) => t.toLowerCase().includes(wort))
+  const inBeschreibung = wort.length > 3 && beschreibung.toLowerCase().includes(wort)
+  const teile: ShortScoreTeil[] = [
+    { name: 'Titellänge', punkte: titel.length >= 40 && titel.length <= 60 ? 20 : titel.length >= 28 && titel.length <= 70 ? 10 : 0, max: 20 },
+    { name: 'Suchwort im Titel', punkte: imTitel ? 15 : 0, max: 15 },
+    { name: 'Tags', punkte: opts.tags.length >= 5 ? 20 : opts.tags.length >= 3 ? 10 : 0, max: 20 },
+    { name: 'Suchwort in Tags', punkte: inTags ? 15 : 0, max: 15 },
+    { name: 'Suchwort in Beschreibung', punkte: inBeschreibung ? 15 : 0, max: 15 },
+    { name: 'Beschreibung', punkte: beschreibung.length >= 120 ? 10 : beschreibung.length >= 80 ? 5 : 0, max: 10 },
+    { name: 'Dreifach', punkte: imTitel && inTags && inBeschreibung ? 5 : 0, max: 5 },
+  ]
+  const seo = teile.reduce((summe, teil) => summe + teil.punkte, 0)
+  const outlier = opts.vergleichsMedian && opts.vergleichsMedian > 0 ? opts.views / opts.vergleichsMedian : null
+  let leistung: number | null = null
+  if (opts.gesehenProzent != null) {
+    const halt = kappen((opts.gesehenProzent / 100) * 40, 40)
+    const rate = opts.views > 0 ? (opts.likes + opts.comments) / opts.views : 0
+    const reaktion = kappen((rate / 0.03) * 30, 30)
+    const ausreisser = outlier == null ? 15 : kappen(Math.log2(Math.max(outlier, 0.05)) * 10 + 15, 30)
+    leistung = halt + reaktion + ausreisser
+  }
+  const gesamt = leistung == null ? seo : Math.round(seo * 0.5 + leistung * 0.5)
+  return { gesamt, stufe: chanceStufe(gesamt), seo, leistung, outlier, teile }
+}
+
+const FUELLWOERTER = /^(why|how|what|who|is|are|the|a|an|of|to|and|for|in|on|at|do|does|can)$/i
+
+export type ShortEmpfehlung = { stufe: 'hoch' | 'mittel' | 'ok'; text: string }
+
+function hauptwort(titel: string): string {
+  const wort = titel
+    .replace(/[#?]/g, ' ')
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .find((w) => w.length > 3 && !FUELLWOERTER.test(w))
+  return wort ?? ''
+}
+
+/** Konkrete Schritte aus den Metadaten und, falls vorhanden, dem gesehenen Anteil. */
+export function empfehlungenFuerShort(opts: {
+  titel: string
+  beschreibung: string
+  tags: string[]
+  views: number
+  likes: number
+  comments: number
+  gesehenProzent: number | null
+}): ShortEmpfehlung[] {
+  const titel = opts.titel.trim()
+  const beschreibung = opts.beschreibung.trim()
+  const wort = hauptwort(titel).toLowerCase()
+  const liste: ShortEmpfehlung[] = []
+  if (titel.length < 40 || titel.length > 60) {
+    liste.push({
+      stufe: titel.length < 20 || titel.length > 80 ? 'hoch' : 'mittel',
+      text: `Titel hat ${titel.length} Zeichen. Ziel sind 40–60, mit dem Suchwort vorn.`,
+    })
+  }
+  if (opts.tags.length < 5) {
+    liste.push({ stufe: 'hoch', text: `Nur ${opts.tags.length} Tags. Mindestens 5: Ticker, Firma, moat, stock, die Kennzahl.` })
+  }
+  if (beschreibung.length < 80) {
+    liste.push({ stufe: 'hoch', text: 'Beschreibung ist zu dünn. Hook, die Kennzahl und „Not investment advice“ gehören hinein.' })
+  }
+  if (wort && !beschreibung.toLowerCase().includes(wort)) {
+    liste.push({ stufe: 'mittel', text: `„${wort}“ steht im Titel, aber nicht in der Beschreibung.` })
+  }
+  if (wort && !opts.tags.some((t) => t.toLowerCase().includes(wort))) {
+    liste.push({ stufe: 'mittel', text: `„${wort}“ fehlt in den Tags.` })
+  }
+  if (!/#\w/.test(beschreibung)) {
+    liste.push({ stufe: 'mittel', text: 'Keine Hashtags in der Beschreibung. #Shorts und der Ticker reichen.' })
+  }
+  if (opts.gesehenProzent != null && opts.gesehenProzent < 40) {
+    liste.push({ stufe: 'hoch', text: `Nur ${Math.round(opts.gesehenProzent)} % gesehen. Die Frage oder die Zahl muss in der ersten Sekunde da sein.` })
+  } else if (opts.gesehenProzent != null && opts.gesehenProzent < 60) {
+    liste.push({ stufe: 'mittel', text: `${Math.round(opts.gesehenProzent)} % gesehen. Die Zahl früher sprechen, der Halt reißt danach.` })
+  }
+  const reaktion = opts.views > 100 ? (opts.likes + opts.comments) / opts.views : null
+  if (reaktion != null && reaktion < 0.01) {
+    liste.push({ stufe: 'mittel', text: 'Wenig Likes und Kommentare. Der angepinnte Kommentar sollte eine Streitfrage sein, kein Abo-Spruch.' })
+  }
+  if (!liste.length) {
+    liste.push({ stufe: 'ok', text: 'Titel, Tags und Beschreibung sitzen. Als Nächstes zählt, ob die erste Sekunde hält.' })
+  }
+  const rang = { hoch: 0, mittel: 1, ok: 2 }
+  return liste.sort((a, b) => rang[a.stufe] - rang[b.stufe])
+}
+
 export function paketText(opts: { titel: string; beschreibung: string; tags: string[]; hashtags: string[] }): string {
   return [`Titel: ${opts.titel}`, '', 'Beschreibung:', opts.beschreibung, '', `Hashtags: ${opts.hashtags.join(' ')}`, `Tags: ${opts.tags.join(',')}`].join('\n')
 }
