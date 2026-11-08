@@ -15,7 +15,7 @@ import { tagsSichtbar } from '@/lib/youtube/youtube-tags'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
-import { doppelteWendung, istOffeneBruecke, kuerzeGesprocheneZeile, ohneKennzahlId, sanitiereMoatFuerStimme, schaetzeSprechsekunden, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
+import { doppelteWendung, fremderKlassenSatz, hookKarteFuerUnternehmen, hookPaar, istOffeneBruecke, kuerzeGesprocheneZeile, ohneKennzahlId, sanitiereMoatFuerStimme, schaetzeSprechsekunden, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
 import { gespeicherteStimmeRegler, moatShortSprechFingerprint, speichereStimmeRegler } from '@/lib/youtube/moat-short-voice'
@@ -73,6 +73,12 @@ function hookKarten(varianten: MoatShortHookVariante[]): MoatShortHookVariante[]
     geordnet.push(h)
   }
   return geordnet
+}
+
+function geschaeftsKontext(p: MoatShortProps, e: MoatShortErgebnis): string {
+  return [p.kicker, e.moat.geschaeftsmodell, ...e.moat.pfeiler.flatMap((x) => [x.begruendung, x.risiko]), ...p.pillars.map((x) => x.line), p.business]
+    .filter((z) => z && z.trim() && z.trim() !== '–')
+    .join('\n')
 }
 
 function scriptZumKopieren(p: MoatShortProps): string {
@@ -452,21 +458,12 @@ export function YoutubeShortsClient() {
 
   useEffect(() => {
     if (!props || !ergebnis) return
-    if (/mcdonald/i.test(props.firmenname)) return
-    if (!/mcdonald/i.test(`${props.hook}\n${props.proof}`)) return
-    const h = hookKarten(ergebnis.hookVarianten)[0]
-    if (!h || h.claim === props.hook) return
-    const m = ergebnis.metriken.find((x) => x.id === h.metrikId)
-    setProps((p) =>
-      p
-        ? {
-            ...p,
-            hook: h.claim,
-            proof: h.proof,
-            ...(m ? { metricValue: m.value, metricLabel: m.label } : {}),
-          }
-        : p,
-    )
+    const kontext = geschaeftsKontext(props, ergebnis)
+    if (!fremderKlassenSatz(props.hook, kontext) && !fremderKlassenSatz(props.proof, kontext)) return
+    const metrik = ergebnis.metriken.find((m) => m.value === props.metricValue && m.label === props.metricLabel)
+    const paar = hookPaar(props.hook, props.proof, props.firmenname, props.metricValue, props.metricLabel, metrik?.id ?? '', kontext)
+    if (paar.claim === props.hook && paar.proof === props.proof) return
+    setProps((p) => (p ? { ...p, hook: paar.claim, proof: paar.proof } : p))
   }, [props, ergebnis])
 
   function leereStimme() {
@@ -607,14 +604,14 @@ export function YoutubeShortsClient() {
     }
   }
 
-  function waehleHook(h: MoatShortHookVariante) {
-    const m = ergebnis?.metriken.find((x) => x.id === h.metrikId)
+  function waehleHook(frage: string, antwort: string, metrikId: string) {
+    const m = ergebnis?.metriken.find((x) => x.id === metrikId)
     setProps((p) =>
       p
         ? {
             ...p,
-            hook: h.claim,
-            proof: h.proof,
+            hook: frage,
+            proof: antwort,
             ...(m ? { metricValue: m.value, metricLabel: m.label } : {}),
           }
         : p,
@@ -1063,13 +1060,24 @@ export function YoutubeShortsClient() {
                 {doppelHinweis ? <p className="font-mono text-[11px] text-amber-200/90">{doppelHinweis}</p> : null}
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
                 {hookKarten(ergebnis.hookVarianten).map((h) => {
-                  const aktiv = props.hook === h.claim && props.proof === h.proof
+                  const m = ergebnis.metriken.find((x) => x.id === h.metrikId)
+                  const karte = hookKarteFuerUnternehmen({
+                    winkel: h.winkel,
+                    claim: h.claim,
+                    proof: h.proof,
+                    firma: props.firmenname,
+                    wert: m?.value ?? props.metricValue,
+                    label: m?.label ?? props.metricLabel,
+                    id: m?.id ?? h.metrikId,
+                    kontext: geschaeftsKontext(props, ergebnis),
+                  })
+                  const aktiv = props.hook === karte.frage && props.proof === karte.antwort
                   return (
                     <button
                       key={`${h.winkel}-${h.metrikId}`}
                       type="button"
                       aria-pressed={aktiv}
-                      onClick={() => waehleHook(h)}
+                      onClick={() => waehleHook(karte.frage, karte.antwort, h.metrikId)}
                       className={`rounded-xl border px-3 py-3 text-left transition ${
                         aktiv
                           ? 'border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_24px_rgba(52,211,153,0.16)]'
@@ -1079,8 +1087,8 @@ export function YoutubeShortsClient() {
                       <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">
                         {WINKEL_LABEL[h.winkel]}
                       </span>
-                      <span className="mt-2 block text-sm font-medium text-neutral-100">{h.claim}</span>
-                      <span className="mt-1 block font-mono text-[11px] leading-relaxed text-neutral-400">{h.proof}</span>
+                      <span className="mt-2 block text-sm font-medium text-neutral-100">{karte.frage}</span>
+                      <span className="mt-1 block font-mono text-[11px] leading-relaxed text-neutral-400">{karte.antwort}</span>
                     </button>
                   )
                 })}

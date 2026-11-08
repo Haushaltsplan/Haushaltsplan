@@ -111,7 +111,8 @@ Talk like a person at a table. Same move for ASML, Hermès, a railroad, a card n
 
 Every spoken line is a normal human sentence: subject, verb, one thought. 8 to 10 words, and under 70 characters. Count the words. A comma is fine. One breath. The subtitle sits on 2 lines. If it would wrap to a third, the line is too long.
 
-Good proof: "Land ownership drives a massive 46.2% operating margin, proving unmatched pricing power."
+Good proof: "[This company's engine] drives a massive [X]% [metric], proving [the consequence]."
+The engine comes from the business model in the user message. A landlord may say land. A franchisor may say fees. A specialty-ingredient company says the formula, never the land under a shop.
 Good: "Ripping that stack out is a nightmare."
 Bad: "Because they print a 47.1% operating margin."
 Bad: "Ripping active directory and azure out of a Fortune 500 company is a nightmare."
@@ -170,12 +171,13 @@ Grammar
 - Bad: "causes legal and operational friction." That is a chopped list of two adjectives. Name one concrete thing, or two complete things. Good: "Ripping the system out takes years."
 
 Causality
-- The question names the economic engine, not the product the customer thinks they buy. A franchisor that owns land is about the land, not burger sales. A card network is about the network, not a fee slogan copied from a restaurant. A drug company is about the patent, not "they sell medicine".
-- proof is one cause-and-effect sentence for THAT question. Shape: [business driver] + drives/drive + "a massive" + the metric once + ", proving" + the consequence. Example: "Land ownership drives a massive 46.2% operating margin, proving unmatched pricing power."
+- The question names the economic engine of THIS company, not the product the customer thinks they buy, and not another company's engine. A landlord is about the land. A franchisor is about the fees. A specialty-ingredient company is about the formula. Never write land, shop, landlord, or franchise unless the business model is that.
+- proof is one cause-and-effect sentence for THAT question. Shape: [business driver] + drives/drive + "a massive" + the metric once + ", proving" + the consequence. Example shape: "Proprietary formulas drive a massive 35.7% gross margin, proving unmatched pricing power." Use that sentence only for a formula business. A landlord uses land. A card network uses the network.
 - The driver is never the metric name. Forbidden: "Operating margin lets them print a 46.2% operating margin." Forbidden: "Operating margin drives a 46.2% operating margin."
-- Same shape for every company. The driver is the class, not a ticker to copy:
-  * Land owner: "Land ownership drives a massive [X]% operating margin, proving unmatched pricing power."
-  * Franchise royalties: "Franchise fees drive a massive [X]% operating margin, proving unmatched pricing power."
+- Same shape for every company. Pick the ONE class the business model actually is. Do not copy a class from the list onto the wrong company:
+  * Landlord only: "Land ownership drives a massive [X]% operating margin, proving unmatched pricing power."
+  * Franchisor only: "Franchise fees drive a massive [X]% operating margin, proving unmatched pricing power."
+  * Specialty ingredients or formulation: "Proprietary formulas drive a massive [X]% gross margin, proving unmatched pricing power."
   * Card network: "Network effects drive a massive [X]% operating margin, proving unmatched pricing power."
   * B2B software: "Switching costs drive a massive [X]% operating margin, proving unmatched pricing power."
   * Pharma: "Patented drugs drive a massive [X]% gross margin, proving unmatched pricing power."
@@ -184,7 +186,7 @@ Causality
 - Never open the answer with Because. No period, comma, dash, or ellipsis between the verb and the number. "drives a massive 46.2%", never "drives. A 46.2%".
 - Do not repeat the driver, the metric name, or "pricing power" in the next sentence.
 - A verb such as losing, charging, or paying needs its object. "losing market share", never "losing".
-- kicker: 2 to 5 words, under 28 characters, the engine not the product ("Owns the land", not "Burger sales"). On screen only. Never spoken. No invented number.
+- kicker: 2 to 5 words, under 28 characters, the engine of THIS company, not the product the customer sees. "The formula" for a specialty-ingredient business. "Owns the land" only for a landlord. On screen only. Never spoken. No invented number.
 - claim: the first spoken line, seconds 0 to 3. 6 to 10 words. A complete question about that engine. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know". The number is already on screen; the question does not say it.
 - proof: the second spoken line. One breath. The number is spoken once, then the consequence in the same sentence. Never the metricId. Never "an ltm_ebit of 47.1%". Never the metric phrase a second time.
 
@@ -347,7 +349,15 @@ export async function generiereMoatShort(opts: {
   if (!roh) throw new Error('Script-KI lieferte kein gültiges JSON — bitte erneut versuchen.')
 
   const verdict = verdictAusUrteil(moat.urteil)
-  const kontext = [paket.sektor, paket.branche, paket.beschreibung, moat.geschaeftsmodell].filter(Boolean).join('\n')
+  const kontext = [
+    paket.sektor,
+    paket.branche,
+    paket.beschreibung,
+    moat.geschaeftsmodell,
+    ...moat.pfeiler.map((p) => `${p.begruendung} ${p.risiko}`),
+  ]
+    .filter(Boolean)
+    .join('\n')
   const crack = kuerzeGesprocheneZeile(sprechtext(roh.crack), { maxWoerter: 12, maxZeichen: 78 })
   const hookVarianten: MoatShortHookVariante[] = objekte(roh.hooks)
     .map((h) => {

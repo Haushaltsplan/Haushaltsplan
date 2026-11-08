@@ -314,52 +314,179 @@ export function moatUrsacheAusText(text: string): MoatUrsacheId {
   return 'barrier'
 }
 
-type TreiberId = 'land' | 'franchise' | 'patent' | 'network' | 'switching' | 'tools' | 'routes' | 'barrier'
+type TreiberId = 'land' | 'franchise' | 'formula' | 'patent' | 'network' | 'switching' | 'tools' | 'routes' | 'barrier'
 
 type Treiber = {
   id: TreiberId
   subjekt: string
   verb: 'drives' | 'drive'
   frage: (name: string) => string
+  kontrast: (name: string) => string
+  stakes: (name: string) => string
+}
+
+function treiber(teil: Omit<Treiber, 'kontrast' | 'stakes'> & { kontrast: Treiber['kontrast']; stakes: Treiber['stakes'] }): Treiber {
+  return teil
 }
 
 /**
- * Der ökonomische Motor, nicht die Kennzahl und nicht das Endprodukt.
- * Ein Franchise-Vermieter steht für die Klasse, nicht für einen Ticker.
+ * Der ökonomische Motor aus dem Text DIESES Unternehmens.
+ * Grundstück und Franchise nur, wenn das Modell wirklich Vermietung oder Franchise ist.
+ * „Grundstoff“ und das eigene Werksgrundstück sind kein Vermieter-Modell.
  */
 export function treiberAusText(text: string): Treiber {
   const t = text.toLowerCase()
-  if (/\breal estate\b|\blandlord\b|\bland ownership\b|owns the land|\bimmobilien\b|\bgrundst|\bmieteinnahm|\brental income\b|\bproperty portfolio\b/.test(t)) {
-    return { id: 'land', subjekt: 'Land ownership', verb: 'drives', frage: (name) => `Why does ${name} own the land under every shop?` }
+  const formel = /encapsulat|verkapsel|spezialchemie|nischenchemie|specialty chemical|specialty ingredient|specialty formula|proprietary formula|performance ingredient|nutritional ingredient|food ingredient|inhaltsstoff|rezeptur|zusatzstoff|\bchelat/.test(t)
+  const vermieter = /\blandlord\b|\bland ownership\b|owns the land|\bmieteinnahm|\brental income\b|\bproperty portfolio\b|\bimmobilien(?:gesellschaft|portfolio|bestand)\b/.test(t)
+  if (vermieter && !formel) {
+    return treiber({
+      id: 'land',
+      subjekt: 'Land ownership',
+      verb: 'drives',
+      frage: (name) => `Why does ${name} own the land under every shop?`,
+      kontrast: (name) => `Is ${name} a brand or a landlord?`,
+      stakes: (name) => `What happens if ${name} loses the land?`,
+    })
   }
-  if (/\bfranchise|\broyalt/.test(t)) {
-    return { id: 'franchise', subjekt: 'Franchise fees', verb: 'drive', frage: (name) => `Why do ${name}'s fees outlast the product?` }
+  if (/\bfranchise/.test(t)) {
+    return treiber({
+      id: 'franchise',
+      subjekt: 'Franchise fees',
+      verb: 'drive',
+      frage: (name) => `Why do ${name}'s fees outlast the product?`,
+      kontrast: (name) => `Is ${name} selling a product or a license?`,
+      stakes: (name) => `What happens if partners stop paying ${name}?`,
+    })
+  }
+  if (formel) {
+    return treiber({
+      id: 'formula',
+      subjekt: 'Proprietary formulas',
+      verb: 'drive',
+      frage: (name) => `Why can't rivals copy ${name}'s formulas?`,
+      kontrast: (name) => `Is ${name} a supplier or a locked-in formula?`,
+      stakes: (name) => `What happens if customers drop ${name}'s formulas?`,
+    })
   }
   if (/pharma|biotech|biotechn|medtech|medizintechnik|medizinprodukt|arznei|wirkstoff|therapeutic|implant|veterin|tierarz|tiergesundheit|animal health|animal-health/.test(t)) {
     const geraet = /implant|device|medizinprodukt|medizintechnik|medtech/.test(t)
     return geraet
-      ? { id: 'patent', subjekt: 'Patented devices', verb: 'drive', frage: (name) => `Why can ${name} charge for the same device for years?` }
-      : { id: 'patent', subjekt: 'Patented drugs', verb: 'drive', frage: (name) => `Why can ${name} charge for the same drug for years?` }
+      ? treiber({
+          id: 'patent',
+          subjekt: 'Patented devices',
+          verb: 'drive',
+          frage: (name) => `Why can ${name} charge for the same device for years?`,
+          kontrast: (name) => `Is ${name} a factory or a patent vault?`,
+          stakes: (name) => `What happens when ${name}'s patents expire?`,
+        })
+      : treiber({
+          id: 'patent',
+          subjekt: 'Patented drugs',
+          verb: 'drive',
+          frage: (name) => `Why can ${name} charge for the same drug for years?`,
+          kontrast: (name) => `Is ${name} a lab or a patent vault?`,
+          stakes: (name) => `What happens when ${name}'s patents expire?`,
+        })
   }
   if (/zahlungs|payment|kreditkarte|kartenzahlung|card network|interchange|bezahl|acquiring|netzwerkeffekt|network effect/.test(t)) {
-    return { id: 'network', subjekt: 'Network effects', verb: 'drive', frage: (name) => `Why does every new ${name} customer strengthen the network?` }
+    return treiber({
+      id: 'network',
+      subjekt: 'Network effects',
+      verb: 'drive',
+      frage: (name) => `Why does every new ${name} customer strengthen the network?`,
+      kontrast: (name) => `Is ${name} a product or a network?`,
+      stakes: (name) => `What happens if customers leave ${name}'s network?`,
+    })
   }
   if (/halbleiter|semiconductor|lithograph|wafer/.test(t)) {
-    return { id: 'tools', subjekt: 'Tool monopoly', verb: 'drives', frage: (name) => `Why can no fab build chips without ${name}?` }
+    return treiber({
+      id: 'tools',
+      subjekt: 'Tool monopoly',
+      verb: 'drives',
+      frage: (name) => `Why can no fab build chips without ${name}?`,
+      kontrast: (name) => `Is ${name} a supplier or the only tool?`,
+      stakes: (name) => `What happens if a fab bypasses ${name}?`,
+    })
   }
   if (/eisenbahn|railroad|pipeline|flughafen|hafen|netzbetreiber|energieversorg/.test(t)) {
-    return { id: 'routes', subjekt: 'The route network', verb: 'drives', frage: (name) => `Why can no rival copy ${name}'s routes?` }
+    return treiber({
+      id: 'routes',
+      subjekt: 'The route network',
+      verb: 'drives',
+      frage: (name) => `Why can no rival copy ${name}'s routes?`,
+      kontrast: (name) => `Is ${name} a carrier or the route itself?`,
+      stakes: (name) => `What happens if shippers bypass ${name}?`,
+    })
   }
   if (/\b(software|saas|cloud|enterprise|lizenzsoftware|b2b)\b/.test(t)) {
-    return { id: 'switching', subjekt: 'Switching costs', verb: 'drive', frage: (name) => `Why do ${name}'s customers stay when contracts end?` }
+    return treiber({
+      id: 'switching',
+      subjekt: 'Switching costs',
+      verb: 'drive',
+      frage: (name) => `Why do ${name}'s customers stay when contracts end?`,
+      kontrast: (name) => `Is ${name} software or a system they cannot leave?`,
+      stakes: (name) => `What happens if a customer rips ${name} out?`,
+    })
   }
-  return { id: 'barrier', subjekt: 'High barriers', verb: 'drive', frage: (name) => `Why can no rival rebuild what ${name} owns?` }
+  return treiber({
+    id: 'barrier',
+    subjekt: 'High barriers',
+    verb: 'drive',
+    frage: (name) => `Why can no rival rebuild what ${name} owns?`,
+    kontrast: (name) => `Is ${name}'s lead a product or a barrier?`,
+    stakes: (name) => `What happens if a rival rebuilds what ${name} owns?`,
+  })
+}
+
+const KLASSEN_SATZ: { id: TreiberId; re: RegExp }[] = [
+  { id: 'land', re: /\bland ownership\b|\bowns? the land\b|\blandlord\b|\bevery shop\b/i },
+  { id: 'franchise', re: /\bfranchise fees?\b|\bfranchis(?:e|or|ee)s?\b/i },
+  { id: 'formula', re: /\bproprietary formulas\b|\blocked-in formula\b/i },
+  { id: 'patent', re: /\bpatented drugs\b|\bpatented devices\b|\bsame drug\b|\bsame device\b/i },
+  { id: 'network', re: /\bnetwork effects\b|\bstrengthen the network\b/i },
+  { id: 'tools', re: /\btool monopoly\b|\bno fab\b/i },
+  { id: 'routes', re: /\broute network\b|\bcopy \w+'s routes\b/i },
+  { id: 'switching', re: /\bswitching costs\b|\bwhen contracts end\b/i },
+  { id: 'barrier', re: /\bhigh barriers\b/i },
+]
+
+/** Der Satz benutzt den Motor einer anderen Klasse als der Beleg im Unternehmenstext. */
+export function fremderKlassenSatz(text: string, kontext: string): boolean {
+  const soll = treiberAusText(kontext).id
+  return KLASSEN_SATZ.some((m) => m.id !== soll && m.re.test(text))
+}
+
+export function frageFuerWinkel(kontext: string, firma: string, winkel: string): string {
+  const motor = treiberAusText(kontext)
+  const name = firmenwort(firma)
+  if (winkel === 'contrast') return motor.kontrast(name)
+  if (winkel === 'stakes') return motor.stakes(name)
+  return motor.frage(name)
+}
+
+/** Karte im Script-Studio: fremde Klasse (Grundstück, Franchise, Netz) wird durch den Motor dieses Unternehmens ersetzt. */
+export function hookKarteFuerUnternehmen(opts: {
+  winkel: string
+  claim: string
+  proof: string
+  firma: string
+  wert: string
+  label: string
+  id?: string
+  kontext: string
+}): { frage: string; antwort: string } {
+  const paar = hookPaar(opts.claim, opts.proof, opts.firma, opts.wert, opts.label, opts.id ?? '', opts.kontext)
+  if (!fremderKlassenSatz(opts.claim, opts.kontext) && !fremderKlassenSatz(opts.proof, opts.kontext)) {
+    return { frage: paar.claim, antwort: paar.proof }
+  }
+  return { frage: frageFuerWinkel(opts.kontext, opts.firma, opts.winkel), antwort: paar.proof }
 }
 
 function fragePasstZumTreiber(frage: string, id: TreiberId): boolean {
   const t = frage.toLowerCase()
-  if (id === 'land') return /\bland\b|real estate|property\b/.test(t)
-  if (id === 'franchise') return /franchise|royalt|\bfees?\b/.test(t)
+  if (id === 'land') return /\bland\b|real estate|landlord|property\b/.test(t)
+  if (id === 'franchise') return /franchise|royalt|\bfees?\b|\blicen[sc]e\b/.test(t)
+  if (id === 'formula') return /formula|encapsul|ingredient|recipe|supplier/.test(t)
   if (id === 'patent') return /patent|drug|device|formula/.test(t)
   if (id === 'network') return /\bnetwork\b/.test(t)
   if (id === 'switching') return /switch|contract|\bstay\b|\bleave\b/.test(t)
@@ -440,6 +567,7 @@ const GETEILTE_PHRASEN = [
   'market lock',
   'land ownership',
   'franchise fees',
+  'proprietary formulas',
   'patented drugs',
   'patented devices',
   'network effects',
@@ -532,14 +660,14 @@ export function hookPaar(
   const frageKaputt = !/\?\s*$/.test(frage) || satzUnbrauchbar(frage) || Boolean(wert && frage.includes(wert))
   const treiber = treiberAusText(kontext)
   const name = firmenwort(firma)
+  const fremd = (satz: string) => fremderKlassenSatz(satz, kontext)
 
-  if (treiber.id !== 'barrier' || art === 'marge' || art === 'kapital') {
-    if (frageKaputt || !fragePasstZumTreiber(frage, treiber.id)) frage = treiber.frage(name)
-  } else if (frageKaputt || fragtNachMachtOderDominanz(frage)) {
-    frage = frageFuerKennzahl(firma, label, id)
+  if (frageKaputt || fremd(frage)) frage = treiber.frage(name)
+  else if ((art === 'marge' || art === 'kapital') && !fragePasstZumTreiber(frage, treiber.id) && !fragtNachMachtOderDominanz(frage)) {
+    frage = treiber.frage(name)
   }
   if (satzUnbrauchbar(frage)) frage = treiber.frage(name)
-  if (!proofIstDruck(antwort, wert, label, id)) antwort = antwortFuerKennzahl(wert, label, id, kontext)
+  if (fremd(antwort) || !proofIstDruck(antwort, wert, label, id)) antwort = antwortFuerKennzahl(wert, label, id, kontext)
   antwort = flussZurZahl(mitAnalyse(satzOhneDoppelteZahl(antwort, wert, label, id), label, id))
   return { claim: frage, proof: antwort }
 }
