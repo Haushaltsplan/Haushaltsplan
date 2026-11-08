@@ -75,7 +75,7 @@ Good takeaway: "The call is about the backlog, not the print, which is why"
 Bad: "Solid quarter. That's the story."
 
 Also return
-- title: 28-58 characters. Company name first, not a two-letter ticker. One grammatical clause. No slang ("the tell"), no ALL-CAPS, no hashtags.
+- title: 40-60 characters. One spoken Shorts line, not a label. No colon. Company name in the first words, not a two-letter ticker. No slang ("the tell"), no "Back on track", no "breakdown", no ALL-CAPS, no hashtags. Good shape: "What [company]'s earnings call just changed".
 - description: two grammatical English sentences. Name the print and one call topic. No "discover", "unmatched", "key numbers". No em dash. Correct spelling. We add the search line, #Shorts and the disclaimer.
 - comment: one pinned question, 10-16 words, no subscribe.
 

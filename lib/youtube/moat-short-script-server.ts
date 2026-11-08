@@ -233,7 +233,7 @@ Same move for every company: name the threat and stop. Do not explain the mechan
 - Whole spoken script stays under 72 words. Count every spoken line. With a slightly brisk voice the Short lands at 30 to 35 seconds.
 
 Also return
-- title: 28-58 characters. Start with the company name, not a two-letter ticker. One grammatical clause plus the hook number. No slang ("the tell"), no ALL-CAPS, no hashtags. Good: "Mastercard: why a 58.3% margin is the moat".
+- title: 40-60 characters. One spoken Shorts line, not a label. No colon. Company name in the first words, not a two-letter ticker. Include the hook number. No slang ("the tell"), no "Back on track", no "breakdown", no ALL-CAPS, no hashtags. Good shape: "Why [company]'s 58.3% margin is the moat".
 - description: two grammatical English sentences. Name the company, the number, and the moat or the one threat. No "discover", "unmatched", "key numbers", "in this video". No em dash. Correct spelling. We add the search line, #Shorts and the disclaimer.
 - comment: one grammatical question, 10-16 words, debatable, no subscribe/follow/like.
 

@@ -1,7 +1,7 @@
 import { firmenKurzname, phrasePasst } from '@/lib/youtube/youtube-keywords'
 
-const TITEL_MIN = 28
-const TITEL_MAX = 58
+const TITEL_MIN = 40
+const TITEL_MAX = 60
 
 function saubererTitelKern(roh: string): string {
   let t = roh.replace(/#\w+/g, ' ').replace(/\s+/g, ' ').replace(/!{2,}/g, '').replace(/\?{2,}/g, '?').trim()
@@ -27,7 +27,9 @@ function titelScore(t: string, ticker: string): number {
   if (/\b(earnings|beat|miss|call|guidance|eps)\b/i.test(t)) s += 3
   if (/\d/.test(t)) s += 2
   if (t.length >= TITEL_MIN && t.length <= TITEL_MAX) s += 2
+  if (t.includes(':') || /\b(back on track|stock analysis|breakdown|explained|the tell)\b/i.test(t)) s -= 8
   if (/\bstock price\b/i.test(t) || /\bbuy now\b/i.test(t)) s -= 4
+  if (/\b(why|what|is)\b/i.test(t)) s += 3
   return s
 }
 
@@ -39,9 +41,10 @@ export function earningsTitelFuerUpload(
   firmenname = '',
 ): string {
   const name = firmenKurzname(firmenname) || ticker
-  const gebaut = kuerzeTitel(`${name} earnings: ${metrik} is not the whole story`)
+  const gebaut = kuerzeTitel(`What ${name}'s ${metrik} earnings call changed`)
+  const zweiter = kuerzeTitel(`Is ${name}'s ${metrik} the whole earnings story?`)
   const ki = saubererTitelKern(roh)
-  const kandidaten = [ki, gebaut].filter((t) => t.length >= 8)
+  const kandidaten = [ki, gebaut, zweiter].filter((t) => t.length >= 8 && !t.includes(':'))
   for (const p of suchphrasen) {
     const kern = saubererTitelKern(p)
     if (kern.length >= TITEL_MIN && phrasePasst(kern, ticker, name)) kandidaten.push(kern)
@@ -49,8 +52,8 @@ export function earningsTitelFuerUpload(
   let best = gebaut
   let bestScore = -99
   for (const t of kandidaten.map(kuerzeTitel)) {
-    const nameVorne = name.length >= 4 && t.toLowerCase().startsWith(name.toLowerCase())
-    let sc = titelScore(t, ticker) + (nameVorne ? 4 : 0)
+    const nameDrin = name.length >= 4 && t.toLowerCase().slice(0, 40).includes(name.toLowerCase())
+    let sc = titelScore(t, ticker) + (nameDrin ? 4 : 0)
     if (t.length < TITEL_MIN) sc -= 6
     if (/\bthe tell\b/i.test(t)) sc -= 6
     if (sc > bestScore) {
@@ -58,7 +61,7 @@ export function earningsTitelFuerUpload(
       bestScore = sc
     }
   }
-  if (best.length < TITEL_MIN) best = kuerzeTitel(`${name}: what the earnings call changed`)
+  if (best.length < TITEL_MIN) best = kuerzeTitel(`What changed in ${name}'s earnings call`)
   return best.charAt(0).toUpperCase() + best.slice(1)
 }
 

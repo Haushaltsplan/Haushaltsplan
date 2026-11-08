@@ -196,6 +196,26 @@ export function VidiqClient({ onReconnect }: { onReconnect: () => void }) {
     })
   }, [aktiv, titel, beschreibung, tags])
 
+  const titelKarten = useMemo(() => {
+    if (!aktiv) return []
+    const andere = shorts.filter((s) => s.id !== aktiv.id).map((s) => s.views)
+    return varianten
+      .map((text) => ({
+        text,
+        score: scoreFuerShort({
+          titel: text,
+          beschreibung,
+          tags,
+          views: aktiv.views,
+          likes: aktiv.likes,
+          comments: aktiv.comments,
+          gesehenProzent: aktiv.gesehenProzent,
+          vergleichsMedian: andere.length ? median(andere) : null,
+        }).gesamt,
+      }))
+      .sort((a, b) => b.score - a.score)
+  }, [aktiv, beschreibung, tags, shorts, varianten])
+
   const warnung = umstritteneWoerter(`${titel} ${tagsText}`)
 
   async function erzeugen(art: 'titel' | 'tags' | 'beschreibung') {
@@ -383,9 +403,11 @@ export function VidiqClient({ onReconnect }: { onReconnect: () => void }) {
                     <button type="button" disabled={schreibenGesperrt || !snippetBereit} onClick={() => void veroeffentlichen()} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white disabled:opacity-40">Auf YouTube veröffentlichen</button>
                   </div>
                   {schreibenGesperrt ? <p className="text-xs text-amber-600">YouTube erneut verbinden. Der bisherige Zugang darf bestehende Videos nicht ändern. Neue Shorts lassen sich weiter hochladen.</p> : <p className="text-xs text-[var(--app-text-muted)]">Einmal trennen und neu verbinden, damit bestehende Videos geändert werden dürfen. Der Upload neuer Shorts bleibt davon unabhängig.</p>}
-                  {varianten.map((v) => (
-                    <button key={v} type="button" onClick={() => setTitel(v)} className="block w-full rounded-lg border border-[var(--app-border)] px-3 py-2 text-left text-sm">
-                      {v}
+                  {titelKarten.map((v) => (
+                    <button key={v.text} type="button" onClick={() => setTitel(v.text)} className="flex w-full items-center gap-3 rounded-lg border border-[var(--app-border)] px-3 py-2 text-left text-sm">
+                      <span className={`w-10 text-xl font-semibold tabular-nums ${scoreFarbe(v.score)}`}>{v.score}</span>
+                      <span className="min-w-0 flex-1">{v.text}</span>
+                      <span className="text-xs text-[var(--app-text-muted)]">{v.text.length}</span>
                     </button>
                   ))}
                   {tagVorschlag.length ? (

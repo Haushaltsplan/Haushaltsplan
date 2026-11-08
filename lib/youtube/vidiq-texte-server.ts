@@ -5,6 +5,7 @@ import {
   resolveGeminiFreeTierProvider,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
+import { fallbackShortsTitel, shortsTitelTaucht, suchwortAusTitel } from '@/lib/youtube/vidiq-engine'
 import { tagBereinigen, tagsZusammen } from '@/lib/youtube/youtube-tags'
 
 function parseJson(text: string): unknown {
@@ -37,18 +38,38 @@ async function frage(system: string, user: string): Promise<unknown> {
   return json
 }
 
-const SYSTEM = `You write English YouTube Short metadata for an existing finance short.
+const SYSTEM = `You write English YouTube Shorts titles for an existing finance short.
+A Shorts title is one spoken line in the feed. It is not a blog headline and not a memo.
 Use only facts already in the current title, description or tags. Do not invent a company, a number, or a promise.
 No guaranteed returns, no "risk-free", no "get rich".
 Reply with JSON only.`
 
 export async function erzeugeTitel(input: { titel: string; beschreibung: string; tags: string[] }): Promise<string[]> {
+  const name = suchwortAusTitel(input.titel)
+  const zahl = input.titel.match(/\d+(?:[.,]\d+)?%/)?.[0] ?? null
   const json = await frage(
     SYSTEM,
-    `Current title: ${input.titel}\nDescription: ${input.beschreibung.slice(0, 600)}\nTags: ${input.tags.join(', ')}\nReturn {"titel":[five strings]}. Each title is 40–60 characters, search phrase first. Include the company or the number only if it is already in the current title.`,
+    `Current title: ${input.titel}\nDescription: ${input.beschreibung.slice(0, 600)}\nTags: ${input.tags.join(', ')}\nSearch word already in the title: ${name || 'none'}\nReturn {"titel":[five strings]}.
+Each title is 40 to 60 characters and a different sentence. Put the search word in the first words, after Why, Is or What if the line is a question.
+No colon anywhere. Do not repeat the same opening. Never write "Back on track", "stock analysis", "breakdown", "explained" or "Name: topic".
+Company and number only if they are already in the current title or description.
+Good shape: "Why [name]'s [number] [metric] is the moat". Bad shape: "[name]: Back on track? [topic]".`,
   )
   const liste = Array.isArray((json as { titel?: unknown }).titel) ? (json as { titel: unknown[] }).titel : []
-  return liste.map((t) => String(t).replace(/\s+/g, ' ').trim()).filter((t) => t.length >= 20 && t.length <= 80).slice(0, 5)
+  const roh = [...liste.map((t) => String(t)), ...fallbackShortsTitel(name, zahl)]
+  const out: string[] = []
+  const gesehen = new Set<string>()
+  for (const zeile of roh) {
+    const text = zeile.replace(/\s+/g, ' ').trim()
+    if (!shortsTitelTaucht(text)) continue
+    const stamm = text.toLowerCase().split(/\s+/).slice(0, 3).join(' ')
+    if (gesehen.has(stamm)) continue
+    gesehen.add(stamm)
+    out.push(text)
+    if (out.length === 5) break
+  }
+  if (!out.length) throw new Error('Keine Shorts-Titel in der Antwort. Bitte erneut erzeugen.')
+  return out
 }
 
 export async function erzeugeTags(input: { titel: string; beschreibung: string; tags: string[] }): Promise<string[]> {

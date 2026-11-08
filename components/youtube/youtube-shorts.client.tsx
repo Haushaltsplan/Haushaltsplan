@@ -1212,7 +1212,7 @@ export function YoutubeShortsClient() {
                 <label className="mt-2 block text-xs text-[var(--app-text-muted)]">Titel</label>
                 <input value={uploadTitel} onChange={(e) => setUploadTitel(e.target.value)} className={`${feldKlasse} mt-1`} />
                 <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
-                  {uploadTitel.length} Zeichen · Keyword vorne, 28–58, kein # im Titel
+                  {uploadTitel.length} Zeichen · gesprochene Zeile, 40–60, kein Doppelpunkt
                 </p>
                 {ergebnis.suchphrasen.length ? (
                   <div className="mt-2">

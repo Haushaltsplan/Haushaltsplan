@@ -115,22 +115,18 @@ export function chanceWert(nachfrage: number, wettbewerb: number): number {
   return Math.max(0, Math.min(100, Math.round(nachfrage + (50 - wettbewerb))))
 }
 
-function titelKuerzen(text: string): string {
-  const t = text.replace(/\s+/g, ' ').trim()
-  return t.length <= 100 ? t : `${t.slice(0, 97).trim()}...`
-}
-
 export function titelScore(text: string, ticker: string, haupt: string): number {
   const t = text.trim()
   const len = t.length
   const laenge = len >= 40 && len <= 60 ? 40 : len >= 28 && len <= 70 ? 20 : 0
   const tk = ticker.trim()
   const hatTicker = tk.length >= 1 && new RegExp(`\\b${tk.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(t) ? 25 : 0
-  const neugier = /(\?|^(why|how|what|is|can)\b)/i.test(t) ? 20 : 0
-  const kopf = t.slice(0, 60).toLowerCase()
+  const neugier = /(\?|\b(why|how|what|is|can)\b)/i.test(t) ? 20 : 0
+  const kopf = t.slice(0, 40).toLowerCase()
   const begriff = haupt.trim().toLowerCase()
   const vorn = begriff.length >= 2 && kopf.includes(begriff) ? 15 : 0
-  return laenge + hatTicker + neugier + vorn
+  const memo = t.includes(':') || /\b(back on track|stock analysis|breakdown|explained)\b/i.test(t) ? 30 : 0
+  return Math.max(0, laenge + hatTicker + neugier + vorn - memo)
 }
 
 export function fuenfTitel(opts: {
@@ -143,21 +139,20 @@ export function fuenfTitel(opts: {
 }): VidiqTitel[] {
   const name = firmenKurzname(opts.firmenname) || opts.ticker
   const haupt = name
-  const frage = /\?\s*$/.test(opts.hook.trim()) ? opts.hook.trim() : `Why does ${name} keep that edge?`
+  const zahl = /\d/.test(opts.metricValue) ? opts.metricValue.trim() : null
+  const frage = opts.hook.trim()
   const roh = [
     frage,
-    `${opts.ticker} ${opts.metricLabel}: ${opts.metricValue}`,
-    opts.kicker.trim() ? `${name}: ${opts.kicker.trim()}` : `${name} moat check`,
-    `Is ${name} a moat at ${opts.metricValue}?`,
-    `${opts.ticker} moat: ${opts.metricLabel} ${opts.metricValue}`,
+    ...fallbackShortsTitel(name, zahl),
+    zahl ? `Why ${name}'s ${opts.metricLabel} is ${zahl}` : '',
+    `Is ${name} a moat or just a big name?`,
   ]
   const gesehen = new Set<string>()
   const titel: VidiqTitel[] = []
   for (const zeile of roh) {
-    const text = titelKuerzen(zeile)
-    const key = text.toLowerCase()
-    if (!text || gesehen.has(key)) continue
-    gesehen.add(key)
+    const text = zeile.replace(/\s+/g, ' ').trim()
+    if (!shortsTitelTaucht(text) || gesehen.has(text.toLowerCase())) continue
+    gesehen.add(text.toLowerCase())
     titel.push({ text, score: titelScore(text, opts.ticker, haupt) })
   }
   return titel.slice(0, 5)
@@ -317,11 +312,52 @@ export type ShortEmpfehlung = { stufe: 'hoch' | 'mittel' | 'ok'; text: string }
 
 function hauptwort(titel: string): string {
   const wort = titel
-    .replace(/[#?]/g, ' ')
+    .replace(/'s\b/gi, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .split(/\s+/)
     .map((w) => w.trim())
     .find((w) => w.length > 3 && !FUELLWOERTER.test(w))
   return wort ?? ''
+}
+
+const MEMO_TITEL = /\b(back on track|stock analysis|breakdown|explained|deep dive|you won't believe|game-changer|the tell)\b|:/i
+
+/** Eine Zeile, die im Feed wie ein Short klingt: 40–60 Zeichen, kein Doppelpunkt, kein Memo. */
+export function shortsTitelTaucht(text: string): boolean {
+  const t = text.replace(/\s+/g, ' ').trim()
+  if (t.length < 40 || t.length > 60) return false
+  if (MEMO_TITEL.test(t)) return false
+  return /(\?|\b(why|how|what|is|are|does|do|can|can't|keeps|prints|holds|means|costs|pays|owns|makes|leaves|explains)\b)/i.test(t)
+}
+
+export function suchwortAusTitel(titel: string): string {
+  return hauptwort(titel)
+}
+
+/** Fünf verschiedene gesprochene Titel. Firma und Zahl nur aus dem, was schon dasteht. */
+export function fallbackShortsTitel(name: string, zahl: string | null): string[] {
+  const n = name.replace(/\s+/g, ' ').trim()
+  if (n.length < 2) return []
+  const paare = [
+    [`Why can't rivals copy ${n}'s model?`, `Why can't rivals really copy ${n}'s model?`],
+    [`Is ${n} a moat or just a famous name?`, `Is ${n} really a moat or just a famous name?`],
+    [`What happens if customers leave ${n}?`, `What happens if customers leave ${n} behind?`],
+    zahl
+      ? [`Why does ${n} still print ${zahl}?`, `Why does ${n} still manage to print ${zahl}?`]
+      : [`What is ${n} actually selling?`, `What is ${n} actually selling to customers?`],
+    [`The one number that explains ${n}`, `The one number that really explains ${n}`],
+  ]
+  const out: string[] = []
+  const gesehen = new Set<string>()
+  for (const [kurz, lang] of paare) {
+    const text = [kurz, lang].map((z) => z.replace(/\s+/g, ' ').trim()).find((z) => shortsTitelTaucht(z))
+    if (!text) continue
+    const stamm = text.toLowerCase().split(/\s+/).slice(0, 3).join(' ')
+    if (gesehen.has(stamm)) continue
+    gesehen.add(stamm)
+    out.push(text)
+  }
+  return out
 }
 
 /** Konkrete Schritte aus den Metadaten und, falls vorhanden, dem gesehenen Anteil. */

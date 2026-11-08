@@ -1018,8 +1018,8 @@ export function hashtagTicker(ticker: string): string {
   return t || 'STOCKS'
 }
 
-const TITEL_MIN = 28
-const TITEL_MAX = 58
+const TITEL_MIN = 40
+const TITEL_MAX = 60
 
 function saubererTitelKern(roh: string): string {
   let t = roh.replace(/#\w+/g, ' ').replace(/\s+/g, ' ').replace(/!{2,}/g, '').replace(/\?{2,}/g, '?').trim()
@@ -1042,12 +1042,14 @@ function wortVorne(t: string, wort: string): boolean {
 function titelScore(t: string, ticker: string, name: string): number {
   let s = 0
   if (name.length >= 4 && wortVorne(t, name)) s += 6
+  else if (new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(t)) s += 4
   else if (wortVorne(t, ticker)) s += 2
-  if (/\b(moat|why|nobody|copy|monopoly|margin|lock)\b/i.test(t)) s += 3
+  if (/\b(why|what|is|moat)\b/i.test(t)) s += 3
   if (/\d/.test(t)) s += 2
   if (t.length >= TITEL_MIN && t.length <= TITEL_MAX) s += 4
   else s -= 6
-  if (FLAUSCH.test(t) || /\bstock price\b/i.test(t) || /\bbuy now\b/i.test(t)) s -= 8
+  if (t.includes(':') || FLAUSCH.test(t) || /\b(back on track|stock analysis|breakdown|explained)\b/i.test(t)) s -= 8
+  if (/\bstock price\b/i.test(t) || /\bbuy now\b/i.test(t)) s -= 8
   if (/^(how to download|watch|official)/i.test(t)) s -= 6
   return s
 }
@@ -1062,7 +1064,7 @@ function artikelVorZahl(metrik: string): 'a' | 'an' {
   return /^(8|11|18)(\D|$)/.test(z) ? 'an' : 'a'
 }
 
-/** Shorts: Firmenname vorne, 28–58 Zeichen, ein korrekter Satzanfang. Suchqueries werden nicht zum Titel. */
+/** Shorts: eine gesprochene Zeile, 40–60 Zeichen, kein Doppelpunkt, kein Memo. */
 export function titelFuerUpload(
   roh: string,
   ticker: string,
@@ -1072,10 +1074,11 @@ export function titelFuerUpload(
 ): string {
   const name = firmenKurzname(opts?.firmenname || '') || ticker
   const label = labelKurz(opts?.metrikLabel || 'margin') || 'margin'
-  const gebaut = kuerzeTitel(`${name}: why ${artikelVorZahl(metrik)} ${metrik} ${label} is the moat`)
-  const zweiter = kuerzeTitel(`${name} moat in one number: ${metrik}`)
+  const gebaut = kuerzeTitel(`Why ${name}'s ${metrik} ${label} is the moat`)
+  const zweiter = kuerzeTitel(`Is ${name}'s ${metrik} ${label} a real moat?`)
+  const dritter = kuerzeTitel(`What keeps ${name}'s ${metrik} ${label}?`)
   const ki = saubererTitelKern(roh)
-  const kandidaten = [ki, gebaut, zweiter].filter((t) => t.length >= 8)
+  const kandidaten = [ki, gebaut, zweiter, dritter].filter((t) => t.length >= 8 && !t.includes(':'))
   for (const p of suchphrasen) {
     const kern = saubererTitelKern(p)
     if (kern.length >= TITEL_MIN && phrasePasst(kern, ticker, name)) kandidaten.push(kern)
@@ -1089,7 +1092,7 @@ export function titelFuerUpload(
       bestScore = sc
     }
   }
-  if (best.length < TITEL_MIN) best = kuerzeTitel(`${name} moat: why ${metrik} still holds`)
+  if (best.length < TITEL_MIN) best = kuerzeTitel(`Why ${name}'s ${metrik} ${label} still holds`)
   return best.charAt(0).toUpperCase() + best.slice(1)
 }
 
