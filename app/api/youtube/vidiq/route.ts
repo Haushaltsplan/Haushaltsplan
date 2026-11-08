@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createSupabaseFuerRequest, ownerUserIdAusRequest } from '@/lib/supabase-user'
 import { videoIdAusText } from '@/lib/youtube/vidiq-engine'
-import { VidiqFehler, ladeAnalytics, ladeEigeneShorts, ladeNische, ladeVideo, pruefeRanking } from '@/lib/youtube/vidiq-youtube-server'
+import { VidiqFehler, ladeAnalytics, ladeEigeneShorts, ladeKonkurrent, ladeNische, ladeRecherche, ladeSnippet, ladeVideo, pruefeRanking, schreibeVideoMeta } from '@/lib/youtube/vidiq-youtube-server'
+import { erzeugeBeschreibung, erzeugeIdeen, erzeugeTags, erzeugeTitel } from '@/lib/youtube/vidiq-texte-server'
 import { youtubeApiKonfiguriert } from '@/lib/youtube/youtube-oauth-server'
 
 export const runtime = 'nodejs'
@@ -47,6 +48,44 @@ export async function POST(req: Request) {
     }
     if (action === 'analytics') return NextResponse.json(await ladeAnalytics(owner))
     if (action === 'liste') return NextResponse.json(await ladeEigeneShorts(owner))
+    if (action === 'snippet') {
+      const videoId = videoIdAusText(String(body.videoId ?? ''))
+      if (!videoId) return NextResponse.json({ ok: false, error: 'Video fehlt.' }, { status: 400 })
+      return NextResponse.json(await ladeSnippet({ ownerUserId: owner, videoId }))
+    }
+    if (action === 'keywords' || action === 'outlier') {
+      const phrase = String(body.phrase ?? '').trim()
+      if (!phrase) return NextResponse.json({ ok: false, error: 'Begriff fehlt.' }, { status: 400 })
+      return NextResponse.json(await ladeRecherche({ ownerUserId: owner, phrase }))
+    }
+    if (action === 'konkurrent') {
+      const eingabe = String(body.eingabe ?? '').trim()
+      if (!eingabe) return NextResponse.json({ ok: false, error: 'Kanal fehlt.' }, { status: 400 })
+      return NextResponse.json(await ladeKonkurrent({ ownerUserId: owner, eingabe }))
+    }
+    if (action === 'update') {
+      const videoId = videoIdAusText(String(body.videoId ?? ''))
+      const title = String(body.title ?? '').trim()
+      const description = String(body.description ?? '')
+      const tags = Array.isArray(body.tags) ? body.tags.map((t) => String(t)) : []
+      if (!videoId || !title) return NextResponse.json({ ok: false, error: 'Video oder Titel fehlt.' }, { status: 400 })
+      return NextResponse.json(await schreibeVideoMeta({ ownerUserId: owner, videoId, title, description, tags }))
+    }
+    if (action === 'texte') {
+      const art = String(body.art ?? '')
+      const titel = String(body.titel ?? '')
+      const beschreibung = String(body.beschreibung ?? '')
+      const tags = Array.isArray(body.tags) ? body.tags.map((t) => String(t)) : []
+      if (art === 'titel') return NextResponse.json({ ok: true, titel: await erzeugeTitel({ titel, beschreibung, tags }) })
+      if (art === 'tags') return NextResponse.json({ ok: true, tags: await erzeugeTags({ titel, beschreibung, tags }) })
+      if (art === 'beschreibung') return NextResponse.json({ ok: true, beschreibung: await erzeugeBeschreibung({ titel, beschreibung, tags }) })
+      return NextResponse.json({ ok: false, error: 'Unbekannte Textart.' }, { status: 400 })
+    }
+    if (action === 'ideen') {
+      const begriffe = Array.isArray(body.begriffe) ? body.begriffe.map((t) => String(t)) : []
+      const titel = Array.isArray(body.titel) ? body.titel.map((t) => String(t)) : []
+      return NextResponse.json({ ok: true, ideen: await erzeugeIdeen({ begriffe, titel }) })
+    }
     if (action === 'ranking') {
       const videoId = videoIdAusText(String(body.videoId ?? ''))
       const phrase = String(body.phrase ?? '').trim()

@@ -39,6 +39,11 @@ export function chanceStufe(wert: number): string {
   return STUFEN.find((s) => w <= s.bis)?.name ?? 'sehr hoch'
 }
 
+export function umstritteneWoerter(text: string): string | null {
+  const treffer = text.match(/\b(guaranteed returns?|risk[- ]free|get rich|100%\s*(profit|return)|sichere rendite|kein risiko)\b/i)
+  return treffer?.[0] ?? null
+}
+
 export function videoIdAusText(roh: string): string | null {
   const text = roh.trim()
   if (/^[\w-]{11}$/.test(text)) return text

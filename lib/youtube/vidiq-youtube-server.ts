@@ -584,7 +584,7 @@ function dauerSekunden(iso: string): number {
 }
 
 export async function ladeEigeneShorts(ownerUserId: string): Promise<Record<string, unknown>> {
-  const key = 'eigene:shorts:v2'
+  const key = 'eigene:shorts:v3'
   const cache = await cacheLesen(ownerUserId, key)
   if (cache && typeof cache === 'object') return { ...(cache as Record<string, unknown>), ausCache: true }
 
@@ -693,6 +693,8 @@ export async function ladeEigeneShorts(ownerUserId: string): Promise<Record<stri
       return {
         id: v.id,
         titel: v.titel,
+        beschreibung: v.beschreibung,
+        tags: v.tags,
         views: v.views,
         likes: v.likes,
         comments: v.comments,
@@ -725,4 +727,174 @@ export async function ladeEigeneShorts(ownerUserId: string): Promise<Record<stri
   }
   await cacheSchreiben(ownerUserId, key, payload, 6)
   return { ...payload, ausCache: false }
+}
+
+export async function schreibeVideoMeta(opts: {
+  ownerUserId: string
+  videoId: string
+  title: string
+  description: string
+  tags: string[]
+}): Promise<Record<string, unknown>> {
+  const token = await frischesYoutubeAccessToken(opts.ownerUserId)
+  const lesen = new URL(`${DATA}/videos`)
+  lesen.searchParams.set('part', 'snippet')
+  lesen.searchParams.set('id', opts.videoId)
+  const vorhanden = await googleJson(lesen.toString(), token.accessToken)
+  const item = (Array.isArray(vorhanden.items) ? vorhanden.items[0] : null) as Roh | null
+  if (!item) throw new VidiqFehler('Video nicht gefunden.')
+  const alt = (item.snippet ?? {}) as Roh
+  const categoryId = text(alt.categoryId) || '27'
+  const tags = opts.tags.map((t) => t.replace(/#/g, '').trim()).filter(Boolean).slice(0, 30)
+  const snippet: Record<string, unknown> = {
+    title: opts.title.replace(/\s+/g, ' ').trim().slice(0, 100),
+    description: opts.description.slice(0, 5000),
+    tags,
+    categoryId,
+  }
+  if (text(alt.defaultLanguage)) snippet.defaultLanguage = text(alt.defaultLanguage)
+  if (text(alt.defaultAudioLanguage)) snippet.defaultAudioLanguage = text(alt.defaultAudioLanguage)
+  const res = await fetch(`${DATA}/videos?part=snippet`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ id: opts.videoId, snippet }),
+  })
+  const textBody = await res.text()
+  if (!res.ok) {
+    let msg = textBody.slice(0, 240)
+    try {
+      const j = JSON.parse(textBody) as { error?: { message?: string; errors?: { reason?: string }[] } }
+      msg = j.error?.message || msg
+      const reason = j.error?.errors?.[0]?.reason ?? ''
+      if (res.status === 403 && /insufficient|scope|permission/i.test(`${reason} ${msg}`)) {
+        throw new VidiqFehler('YouTube erneut verbinden. Der bisherige Zugang darf bestehende Videos nicht ändern.', true)
+      }
+    } catch (e) {
+      if (e instanceof VidiqFehler) throw e
+    }
+    throw new VidiqFehler(msg || 'Veröffentlichen fehlgeschlagen.')
+  }
+  return { ok: true, title: snippet.title, tags }
+}
+
+export async function ladeRecherche(opts: { ownerUserId: string; phrase: string }): Promise<Record<string, unknown>> {
+  const phrase = opts.phrase.replace(/\s+/g, ' ').trim()
+  if (phrase.length < 2) throw new VidiqFehler('Begriff zu kurz.')
+  const key = `recherche:${phrase}`.toLowerCase()
+  const cache = await cacheLesen(opts.ownerUserId, key)
+  if (cache && typeof cache === 'object') return { ...(cache as Record<string, unknown>), ausCache: true }
+  const token = await frischesYoutubeAccessToken(opts.ownerUserId)
+  const vor = await suggest(phrase)
+  const fragen = vor.filter((s) => /^(why|how|what|is|can|who)\b/i.test(s)).slice(0, 8)
+  const begriffe = vor.filter((s) => !fragen.includes(s)).slice(0, 16)
+  const ids = await sucheShorts(token.accessToken, phrase)
+  const roh = await videosLaden(token.accessToken, ids)
+  const kanaele = await kanaeleLaden(token.accessToken, roh.map((v) => v.kanalId))
+  const vergleich = await vergleichsviews(token.accessToken, roh.map((v) => v.kanalId))
+  const videos: VidiqVideo[] = []
+  for (const video of roh) {
+    videos.push(await karteBauen(opts.ownerUserId, video, kanaele.get(video.kanalId) ?? 0, vergleich.get(video.kanalId) ?? []))
+  }
+  const nachfrage = nachfragePunkte(begriffe, fragen, phrase)
+  const wettbewerb = wettbewerbPunkte(videos)
+  const chance = chanceWert(nachfrage, wettbewerb)
+  const payload = { ok: true, phrase, begriffe, fragen, nachfrage, wettbewerb, chance, stufe: chanceStufe(chance), videos }
+  await cacheSchreiben(opts.ownerUserId, key, payload, 12)
+  return { ...payload, ausCache: false }
+}
+
+function kanalZiel(roh: string): { id?: string; handle?: string; suche?: string } {
+  const t = roh.trim()
+  if (/^UC[\w-]{20,}$/.test(t)) return { id: t }
+  const at = t.match(/@([\w.-]+)/)
+  if (at?.[1]) return { handle: at[1] }
+  try {
+    const url = new URL(t)
+    const handle = url.pathname.match(/@([\w.-]+)/)
+    if (handle?.[1]) return { handle: handle[1] }
+    const id = url.pathname.match(/\/channel\/(UC[\w-]+)/)
+    if (id?.[1]) return { id: id[1] }
+  } catch {
+    /* Freitext */
+  }
+  return { suche: t }
+}
+
+export async function ladeKonkurrent(opts: { ownerUserId: string; eingabe: string }): Promise<Record<string, unknown>> {
+  const ziel = kanalZiel(opts.eingabe)
+  const key = `konkurrent:${opts.eingabe}`.toLowerCase()
+  const cache = await cacheLesen(opts.ownerUserId, key)
+  if (cache && typeof cache === 'object') return { ...(cache as Record<string, unknown>), ausCache: true }
+  const token = await frischesYoutubeAccessToken(opts.ownerUserId)
+  let kanalId = ziel.id ?? ''
+  if (!kanalId && ziel.handle) {
+    const url = new URL(`${DATA}/channels`)
+    url.searchParams.set('part', 'snippet,statistics')
+    url.searchParams.set('forHandle', ziel.handle)
+    const json = await googleJson(url.toString(), token.accessToken)
+    kanalId = text((Array.isArray(json.items) ? (json.items[0] as Roh | undefined) : undefined)?.id)
+  }
+  if (!kanalId && ziel.suche) {
+    const url = new URL(`${DATA}/search`)
+    url.searchParams.set('part', 'snippet')
+    url.searchParams.set('type', 'channel')
+    url.searchParams.set('maxResults', '1')
+    url.searchParams.set('q', ziel.suche)
+    const json = await googleJson(url.toString(), token.accessToken)
+    const erstes = Array.isArray(json.items) ? (json.items[0] as Roh | undefined) : undefined
+    kanalId = text((erstes?.id as Roh | undefined)?.channelId)
+  }
+  if (!kanalId) throw new VidiqFehler('Kanal nicht gefunden.')
+  const infoUrl = new URL(`${DATA}/channels`)
+  infoUrl.searchParams.set('part', 'snippet,statistics')
+  infoUrl.searchParams.set('id', kanalId)
+  const info = await googleJson(infoUrl.toString(), token.accessToken)
+  const kanal = (Array.isArray(info.items) ? info.items[0] : null) as Roh | null
+  if (!kanal) throw new VidiqFehler('Kanal nicht gefunden.')
+  const snippet = (kanal.snippet ?? {}) as Roh
+  const stats = (kanal.statistics ?? {}) as Roh
+  const letzteIds = await letzteVideoIds(token.accessToken, kanalId)
+  const letzte = await videosLaden(token.accessToken, letzteIds)
+  const views = letzte.map((v) => v.views)
+  const videos = letzte.slice(0, 8).map((v) => ({
+    id: v.id,
+    titel: v.titel,
+    views: v.views,
+    outlier: outlierGegen(v.views, ohneEigenes(v.views, views)),
+    tempoSeitUpload: tempoSeitUpload(v.views, v.veroeffentlicht),
+  }))
+  const payload = {
+    ok: true,
+    kanal: {
+      id: kanalId,
+      titel: text(snippet.title),
+      abonnenten: num(stats.subscriberCount),
+      videoAnzahl: num(stats.videoCount),
+      letzteViews: median(views),
+    },
+    videos,
+  }
+  await cacheSchreiben(opts.ownerUserId, key, payload, 12)
+  return { ...payload, ausCache: false }
+}
+
+export async function ladeSnippet(opts: { ownerUserId: string; videoId: string }): Promise<Record<string, unknown>> {
+  const token = await frischesYoutubeAccessToken(opts.ownerUserId)
+  const url = new URL(`${DATA}/videos`)
+  url.searchParams.set('part', 'snippet')
+  url.searchParams.set('id', opts.videoId)
+  const json = await googleJson(url.toString(), token.accessToken)
+  const item = (Array.isArray(json.items) ? json.items[0] : null) as Roh | null
+  if (!item) throw new VidiqFehler('Video nicht gefunden.')
+  const snippet = (item.snippet ?? {}) as Roh
+  const tags = Array.isArray(snippet.tags) ? snippet.tags.map((t) => text(t)).filter(Boolean) : []
+  return {
+    ok: true,
+    titel: text(snippet.title),
+    beschreibung: text(snippet.description),
+    tags,
+  }
 }

@@ -4,8 +4,8 @@ import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { EarningsShortsClient } from '@/components/youtube/earnings-shorts.client'
+import { VidiqClient } from '@/components/youtube/vidiq.client'
 import { YoutubeEigeneTags } from '@/components/youtube/youtube-eigene-tags'
-import { YoutubeVidiq } from '@/components/youtube/youtube-vidiq.client'
 import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { gesamtScoreAusPfeilern } from '@/lib/portfolio-analyse/moat-ki-types'
@@ -27,7 +27,7 @@ import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@
 
 type YtStatus = { configured: boolean; connected: boolean; channelTitle: string | null }
 type YtPrivacy = 'unlisted' | 'private' | 'public'
-type YoutubeModus = 'moat' | 'earnings'
+type YoutubeModus = 'moat' | 'earnings' | 'vidiq'
 
 function base64ZuMp3(b64: string): Blob {
   const bin = atob(b64)
@@ -394,6 +394,7 @@ export function YoutubeShortsClient() {
       .catch(() => setStimmeOk(false))
     const sp = new URLSearchParams(window.location.search)
     if (sp.get('modus') === 'earnings') setModus('earnings')
+    if (sp.get('modus') === 'vidiq') setModus('vidiq')
     if (sp.get('yt') === 'connected') {
       toast.success('YouTube verbunden.')
       const next = new URL(window.location.href)
@@ -795,8 +796,8 @@ export function YoutubeShortsClient() {
   function wechsleModus(next: YoutubeModus) {
     setModus(next)
     const u = new URL(window.location.href)
-    if (next === 'earnings') u.searchParams.set('modus', 'earnings')
-    else u.searchParams.delete('modus')
+    if (next === 'moat') u.searchParams.delete('modus')
+    else u.searchParams.set('modus', next)
     window.history.replaceState({}, '', u.pathname + u.search)
   }
 
@@ -804,11 +805,13 @@ export function YoutubeShortsClient() {
     <PageChrome>
       <PageHero
         eyebrow="YouTube"
-        title={modus === 'earnings' ? 'Earnings Check Shorts' : 'Moat Check Shorts'}
+        title={modus === 'earnings' ? 'Earnings Check Shorts' : modus === 'vidiq' ? 'VidIQ' : 'Moat Check Shorts'}
         description={
           modus === 'earnings'
             ? 'Ticker wählen. Daraus entstehen Beat/Miss, die wichtigen Call-Themen und ein längeres Short im gleichen Look.'
-            : 'Fundamentaldaten-Export einfügen. Daraus entstehen Moat-Urteil, englisches Script und ein Short, das unsichtbar in sich zurückläuft.'
+            : modus === 'vidiq'
+              ? 'Bestehende Shorts bewerten, Titel und Tags verbessern und direkt auf YouTube schreiben.'
+              : 'Fundamentaldaten-Export einfügen. Daraus entstehen Moat-Urteil, englisches Script und ein Short, das unsichtbar in sich zurückläuft.'
         }
       />
       <div className="mb-4 flex gap-2 px-1">
@@ -833,6 +836,17 @@ export function YoutubeShortsClient() {
           }`}
         >
           Earnings Check
+        </button>
+        <button
+          type="button"
+          onClick={() => wechsleModus('vidiq')}
+          className={`rounded-xl px-4 py-2 text-sm font-medium ${
+            modus === 'vidiq'
+              ? 'bg-emerald-600 text-white'
+              : 'border border-[var(--app-border)] text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]'
+          }`}
+        >
+          VidIQ
         </button>
       </div>
 
@@ -885,38 +899,12 @@ export function YoutubeShortsClient() {
         <EarningsShortsClient yt={yt} onVerbindungWeg={() => setYt((s) => ({ ...s, connected: false, channelTitle: null }))} />
       ) : null}
 
+      {modus === 'vidiq' ? (
+        <VidiqClient onReconnect={() => setYt((s) => ({ ...s, connected: false, channelTitle: null }))} />
+      ) : null}
+
       {modus === 'moat' ? (
       <>
-      <YoutubeVidiq
-        ticker={props?.ticker ?? ''}
-        firmenname={props?.firmenname ?? ''}
-        isin={ergebnis?.moat.isin ?? null}
-        hook={props?.hook ?? ''}
-        kicker={props?.kicker ?? ''}
-        metricValue={props?.metricValue ?? ''}
-        metricLabel={props?.metricLabel ?? ''}
-        verdict={props?.verdict ?? 'none'}
-        score={props?.score ?? 0}
-        suchphrasen={ergebnis?.suchphrasen ?? []}
-        titel={uploadTitel}
-        beschreibung={uploadBeschreibung}
-        tags={youtubeTags}
-        videoId={videoId}
-        onTitel={setUploadTitel}
-        onBeschreibung={setUploadBeschreibung}
-        onTags={(neu) => {
-          setOhneTags((ohne) => ohne.filter((w) => !neu.some((n) => n.toLowerCase() === w.toLowerCase())))
-          setEigeneTags((alt) => {
-            const next = [...alt]
-            for (const tag of neu) {
-              if (next.some((t) => t.toLowerCase() === tag.toLowerCase())) continue
-              next.push(tag)
-            }
-            return next
-          })
-        }}
-        onReconnect={() => setYt((s) => ({ ...s, connected: false, channelTitle: null }))}
-      />
       <section className="app-section-shell">
         <div className="app-surface-card-header px-4 py-2.5 sm:px-5">
           <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">1 · Export einfügen</h2>
