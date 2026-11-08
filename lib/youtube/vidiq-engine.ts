@@ -217,6 +217,75 @@ export function tagZeichen(tags: string[]): number {
   return tags.reduce((summe, tag, i) => summe + tag.length + (i ? 1 : 0), 0)
 }
 
+const TICKER_STOP = new Set(['CEO', 'CFO', 'FCF', 'EPS', 'GDP', 'ETF', 'IPO', 'ROE', 'ROI', 'ROIC', 'ROCE', 'GAAP', 'USA', 'EU', 'UK', 'AI', 'IT', 'PE', 'YOY', 'QOQ', 'SEC', 'FDA', 'NYSE'])
+
+function tickerAus(tags: string[], titel: string): string | null {
+  for (const roh of [...tags, ...titel.split(/\s+/)]) {
+    const t = roh.replace(/[^A-Za-z]/g, '')
+    if (/^[A-Z]{2,5}$/.test(t) && !TICKER_STOP.has(t)) return t
+  }
+  return null
+}
+
+function nameGespalten(name: string): string | null {
+  const spaced = name.replace(/([a-z])([A-Z])/g, '$1 $2').trim()
+  if (!spaced || spaced.toLowerCase() === name.toLowerCase()) return null
+  return spaced
+}
+
+/** Suchphrase zuerst, dann Ticker und die getrennte Schreibweise. Das ist der Teil, den die Suche noch liest. */
+export function tagsFuerShort(opts: { titel: string; beschreibung: string; tags: string[] }): string[] {
+  const wort = suchwortAusTitel(opts.titel)
+  const ticker = tickerAus(opts.tags, opts.titel)
+  const text = `${opts.titel} ${opts.beschreibung}`.toLowerCase()
+  const roh: string[] = []
+  if (wort) {
+    roh.push(wort, `${wort} stock`)
+    const gespalten = nameGespalten(wort)
+    if (gespalten) roh.push(gespalten, `${gespalten} stock`)
+  }
+  if (ticker) roh.push(ticker, `${ticker} stock`)
+  if (/\bmoat\b/i.test(text) && wort) roh.push(`${wort} moat`)
+  if (/\bearnings\b/i.test(text) && wort) roh.push(`${wort} earnings`)
+  const zahl = opts.titel.match(/\d+(?:[.,]\d+)?%/)
+  if (zahl && wort && /\bmargin\b/i.test(text)) roh.push(`${wort} margin`)
+  const phrase = opts.titel
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 40)
+    .replace(/\s+\S*$/, '')
+    .trim()
+  if (phrase.length >= 12) roh.push(phrase)
+  for (const alt of opts.tags) {
+    if (wort && alt.toLowerCase().includes(wort.toLowerCase())) roh.push(alt)
+    else if (ticker && alt.toUpperCase().includes(ticker)) roh.push(alt)
+  }
+  return tagsZusammen(roh, [])
+}
+
+/** Erste Zeile trägt das Suchwort. Danach genau drei Hashtags, die YouTube über dem Titel zeigt. */
+export function beschreibungFuerShort(opts: { titel: string; beschreibung: string; tags: string[]; vorschlag: string }): string {
+  const wort = suchwortAusTitel(opts.titel)
+  const zahl = opts.titel.match(/\d+(?:[.,]\d+)?%/)?.[0] ?? null
+  const ticker = tickerAus(opts.tags, opts.titel)
+  let kern = opts.vorschlag
+    .replace(/#\w+/g, ' ')
+    .replace(/not investment advice\.?/gi, ' ')
+    .replace(/altered or synthetic media\.?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!kern) kern = wort ? `${wort} is the question in this short.` : 'This short asks one question about the business.'
+  if (wort && !kern.toLowerCase().includes(wort.toLowerCase())) kern = `${wort}. ${kern}`
+  if (zahl && !kern.includes(zahl)) kern = `${kern} The number already in the title is ${zahl}.`
+  if (!/[.!?]$/.test(kern)) kern = `${kern}.`
+  kern = kern.charAt(0).toUpperCase() + kern.slice(1)
+  if (kern.length < 90) kern = `${kern} The short is about that business, not a price target.`
+  const hashWort = (wort || 'stocks').replace(/[^\p{L}\p{N}]/gu, '') || 'stocks'
+  const dritter = ticker && ticker.toLowerCase() !== hashWort.toLowerCase() ? ticker : /\bearnings\b/i.test(opts.titel) ? 'earnings' : 'moat'
+  return `${kern}\n\nNot investment advice.\n#Shorts #${hashWort} #${dritter}`
+}
+
 export function seoCheckliste(opts: {
   titel: string
   beschreibung: string

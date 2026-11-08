@@ -89,7 +89,7 @@ export function earningsBeschreibungFuerUpload(
   const suche =
     suchphrasen.find((p) => phrasePasst(p, ticker, firmenname) && /\bearnings\b/i.test(p)) ?? `${name} earnings`
   const kopf = /\bearnings$/i.test(suche) ? suche : `${name} earnings`
-  const erste = `${kopf.charAt(0).toUpperCase()}${kopf.slice(1)}: the print was ${metrik}, and the call matters more.`
+  const erste = `${kopf.charAt(0).toUpperCase()}${kopf.slice(1)} printed ${metrik}, and the call matters more.`
   const titelNorm = titel.replace(/\s+/g, ' ').trim().toLowerCase()
   const kern = satzeOhneMeta(roh)
     .filter((s) => s.toLowerCase() !== titelNorm)
@@ -98,7 +98,7 @@ export function earningsBeschreibungFuerUpload(
     .join(' ')
     .slice(0, 280)
   const mitte = kern || `Guidance and the filing decide whether that print holds for ${name} (${ticker}).`
-  const hash = `#Shorts #${hashtagTicker(ticker)} #earnings #investing`
+  const hash = `#Shorts #${hashtagTicker(ticker)} #earnings`
   return `${erste}\n\n${mitte}\n\nNot investment advice. Altered or synthetic media.\n${hash}`
 }
 

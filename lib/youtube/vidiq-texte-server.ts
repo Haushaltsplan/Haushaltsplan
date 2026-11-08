@@ -5,7 +5,7 @@ import {
   resolveGeminiFreeTierProvider,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
-import { fallbackShortsTitel, shortsTitelTaucht, suchwortAusTitel } from '@/lib/youtube/vidiq-engine'
+import { beschreibungFuerShort, fallbackShortsTitel, shortsTitelTaucht, suchwortAusTitel, tagsFuerShort } from '@/lib/youtube/vidiq-engine'
 import { tagBereinigen, tagsZusammen } from '@/lib/youtube/youtube-tags'
 
 function parseJson(text: string): unknown {
@@ -73,22 +73,35 @@ Good shape: "Why [name]'s [number] [metric] is the moat". Bad shape: "[name]: Ba
 }
 
 export async function erzeugeTags(input: { titel: string; beschreibung: string; tags: string[] }): Promise<string[]> {
-  const json = await frage(
-    SYSTEM,
-    `Current title: ${input.titel}\nDescription: ${input.beschreibung.slice(0, 600)}\nTags: ${input.tags.join(', ')}\nReturn {"tags":[up to 30 short tags]}. Group ticker, metric and niche words that already fit this video. No hashtag sign.`,
-  )
-  const liste = Array.isArray((json as { tags?: unknown }).tags) ? (json as { tags: unknown[] }).tags : []
-  return tagsZusammen([], liste.map((t) => tagBereinigen(String(t))).filter(Boolean))
+  const pflicht = tagsFuerShort(input)
+  let extra: string[] = []
+  try {
+    const json = await frage(
+      SYSTEM,
+      `Current title: ${input.titel}\nDescription: ${input.beschreibung.slice(0, 600)}\nExisting tags: ${input.tags.join(', ')}\nReturn {"tags":[up to 8 search phrases a viewer would type]}. No hashtag sign. No generic words like shorts, investing, stock market, or finance. Only phrases that name this company, its ticker, or a metric already in the title.`,
+    )
+    const liste = Array.isArray((json as { tags?: unknown }).tags) ? (json as { tags: unknown[] }).tags : []
+    extra = liste.map((t) => tagBereinigen(String(t))).filter(Boolean)
+  } catch {
+    extra = []
+  }
+  return tagsZusammen(extra, pflicht)
 }
 
 export async function erzeugeBeschreibung(input: { titel: string; beschreibung: string; tags: string[] }): Promise<string> {
-  const json = await frage(
-    SYSTEM,
-    `Current title: ${input.titel}\nDescription: ${input.beschreibung.slice(0, 800)}\nReturn {"beschreibung":"..."}. One short hook, the metric only if it is already in the title or description, then the line "Not investment advice". Do not replace a pinned comment.`,
-  )
-  const text = String((json as { beschreibung?: unknown }).beschreibung ?? '').trim()
-  if (!text) throw new Error('Keine Beschreibung erhalten.')
-  return text.includes('Not investment advice') ? text : `${text}\n\nNot investment advice.`
+  let vorschlag = ''
+  try {
+    const json = await frage(
+      SYSTEM,
+      `Current title: ${input.titel}\nDescription: ${input.beschreibung.slice(0, 800)}\nReturn {"beschreibung":"two spoken sentences"}. The first sentence starts with the search word from the title. Repeat a number only if it is already in the title. No hashtags, no colon label, no price target.`,
+    )
+    vorschlag = String((json as { beschreibung?: unknown }).beschreibung ?? '').trim()
+  } catch {
+    vorschlag = ''
+  }
+  const text = beschreibungFuerShort({ ...input, vorschlag })
+  if (text.length < 80) throw new Error('Keine Beschreibung erhalten.')
+  return text
 }
 
 export async function erzeugeIdeen(input: { begriffe: string[]; titel: string[] }): Promise<string[]> {

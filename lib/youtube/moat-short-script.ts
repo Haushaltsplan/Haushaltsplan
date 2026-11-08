@@ -1143,7 +1143,7 @@ export function beschreibungFuerUpload(
     .slice(0, 2)
     .join(' ')
   const mitte = kern || satzGross(`The question is whether that ${label} is a moat or just a good year`)
-  const hash = `#Shorts #${hashtagTicker(ticker)} #investing #moat`
+  const hash = `#Shorts #${hashtagTicker(ticker)} #moat`
   return `${erste}\n\n${mitte}\n\nNot investment advice. Altered or synthetic media.\n${hash}`
 }
 

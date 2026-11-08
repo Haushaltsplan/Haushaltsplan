@@ -96,6 +96,7 @@ export function VidiqClient({ onReconnect }: { onReconnect: () => void }) {
   const [tagsText, setTagsText] = useState('')
   const [varianten, setVarianten] = useState<string[]>([])
   const [tagVorschlag, setTagVorschlag] = useState<string[]>([])
+  const [beschreibungVorschlag, setBeschreibungVorschlag] = useState<string | null>(null)
   const [phrase, setPhrase] = useState('')
   const [recherche, setRecherche] = useState<Recherche | null>(null)
   const [kanaele, setKanaele] = useState<string[]>([])
@@ -149,6 +150,7 @@ export function VidiqClient({ onReconnect }: { onReconnect: () => void }) {
     setTagsText((short.tags ?? []).join(', '))
     setVarianten([])
     setTagVorschlag([])
+    setBeschreibungVorschlag(null)
     setSnippetBereit(false)
     setSeite('optimieren')
     try {
@@ -218,13 +220,28 @@ export function VidiqClient({ onReconnect }: { onReconnect: () => void }) {
 
   const warnung = umstritteneWoerter(`${titel} ${tagsText}`)
 
+  function scoreMit(next: { titelText?: string; beschreibungText?: string; tagsListe?: string[] }): number | null {
+    if (!aktiv) return null
+    const andere = shorts.filter((s) => s.id !== aktiv.id).map((s) => s.views)
+    return scoreFuerShort({
+      titel: next.titelText ?? titel,
+      beschreibung: next.beschreibungText ?? beschreibung,
+      tags: next.tagsListe ?? tags,
+      views: aktiv.views,
+      likes: aktiv.likes,
+      comments: aktiv.comments,
+      gesehenProzent: aktiv.gesehenProzent,
+      vergleichsMedian: andere.length ? median(andere) : null,
+    }).gesamt
+  }
+
   async function erzeugen(art: 'titel' | 'tags' | 'beschreibung') {
     setLaedt(true)
     try {
       const json = await posten({ action: 'texte', art, titel, beschreibung, tags })
       if (art === 'titel') setVarianten((json.titel as string[]) ?? [])
       if (art === 'tags') setTagVorschlag((json.tags as string[]) ?? [])
-      if (art === 'beschreibung' && typeof json.beschreibung === 'string') setBeschreibung(json.beschreibung)
+      if (art === 'beschreibung' && typeof json.beschreibung === 'string') setBeschreibungVorschlag(json.beschreibung)
     } catch (e) {
       fehler(e)
     } finally {
@@ -411,8 +428,21 @@ export function VidiqClient({ onReconnect }: { onReconnect: () => void }) {
                     </button>
                   ))}
                   {tagVorschlag.length ? (
-                    <button type="button" onClick={() => setTagsText(tagVorschlag.join(', '))} className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-left text-sm">
-                      Tags übernehmen: {tagVorschlag.join(', ')}
+                    <button type="button" onClick={() => setTagsText(tagVorschlag.join(', '))} className="flex w-full items-center gap-3 rounded-lg border border-[var(--app-border)] px-3 py-2 text-left text-sm">
+                      <span className={`w-10 text-xl font-semibold tabular-nums ${scoreFarbe(scoreMit({ tagsListe: tagVorschlag }) ?? 0)}`}>{scoreMit({ tagsListe: tagVorschlag })}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs text-[var(--app-text-muted)]">Tags übernehmen · Suchwort zuerst, dann Ticker und die getrennte Schreibweise</span>
+                        {tagVorschlag.join(', ')}
+                      </span>
+                    </button>
+                  ) : null}
+                  {beschreibungVorschlag ? (
+                    <button type="button" onClick={() => setBeschreibung(beschreibungVorschlag)} className="flex w-full items-start gap-3 rounded-lg border border-[var(--app-border)] px-3 py-2 text-left text-sm">
+                      <span className={`w-10 text-xl font-semibold tabular-nums ${scoreFarbe(scoreMit({ beschreibungText: beschreibungVorschlag }) ?? 0)}`}>{scoreMit({ beschreibungText: beschreibungVorschlag })}</span>
+                      <span className="min-w-0 flex-1 whitespace-pre-wrap">
+                        <span className="block text-xs text-[var(--app-text-muted)]">Beschreibung übernehmen · Suchwort in der ersten Zeile, drei Hashtags</span>
+                        {beschreibungVorschlag}
+                      </span>
                     </button>
                   ) : null}
                 </>
