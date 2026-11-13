@@ -23,7 +23,7 @@ import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
 import { gespeicherteStimmeRegler, moatShortSprechFingerprint, speichereStimmeRegler } from '@/lib/youtube/moat-short-voice'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
-import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
+import { fremdeZahlen, kontrastMetrik } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortVoiceWort } from '@/remotion/moat-short-types'
 import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
 
@@ -472,7 +472,16 @@ export function YoutubeShortsClient() {
     const kontext = geschaeftsKontext(props, ergebnis)
     if (!fremderKlassenSatz(props.hook, kontext) && !fremderKlassenSatz(props.proof, kontext)) return
     const metrik = ergebnis.metriken.find((m) => m.value === props.metricValue && m.label === props.metricLabel)
-    const paar = hookPaar(props.hook, props.proof, props.firmenname, props.metricValue, props.metricLabel, metrik?.id ?? '', kontext)
+    const paar = hookPaar(
+      props.hook,
+      props.proof,
+      props.firmenname,
+      props.metricValue,
+      props.metricLabel,
+      metrik?.id ?? '',
+      kontext,
+      metrik ? kontrastMetrik(metrik.id, ergebnis.metriken) : null,
+    )
     if (paar.claim === props.hook && paar.proof === props.proof) return
     setProps((p) => (p ? { ...p, hook: paar.claim, proof: paar.proof } : p))
   }, [props, ergebnis])

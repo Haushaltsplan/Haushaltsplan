@@ -11,6 +11,8 @@ export const SFX_CONFIG = {
   uebergang: { pegel: pegelAusDb(-20) },
   /** Klick auf jedem neuen Bewertungsbalken. */
   balken: { pegel: pegelAusDb(-22) },
+  /** Tick, wenn die Hero-Zahl zu Satz 2 eingeblendet wird. */
+  heroTick: { pegel: pegelAusDb(-20) },
   /** Aufschlag des Verdict-Stempels. */
   stempel: { pegel: pegelAusDb(-12) },
   /** Stille nach dem letzten Wort, bevor der Short wieder vorne einsetzt. */

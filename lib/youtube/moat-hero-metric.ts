@@ -19,11 +19,16 @@ function familie(text: string): string | null {
   return FAMILIEN.find((f) => f.muster.test(text))?.id ?? null
 }
 
-/** Tauscht einen fremden Kennzahlnamen gegen das Label der angezeigten Zahl. */
+function familien(text: string): string[] {
+  return FAMILIEN.filter((f) => f.muster.test(text)).map((f) => f.id)
+}
+
+/** Tauscht einen fremden Kennzahlnamen, solange der Satz das angezeigte Label noch nicht nennt. */
 export function korrigiereHeroSatz(satz: string, value: string, label: string): string {
   const eigene = familie(label)
   let text = satz.replace(/\s+/g, ' ').trim()
-  if (eigene) {
+  const nenntLabel = label.trim().length > 0 && text.toLowerCase().includes(label.toLowerCase())
+  if (eigene && !nenntLabel) {
     for (const f of FAMILIEN) {
       if (f.id === eigene) continue
       text = text.replace(f.muster, label.toLowerCase())
@@ -49,6 +54,6 @@ export function heroMetricPasst(hero: MoatHeroMetric, satz: string): boolean {
   if (!hero.value || !text.includes(hero.value)) return false
   if (hero.spoken_reference && !hero.spoken_reference.includes(hero.value)) return false
   const bild = familie(hero.label)
-  const stimme = familie(text)
-  return !bild || !stimme || bild === stimme
+  const stimme = familien(text)
+  return !bild || stimme.length === 0 || stimme.includes(bild)
 }

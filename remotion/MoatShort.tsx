@@ -144,15 +144,10 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
         <HookSzene
           kicker={props.kicker}
           logoUrl={props.logoUrl}
+          ticker={props.ticker}
           value={props.metricValue}
           label={props.metricLabel}
-          proofAb={
-            timeline.metricFrame != null
-              ? Math.max(0, timeline.metricFrame - hook.from)
-              : proof && proof.text.trim()
-                ? proof.from - hook.from
-                : 0
-          }
+          satz2Ab={satz2Frame(proof?.from ?? null, hook.from)}
         />
       </Sequence>
       <Sequence from={p0.from} durationInFrames={p3.from + p3.duration - p0.from} layout="none">
@@ -293,7 +288,9 @@ function Ton({
     if (b.id.startsWith('pillar')) cues.push({ from: b.from + PILLAR_ZAHL_FRAME, src: mouseClick, volume: SFX_CONFIG.balken.pegel })
     if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: SFX_CONFIG.stempel.pegel })
   }
-  if (metricFrame != null) cues.push({ from: metricFrame, src: mouseClick, volume: SFX_CONFIG.balken.pegel })
+  const reveal = beats.find((b) => b.id === 'proof')?.from
+  const tick = reveal != null && reveal > 0 ? reveal : metricFrame != null && metricFrame > 0 ? metricFrame : null
+  if (tick != null) cues.push({ from: tick, src: mouseClick, volume: SFX_CONFIG.heroTick.pegel })
 
   const deckel = voiceSrc ? 0.063 : 0.126
   const relativ = Math.max(0, musicGain) / 0.5
@@ -358,6 +355,28 @@ function kamera(frame: number): number {
   return interpolate(frame, [0, 80], [1, 1.04], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
 }
 
+/** Satz 2, sonst etwa Sekunde 3. Die Hero-Zahl bleibt bis dahin unsichtbar. */
+function satz2Frame(proofFrom: number | null, hookFrom: number): number {
+  const start = proofFrom == null ? Math.round(3 * MOAT_SHORT_FPS) : proofFrom - hookFrom
+  return start >= 12 ? start : Math.round(3 * MOAT_SHORT_FPS)
+}
+
+function heroAnzeige(value: string, fortschritt: number): string {
+  const m = value.trim().match(/^([^0-9+-]*)([+-]?\d+(?:\.\d+)?)(.*)$/)
+  if (!m || fortschritt >= 1) return value
+  const prefix = m[1] ?? ''
+  const num = m[2] ?? ''
+  const suffix = m[3] ?? ''
+  if (!prefix.includes('$') && !suffix.includes('%') && !suffix.includes('$')) return value
+  const n = Number(num)
+  if (!Number.isFinite(n)) return value
+  const decimals = (num.split('.')[1] ?? '').length
+  const aktuell = n * fortschritt
+  const text = decimals ? aktuell.toFixed(decimals) : String(Math.round(aktuell))
+  const vorzeichen = num.startsWith('+') && aktuell > 0 ? '+' : ''
+  return `${prefix}${vorzeichen}${text}${suffix}`
+}
+
 function captionTop(frame: number, proofFrom: number | null, pillarFrom: number): number {
   if (proofFrom != null && pillarFrom > proofFrom && frame >= proofFrom && frame < pillarFrom) return 1120
   if (frame < pillarFrom) return 900
@@ -397,37 +416,65 @@ function Kopfzeile({
 function HookSzene({
   kicker,
   logoUrl,
+  ticker,
   value,
   label,
-  proofAb,
+  satz2Ab,
 }: {
   kicker: string
   logoUrl: string | null
+  ticker: string
   value: string
   label: string
-  /** Frame, ab dem die Zahl als Antwort hart einschlägt. */
-  proofAb: number
+  /** Lokaler Frame, an dem Satz 2 und die Hero-Zahl starten. */
+  satz2Ab: number
 }) {
   const frame = useCurrentFrame()
-  const zahlScale =
-    frame >= proofAb
-      ? interpolate(frame - proofAb, [0, 4], [1.12, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-      : 1
+  const { fps, durationInFrames } = useVideoConfig()
+  const revealFrames = Math.max(1, Math.round(0.25 * fps))
+  const countFrames = Math.max(1, Math.round(0.35 * fps))
+  const ende = Math.max(satz2Ab + 1, durationInFrames - 1)
+  const logoScale =
+    frame < satz2Ab
+      ? interpolate(frame, [0, satz2Ab], [1, 1.04], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+      : interpolate(frame, [satz2Ab, satz2Ab + revealFrames], [1.04, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const heroScale =
+    frame < satz2Ab
+      ? 1
+      : interpolate(frame, [satz2Ab, ende], [1, 1.05], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const lokal = Math.max(0, frame - satz2Ab)
+  const ein = spring({
+    frame: lokal,
+    fps,
+    config: { damping: 16, mass: 0.55, stiffness: 220 },
+    durationInFrames: revealFrames,
+  })
+  const y = interpolate(ein, [0, 1], [42, 0])
+  const deckkraft = interpolate(lokal, [0, revealFrames], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const zahlGang = interpolate(lokal, [0, countFrames], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+    easing: Easing.out(Easing.cubic),
+  })
   const kickerGroesse = kicker.length <= 16 ? 64 : kicker.length <= 24 ? 52 : 44
-  const buehneOben = logoUrl ? SAFE_TOP + 248 : SAFE_TOP
+  const buehneOben = (logoUrl ? SAFE_TOP + 248 : SAFE_TOP + 36) + 64
+  const zeigen = frame >= satz2Ab
   return (
-    <AbsoluteFill style={{ transform: `scale(${kamera(frame)})`, transformOrigin: `center ${SAFE_TOP + 12}px` }}>
-      {logoUrl ? (
-        <div
-          style={{
-            position: 'absolute',
-            top: SAFE_TOP + 12,
-            left: SAFE_LEFT,
-            right: SAFE_RIGHT,
-            display: 'flex',
-            justifyContent: 'center',
-          }}
-        >
+    <AbsoluteFill style={{ transform: `scale(${heroScale})`, transformOrigin: `center ${SAFE_TOP + 120}px` }}>
+      <div
+        style={{
+          position: 'absolute',
+          top: SAFE_TOP + 12,
+          left: SAFE_LEFT,
+          right: SAFE_RIGHT,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          transform: `scale(${logoScale})`,
+          transformOrigin: 'center top',
+        }}
+      >
+        {logoUrl ? (
           <div
             style={{
               width: 220,
@@ -443,34 +490,37 @@ function HookSzene({
           >
             <Img src={logoSrc(logoUrl)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
-        </div>
-      ) : null}
-      <div
-        style={{
-          position: 'absolute',
-          top: buehneOben,
-          left: SAFE_LEFT,
-          right: SAFE_RIGHT,
-          bottom: MOAT_SHORT_HEIGHT - 860,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textAlign: 'center',
-        }}
-      >
-        <div style={{ transform: `scale(${zahlScale})`, transformOrigin: 'center center' }}>
+        ) : null}
+        <div style={{ marginTop: logoUrl ? 18 : 0, fontFamily: MONO, fontSize: 32, letterSpacing: 6, fontWeight: 700 }}>${ticker}</div>
+      </div>
+      {zeigen ? (
+        <div
+          style={{
+            position: 'absolute',
+            top: buehneOben,
+            left: SAFE_LEFT,
+            right: SAFE_RIGHT,
+            bottom: MOAT_SHORT_HEIGHT - 860,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            opacity: deckkraft,
+            transform: `translateY(${y}px)`,
+          }}
+        >
           <div style={{ fontSize: value.length > 7 ? 132 : 168, fontWeight: 900, letterSpacing: -6, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {value}
+            {heroAnzeige(value, zahlGang)}
           </div>
           <div style={{ marginTop: 14, fontFamily: MONO, fontSize: 26, letterSpacing: 6, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
+          {kicker ? (
+            <div style={{ marginTop: 28, maxWidth: 820, fontSize: kickerGroesse, fontWeight: 900, letterSpacing: -1.5, lineHeight: 0.98 }}>
+              {kicker}
+            </div>
+          ) : null}
         </div>
-        {kicker ? (
-          <div style={{ marginTop: 28, maxWidth: 820, fontSize: kickerGroesse, fontWeight: 900, letterSpacing: -1.5, lineHeight: 0.98 }}>
-            {kicker}
-          </div>
-        ) : null}
-      </div>
+      ) : null}
     </AbsoluteFill>
   )
 }

@@ -8,6 +8,25 @@ const ZUSAMMENFASSUNG =
   /\b(wide moat|narrow moat|no real moat|the proof is|already said so|is the tell|that's the story|in conclusion|to sum up)\b/i
 
 const BRUECKE_ENDE = /(?:which is why|that's why|that is why|and that's why|so the question is)$/i
+const BEWEIS_UEBERGABE = /,?\s*and it starts with[.!?…]*$/i
+const ABSTRACT_BEWEIS =
+  /\b(proving the market lock|creating high barriers|demonstrating strong fundamentals|proving unmatched pricing power|proving the lead holds|strong fundamentals)\b/i
+
+/** Satz 2 endet offen, die erste Moat-Karte macht weiter. */
+export function istBeweisUebergabe(text: string): boolean {
+  return BEWEIS_UEBERGABE.test(text.trim())
+}
+
+/** Streicht die BWL-Floskel und hängt die offene Überleitung an. */
+export function schliesseBeweis(satz: string): string {
+  let t = satz.replace(/\s+/g, ' ').trim()
+  t = t.replace(/,?\s*\bproving\b[^.]*/i, '')
+  t = t.replace(ABSTRACT_BEWEIS, '')
+  t = t.replace(/[.!?…]+$/g, '').replace(/[,:\s]+$/g, '').replace(/\s+/g, ' ').trim()
+  if (!t) return 'and it starts with'
+  if (/and it starts with$/i.test(t)) return t.replace(/,?\s*and it starts with$/i, ', and it starts with')
+  return `${t}, and it starts with`
+}
 
 const VERBOTENE_WOERTER = [
   'delve',
@@ -531,19 +550,21 @@ function fragePasstZumTreiber(frage: string, id: TreiberId): boolean {
   return /\brebuild|\brival\b|\bcopy\b|\bowns\b/.test(t) || fragtNachMachtOderDominanz(frage)
 }
 
-function analyseKlausel(label: string, id: string): string {
-  const art = hookKennzahlArt(label, id)
-  if (art === 'marge') return ', proving unmatched pricing power'
-  if (art === 'kapital') return ', proving the market lock'
-  return ', proving the lead holds'
+type BeweisKontrast = { value: string; label: string; id: string }
+
+function kontrastName(id: string, label: string, heroId: string): string {
+  if (id === 'roic_5y_avg' && /roic|return on capital/.test(heroId)) return '5-year average'
+  return kennzahlGesprochen(label, id).toLowerCase()
 }
 
-/** Die Kennzahl steht einmal, der Nebensatz folgt im selben Atemzug. */
-function mitAnalyse(satz: string, label: string, id: string): string {
-  const t = flussZurZahl(satz)
-  if (!t) return t
-  if (/,/.test(t) || /\bproving\b/i.test(t)) return /[.!?]$/.test(t) ? t : `${t}.`
-  return `${t.replace(/[.]+$/g, '').trim()}${analyseKlausel(label, id)}.`
+/** Zweite echte Zahl gegen die Hero-Kennzahl, dann die offene Karte. */
+function kontrastSatz(wert: string, label: string, id: string, kontrast: BeweisKontrast | null): string {
+  const hero = kennzahlGesprochen(label, id)
+  const heroName = /[a-z]/.test(hero) ? hero.toLowerCase() : hero
+  const kern = kontrast
+    ? `While its ${kontrastName(kontrast.id, kontrast.label, id)} is ${kontrast.value}, ${heroName} is ${wert}`
+    : `${hero.charAt(0).toUpperCase()}${hero.slice(1)} is ${wert}`
+  return schliesseBeweis(flussZurZahl(kern))
 }
 
 function escapeReg(text: string): string {
@@ -654,22 +675,24 @@ function kennzahlVorDerZahl(text: string, wert: string, label: string, id = ''):
   return namen.length > 0 && namen.every((w) => kopf.includes(w))
 }
 
-export function antwortFuerKennzahl(wert: string, label: string, id = '', kontext = ''): string {
-  const rohName = kennzahlGesprochen(label, id)
-  const name = /[a-z]/.test(rohName) ? rohName.toLowerCase() : rohName
-  const treiber = treiberAusText(kontext)
-  const folge = analyseKlausel(label, id)
-  const voll = `${treiber.subjekt} ${treiber.verb} a massive ${wert} ${name}${folge}.`
-  const satz = woerter(voll).length <= 12 ? voll : `${treiber.subjekt} ${treiber.verb} a ${wert} ${name}${folge}.`
-  return flussZurZahl(mitAnalyse(satz, label, id))
+export function antwortFuerKennzahl(
+  wert: string,
+  label: string,
+  id = '',
+  _kontext = '',
+  kontrast: BeweisKontrast | null = null,
+): string {
+  return kontrastSatz(wert, label, id, kontrast)
 }
 
-function proofIstDruck(text: string, wert: string, label: string, id: string): boolean {
-  if (!wert || !text.includes(wert) || satzUnbrauchbar(text) || /\?\s*$/.test(text.trim())) return false
+function proofIstDruck(text: string, wert: string, label: string, id: string, kontrast: BeweisKontrast | null): boolean {
+  if (!wert || !text.includes(wert) || /\?\s*$/.test(text.trim())) return false
   if (/^\s*because\b/i.test(text)) return false
   if (kennzahlVorDerZahl(text, wert, label, id)) return false
-  if (!/\b(?:drives|drive)\b/i.test(text)) return false
-  if (!/,/.test(text) && !/\bproving\b/i.test(text)) return false
+  if (ABSTRACT_BEWEIS.test(text) || /\bproving\b|\bmarket lock\b/i.test(text)) return false
+  if (!istBeweisUebergabe(text)) return false
+  if (kontrast && !text.includes(kontrast.value)) return false
+  if (woerter(text).length > 22) return false
   return nenntKennzahl(text, label, id)
 }
 
@@ -685,14 +708,14 @@ export function hookPaar(
   label: string,
   id = '',
   kontext = '',
+  kontrast: BeweisKontrast | null = null,
 ): { claim: string; proof: string } {
   const art = hookKennzahlArt(label, id)
   let frage = frageFuerHook(claim, firma, wert)
-  const rohAntwort = proof.replace(/\s+/g, ' ').trim()
-  let antwort =
-    proofIstDruck(rohAntwort, wert, label, id) && woerter(rohAntwort).length <= 16
-      ? `${rohAntwort.replace(/[.]+$/g, '').trim()}.`
-      : antwortFuerKennzahl(wert, label, id, kontext)
+  const rohAntwort = schliesseBeweis(proof.replace(/\s+/g, ' ').trim())
+  let antwort = proofIstDruck(rohAntwort, wert, label, id, kontrast)
+    ? rohAntwort
+    : antwortFuerKennzahl(wert, label, id, kontext, kontrast)
   const frageKaputt = !/\?\s*$/.test(frage) || satzUnbrauchbar(frage) || Boolean(wert && frage.includes(wert))
   const treiber = treiberAusText(kontext)
   const name = firmenwort(firma)
@@ -703,8 +726,10 @@ export function hookPaar(
     frage = treiber.frage(name)
   }
   if (satzUnbrauchbar(frage)) frage = treiber.frage(name)
-  if (fremd(antwort) || !proofIstDruck(antwort, wert, label, id)) antwort = antwortFuerKennzahl(wert, label, id, kontext)
-  antwort = flussZurZahl(mitAnalyse(satzOhneDoppelteZahl(antwort, wert, label, id), label, id))
+  if (fremd(antwort) || !proofIstDruck(antwort, wert, label, id, kontrast)) {
+    antwort = antwortFuerKennzahl(wert, label, id, kontext, kontrast)
+  }
+  antwort = schliesseBeweis(flussZurZahl(satzOhneDoppelteZahl(antwort, wert, label, id)))
   return { claim: frage, proof: antwort }
 }
 
@@ -883,6 +908,7 @@ function unvollstaendigeAufzaehlung(text: string): boolean {
 }
 
 function satzUnbrauchbar(text: string): boolean {
+  if (istBeweisUebergabe(text)) return false
   return endetAufAbbruch(text) || unvollstaendigeAufzaehlung(text) || haengtPartizip(text) || endetOhneObjekt(text)
 }
 
@@ -1029,7 +1055,7 @@ export function scriptTonWarnungen(texte: string[]): string[] {
   const memo = texte.flatMap((t) => saetze(t)).find((s) => memoTreffer(s) >= 2)
   if (memo && !kauder.length) w.push(`Memo-Satz, keine Tischsprache: „${memo}“`)
   if (/[—–]|\s-\s/.test(alles)) w.push('Gedankenstriche im Script. Komma oder ganzer Satz, kein Bindestrich.')
-  const lang = texte.flatMap((t) => zuLangeSaetze(t))
+  const lang = texte.flatMap((t) => (istBeweisUebergabe(t) ? (woerter(t).length > 18 ? [t] : []) : zuLangeSaetze(t)))
   if (lang.length) w.push(`Sätze über ${SATZ_MAX_WOERTER} Wörter: „${lang[0]}“`)
   const fetzen = texte
     .flatMap((t) => saetze(t))
@@ -1040,7 +1066,7 @@ export function scriptTonWarnungen(texte: string[]): string[] {
   if (fetzen.length) w.push(`Zu kurz, klingt nach Slogan: „${fetzen[0]}“`)
   const zuLang = texte.find((t) => {
     const s = t.replace(/\s+/g, ' ').trim()
-    const deckel = /\bproving\b/i.test(s) && /\d/.test(s) ? 110 : 78
+    const deckel = istBeweisUebergabe(s) ? 140 : 78
     return s.length > deckel
   })
   if (zuLang) w.push(`Zu lang, der Untertitel bricht: „${zuLang}“`)
@@ -1212,8 +1238,11 @@ export function scriptLoopWarnungen(hook: string, land: string, value: string, p
   if (proof.trim() && kennzahlVorDerZahl(proof, value, label)) {
     w.push('Die Antwort benutzt die Kennzahl als Ursache. Nicht „Operating margin … operating margin“. Der Treiber ist das Geschäftsmodell.')
   }
-  if (proof.trim() && !/\b(?:drives|drive)\b/i.test(proof)) {
-    w.push('Die Antwort muss lauten: Treiber, dann „drives a“, dann die Kennzahl, dann „proving …“. Kein Punkt vor der Zahl.')
+  if (proof.trim() && (ABSTRACT_BEWEIS.test(proof) || /\bproving\b/i.test(proof))) {
+    w.push('Satz 2 fasst abstrakt zusammen. Stell die Hero-Zahl gegen eine zweite echte Kennzahl.')
+  }
+  if (proof.trim() && !istBeweisUebergabe(proof)) {
+    w.push('Satz 2 muss offen auf der ersten Moat-Karte enden: „and it starts with“.')
   }
   if (value && land.includes(value)) {
     w.push(`Die Landung wiederholt ${value} — der Restart stottert. Zahl nur in der Antwort.`)

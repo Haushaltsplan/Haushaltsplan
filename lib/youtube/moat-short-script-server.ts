@@ -26,8 +26,10 @@ import {
   ohneGeteiltePhrase,
   ohneNackteKennzahl,
   kickerFuerBild,
+  antwortFuerKennzahl,
   kickerZurZahl,
   oeffneSprechende,
+  schliesseBeweis,
   kuerzeGesprocheneZeile,
   landZurFrage,
   scriptLoopWarnungen,
@@ -37,7 +39,7 @@ import {
 } from '@/lib/youtube/moat-short-script'
 import { ziffernImText } from '@/lib/youtube/moat-caption'
 import { heroMetricAus, heroMetricPasst, korrigiereHeroSatz } from '@/lib/youtube/moat-hero-metric'
-import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
+import { fremdeZahlen, kontrastMetrik, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
 
 const PFEILER_LABEL: Record<MoatPfeilerId, string> = {
@@ -115,7 +117,7 @@ Talk like a person at a table. Same move for ASML, Hermès, a railroad, a card n
 
 Every spoken line is a normal human sentence: subject, verb, one thought. 8 to 10 words, and under 70 characters. Count the words. A comma is fine. One breath. The subtitle sits on 2 lines. If it would wrap to a third, the line is too long.
 
-Good proof: "[This company's engine] drives a massive [X]% [metric], proving [the consequence]."
+Good proof: "While its 5-year average is 31%, operating margin is 47.1%, and it starts with"
 The engine comes from the business model in the user message. A landlord may say land. A franchisor may say fees. A specialty-ingredient company says the formula, never the land under a shop.
 Good: "Ripping that stack out is a nightmare."
 Bad: "Because they print a 47.1% operating margin."
@@ -149,7 +151,7 @@ Draft the pair as one spoken sentence, then split it.
 Good pair (read land, then the question, no pause):
 - kicker: "No way out"
 - claim: "Why can Microsoft raise prices every year and nobody leaves?"
-- proof: "Network effects drive a massive 47.1% operating margin, proving unmatched pricing power."
+- proof: "While its 5-year average is 31%, operating margin is 47.1%, and it starts with"
 - land: "Nobody else has a lock like this, so the question is"
 - Heard loop: "...so the question is why can Microsoft raise prices every year and nobody leaves?"
 
@@ -177,35 +179,31 @@ Grammar
 
 Causality
 - The question names the economic engine of THIS company, not the product the customer thinks they buy, and not another company's engine. A landlord is about the land. A franchisor is about the fees. A specialty-ingredient company is about the formula. Never write land, shop, landlord, or franchise unless the business model is that.
-- proof is one cause-and-effect sentence for THAT question. Shape: [business driver] + drives/drive + "a massive" + the metric once + ", proving" + the consequence. Example shape: "Proprietary formulas drive a massive 35.7% gross margin, proving unmatched pricing power." Use that sentence only for a formula business. A landlord uses land. A card network uses the network.
-- The driver is never the metric name. Forbidden: "Operating margin lets them print a 46.2% operating margin." Forbidden: "Operating margin drives a 46.2% operating margin."
-- Same shape for every company. Pick the ONE class the business model actually is. Do not copy a class from the list onto the wrong company:
-  * Landlord only: "Land ownership drives a massive [X]% operating margin, proving unmatched pricing power."
-  * Franchisor only: "Franchise fees drive a massive [X]% operating margin, proving unmatched pricing power."
-  * Specialty ingredients or formulation: "Proprietary formulas drive a massive [X]% gross margin, proving unmatched pricing power."
-  * Card network: "Network effects drive a massive [X]% operating margin, proving unmatched pricing power."
-  * B2B software: "Switching costs drive a massive [X]% operating margin, proving unmatched pricing power."
-  * Pharma: "Patented drugs drive a massive [X]% gross margin, proving unmatched pricing power."
-  * Chip equipment: "Tool monopoly drives a massive [X]% return on capital, proving the market lock."
-- Plural subjects use "drive". Singular subjects use "drives".
-- Never open the answer with Because. No period, comma, dash, or ellipsis between the verb and the number. "drives a massive 46.2%", never "drives. A 46.2%".
-- Do not repeat the driver, the metric name, or "pricing power" in the next sentence.
+- proof is sentence 2, seconds 3 to 7, the line that starts as the number hits the screen. It is a concrete contrast, not a summary.
+- Use a second number from the metric list for THIS company, its own other reported figure or its own average. Say both labels. A gross margin is not an operating margin, and neither is a share of revenue.
+- Never invent a peer average, a sector median, an index, or any benchmark you were not given. Do not say "peers", "ETF", or "benchmark" unless that figure is in the metric list.
+- Shape: "While its [other metric] is [other value], [hero metric] is [hero value], and it starts with". The example is the move. Use this company's two real figures.
+- End exactly on "and it starts with". No period, no dash. The first moat card finishes the thought.
+- Forbidden in this sentence: "proving the market lock", "creating high barriers", "demonstrating strong fundamentals", "proving unmatched pricing power", and any clause that starts with "proving".
+- The metric name is not the cause. Forbidden: "Operating margin lets them print a 46.2% operating margin."
+- Never open the answer with Because. No period, comma, dash, or ellipsis immediately before the hero number.
+- Do not repeat the hero metric or the comparison in the next sentence.
 - A verb such as losing, charging, or paying needs its object. "losing market share", never "losing".
 - kicker: 2 to 5 words, under 28 characters, the engine of THIS company, not the product the customer sees. "The formula" for a specialty-ingredient business. "Owns the land" only for a landlord. On screen only. Never spoken. No invented number. It sits directly under the metric, so it must not name a fee, a margin, membership, or any metric other than the one on screen. If that phrase is not in the proof, leave the kicker empty.
 - Every percentage is digits with a percent sign: "90%", never "ninety percent". The hook metric value is copied exactly from the metric list.
-- claim: the first spoken line, seconds 0 to 3. 6 to 10 words. A complete question about that engine. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know". The number is already on screen; the question does not say it.
-- proof: the second spoken line. One breath. The number is spoken once, then the consequence in the same sentence. Never the metricId. Never "an ltm_ebit of 47.1%". Never the metric phrase a second time.
+- claim: the first spoken line, seconds 0 to 3. 6 to 10 words. A complete question about that engine. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know". The number is not on screen yet.
+- proof: the second spoken line, from about second 3. The number appears as this line starts. Name the hero metric once, set it against the other real figure once, then "and it starts with". Never the metricId. Never "an ltm_ebit of 47.1%".
 
 ## Story order, do not skip ahead
 There is no "what they sell" line. Do not describe the business model as its own beat. There is no teaser between the number and the pillars. Do not say "one thing could break that lock" or hint at the threat before the crack.
-1. claim (the question, no number). The number is already on screen beside the question. No pillar, no score, no bar yet. The spoken question still does not say the number.
-2. proof (driver, then the number once, then the consequence, in the same sentence)
+1. claim (the question, no number). Logo and ticker only. No pillar, no score, no bar, and the hero number is still hidden. The spoken question does not say the number.
+2. proof (the contrast, then the open handoff). The hero number appears as this line starts.
 3. four pillars, in order, each its own sentence
 4. crack (the FIRST and only time the threat is named)
 5. land (bridge into the question, then stop)
 
-The number is spoken once, in proof, around the third second, in the same breath as the driver. The next sentence must not repeat the driver, the metric name, or the consequence. The crack comes after all four pillars.
-In the first ten seconds the spoken proof must explain the on-screen metric. A gross margin is not an operating margin, and neither number is a share of revenue. Use the English name from the metric list and the exact value. Do not mix two metrics in one sentence.
+The hero number is spoken once, in proof, as that line starts around second 3. The comparison figure is the other real metric, spoken once, with its own name. The next sentence must not repeat either figure. The crack comes after all four pillars.
+In the first ten seconds the spoken proof must explain the on-screen metric by setting it against that second figure. A gross margin is not an operating margin, and neither number is a share of revenue. Use the English names from the metric list and the exact values.
 
 ## Each hook
 Write THREE hooks. Each has these fields:
@@ -290,7 +288,7 @@ function baueUserPrompt(
 const HERO_CHECK = `You repair one spoken sentence so it matches the on-screen metric.
 The sentence must explain that exact metric. A gross margin is not an operating margin. A margin is not a share of revenue.
 Return JSON {"proof":"...","context_note":""}.
-proof is one English sentence and contains the exact value and the metric name. Invent no new number.
+proof is one English sentence, contains the exact value and the metric name, keeps a second real figure if the spoken line already has one, and ends with ", and it starts with". Do not write "proving", "market lock", "high barriers", or "strong fundamentals". Invent no new number.
 context_note is empty, unless the metric name already carries a short qualifier.`
 
 async function heroPruefen(
@@ -415,7 +413,16 @@ export async function generiereMoatShort(opts: {
       const wert = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).value
       const label = (metriken.find((m) => m.id === metrikId) ?? hookMetriken[0]!).label
       const proofRoh = sprechtext(h.proof)
-      const paar = hookPaar(sprechtext(h.claim), proofRoh, paket.firmenname, wert, label, metrikId, kontext)
+      const paar = hookPaar(
+        sprechtext(h.claim),
+        proofRoh,
+        paket.firmenname,
+        wert,
+        label,
+        metrikId,
+        kontext,
+        kontrastMetrik(metrikId, metriken),
+      )
       return {
         winkel: text(h.angle),
         kicker: kickerFuerBild(sprechtext(h.kicker), paket.firmenname),
@@ -509,7 +516,7 @@ export async function generiereMoatShort(opts: {
     const summe = [...teile.map((t) => t.text), props.closing].map(woerter).reduce((a, b) => a + b, 0)
     if (summe <= MAX_WOERTER_GESAMT) break
     const ziel = teile
-      .filter((t) => !fest.has(t.key) && woerter(t.text) > 7)
+      .filter((t) => t.key !== 'proof' && !fest.has(t.key) && woerter(t.text) > 7)
       .sort((a, b) => woerter(b.text) - woerter(a.text))[0]
     if (!ziel) break
     const neu = kuerzeGesprocheneZeile(ziel.text, {
@@ -539,6 +546,7 @@ export async function generiereMoatShort(opts: {
     props.metricLabel,
     start.metrikId,
     kontext,
+    kontrastMetrik(start.metrikId, metriken),
   )
   props.hook = repariert.claim
   props.proof = repariert.proof
@@ -579,7 +587,11 @@ export async function generiereMoatShort(opts: {
   props.proof = hero.spoken_reference
   props.metricValue = hero.value
   props.metricLabel = hero.label
-  props.proof = ziffernImText(props.proof)
+  const kontrast = kontrastMetrik(start.metrikId, metriken)
+  props.proof = schliesseBeweis(ziffernImText(props.proof))
+  if ((kontrast && !props.proof.includes(kontrast.value)) || /\bproving\b/i.test(props.proof)) {
+    props.proof = antwortFuerKennzahl(props.metricValue, props.metricLabel, start.metrikId, kontext, kontrast)
+  }
   props.heroMetric = { ...hero, spoken_reference: props.proof }
   props.kicker = kickerZurZahl(props.kicker, props.metricLabel, `${props.hook} ${props.proof}`)
   if (istOffeneBruecke(props.closing, props.metricValue)) props.closing = oeffneSprechende(props.closing)

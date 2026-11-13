@@ -53,6 +53,29 @@ function zahlenIn(text: string): string[] {
   return text.match(/\d+(?:\.\d+)?/g) ?? []
 }
 
+const KONTRAST_PAAR: Record<string, string[]> = {
+  ltm_roic: ['roic_5y_avg', 'incremental_roic'],
+  roic_5y_avg: ['ltm_roic'],
+  incremental_roic: ['ltm_roic', 'roic_5y_avg'],
+  ltm_brutto: ['ltm_ebit'],
+  ltm_ebit: ['ltm_brutto'],
+  fcf_conversion: ['ltm_ebit'],
+  nrr: ['rev_cagr_5y'],
+  rev_cagr_5y: ['ltm_ebit', 'ltm_brutto'],
+}
+
+/** Zweite echte Kennzahl derselben Firma. Kein erfundener Peer- oder Indexwert. */
+export function kontrastMetrik(heroId: string, metriken: MoatShortMetrik[]): MoatShortMetrik | null {
+  const hero = metriken.find((m) => m.id === heroId)
+  if (!hero) return null
+  const ids = KONTRAST_PAAR[heroId] ?? []
+  for (const id of ids) {
+    const m = metriken.find((x) => x.id === id)
+    if (m && m.value !== hero.value) return m
+  }
+  return metriken.find((m) => m.id !== heroId && m.value !== hero.value && /%$/.test(m.value)) ?? null
+}
+
 /** Zahlen im Script, die weder aus den Kennzahlen noch aus den Scores stammen. */
 export function fremdeZahlen(text: string, metriken: MoatShortMetrik[], scores: number[]): string[] {
   const erlaubt = new Set<string>(['10'])
