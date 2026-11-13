@@ -1,7 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { EarningsShortsClient } from '@/components/youtube/earnings-shorts.client'
 import { VidiqClient } from '@/components/youtube/vidiq.client'
@@ -310,6 +310,10 @@ export function YoutubeShortsClient() {
   const [renderDatei, setRenderDatei] = useState<string | null>(null)
   const [ergebnis, setErgebnis] = useState<MoatShortErgebnis | null>(null)
   const [props, setProps] = useState<MoatShortProps | null>(null)
+  const [hookBildLaedt, setHookBildLaedt] = useState(false)
+  const propsRef = useRef(props)
+  const hookJobRef = useRef<Promise<string | null> | null>(null)
+  propsRef.current = props
   useEffect(() => {
     if (!props) return
     const next = gesprocheneZeilen(props)
@@ -525,7 +529,14 @@ export function YoutubeShortsClient() {
       })
       setWellenform(peaks)
       setStimmeFp(moatShortSprechFingerprint(sauber))
-      setProps({ ...sauber, voiceSrc: url, voiceAlignment: j.woerter ?? null, voiceLeadMs })
+      setProps((p) => ({
+        ...sauber,
+        hookVisualSrc: p?.hookVisualSrc ?? sauber.hookVisualSrc,
+        hookVisualPrompt: p?.hookVisualPrompt ?? sauber.hookVisualPrompt,
+        voiceSrc: url,
+        voiceAlignment: j.woerter ?? null,
+        voiceLeadMs,
+      }))
       toast.success('Stimme liegt auf der Timeline.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Stimme fehlgeschlagen.')
@@ -677,26 +688,36 @@ export function YoutubeShortsClient() {
       return null
     })
     setStimmeFp(null)
-    const prompt = stand.props.hookVisualPrompt?.trim()
-    if (prompt && stand.props.ticker) void ladeHookBild(stand.props.ticker, prompt)
+    if (!stand.props.hookVisualSrc && stand.props.hookVisualPrompt?.trim() && stand.props.ticker) {
+      void ladeHookBild(stand.props.ticker, stand.props.hookVisualPrompt)
+    }
   }
 
-  async function ladeHookBild(ticker: string, prompt: string) {
-    try {
-      const res = await fetch('/api/youtube/hook-video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker, prompt }),
-      })
-      const j = (await res.json()) as { ok?: boolean; src?: string; fehler?: string }
-      if (!j.ok || !j.src) {
-        if (j.fehler) toast.error(j.fehler)
-        return
+  function ladeHookBild(ticker: string, prompt: string): Promise<string | null> {
+    const job = (async () => {
+      setHookBildLaedt(true)
+      try {
+        const res = await fetch('/api/youtube/hook-video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticker, prompt }),
+        })
+        const j = (await res.json()) as { ok?: boolean; src?: string; fehler?: string }
+        if (!j.ok || !j.src) {
+          toast.error(j.fehler || 'Das Hook-Bild konnte nicht erzeugt werden.')
+          return null
+        }
+        setProps((p) => (p && p.ticker === ticker ? { ...p, hookVisualSrc: j.src } : p))
+        return j.src
+      } catch {
+        toast.error('Das Hook-Bild konnte nicht geladen werden.')
+        return null
+      } finally {
+        setHookBildLaedt(false)
       }
-      setProps((p) => (p && p.ticker === ticker ? { ...p, hookVisualSrc: j.src } : p))
-    } catch {
-      toast.error('Das Hook-Bild konnte nicht geladen werden.')
-    }
+    })()
+    hookJobRef.current = job
+    return job
   }
 
   async function richtungWaehlen(richtung: 'groesser' | 'kleiner') {
@@ -775,6 +796,9 @@ export function YoutubeShortsClient() {
         return null
       })
       setStimmeFp(null)
+      if (!sauber.hookVisualSrc && sauber.hookVisualPrompt?.trim() && sauber.ticker) {
+        void ladeHookBild(sauber.ticker, sauber.hookVisualPrompt)
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Netzwerkfehler')
     } finally {
@@ -792,14 +816,18 @@ export function YoutubeShortsClient() {
   }
 
   async function mp4Exportieren() {
-    if (!fertig) return
-    const ticker = fertig.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'SHORT'
+    const bild = hookJobRef.current ? await hookJobRef.current : propsRef.current?.hookVisualSrc ?? null
+    const basis = propsRef.current
+    if (!basis) return
+    const aktuell = bild ? { ...basis, hookVisualSrc: bild } : basis
+    if (!aktuell.hookVisualSrc) toast.error('Kein Hook-Bild. Der Anfang bleibt dunkel.')
+    const ticker = aktuell.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'SHORT'
     const dateiname = `${ticker}-moat.mp4`
     setRendert(true)
     setRenderProzent(0)
     setRenderDatei(dateiname)
     try {
-      const blob = await rendereMoatShortImBrowser(fertig, (p) => {
+      const blob = await rendereMoatShortImBrowser(aktuell, (p) => {
         if (Number.isFinite(p)) setRenderProzent(Math.max(0, Math.min(100, Math.round(p * 100))))
       })
       setMp4Blob(blob)
@@ -1459,11 +1487,11 @@ export function YoutubeShortsClient() {
               ) : null}
               <button
                 type="button"
-                disabled={rendert || !fertig}
+                disabled={rendert || hookBildLaedt || !fertig}
                 onClick={() => void mp4Exportieren()}
                 className="w-full rounded-xl bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
               >
-                {rendert ? `MP4 wird gerendert… ${renderProzent}%` : 'MP4 exportieren'}
+                {rendert ? `MP4 wird gerendert… ${renderProzent}%` : hookBildLaedt ? 'Hook-Bild wird erzeugt…' : 'MP4 exportieren'}
               </button>
               {renderDatei ? (
                 <p className="text-xs text-[var(--app-text-muted)]">

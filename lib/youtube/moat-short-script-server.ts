@@ -36,6 +36,7 @@ import {
 } from '@/lib/youtube/moat-short-script'
 import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import { gesprochenePfeiler } from '@/lib/youtube/moat-short-voice'
+import { fetchHookVideo } from '@/lib/hook-video-provider'
 import { HOOK_VISUAL_ANWEISUNG, MOAT_WORTE_MAX, MOAT_WORTE_MIN, satzGeschlossen, schliesseHookVisualPrompt } from '@/lib/script-sanitizer'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
 
@@ -552,6 +553,12 @@ export async function generiereMoatShort(opts: {
   if (!satzGeschlossen(props.crack)) warnungen.push('Der Crack endet nicht als ganzer Satz.')
   if (zeilen.size < 4) warnungen.push('Nicht alle vier Pfeiler haben einen eigenen Satz bekommen.')
   if (!logoUrl) warnungen.push('Kein drucktaugliches Firmenlogo gefunden — die Business-Szene zeigt nur den Ticker.')
+  try {
+    props.hookVisualSrc = await fetchHookVideo(props.hookVisualPrompt ?? '', ticker)
+  } catch (e) {
+    props.hookVisualSrc = null
+    warnungen.push(e instanceof Error ? e.message : 'Das Hook-Bild konnte nicht erzeugt werden.')
+  }
 
   const titel = titelFuerUpload(text(roh.title), ticker, startMetrik.value, suchphrasen, {
     firmenname: paket.firmenname,

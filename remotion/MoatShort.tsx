@@ -353,8 +353,9 @@ function musikAudioSrc(src: string): string {
 
 function hookMedienSrc(url: string): string {
   if (/^(data:|blob:|https?:)/i.test(url)) return url
-  if (typeof window !== 'undefined' && !('remotion_staticBase' in window && window.remotion_staticBase)) return url
-  return staticFile(url.replace(/^\/+/, ''))
+  const pfad = url.startsWith('/') ? url : `/${url}`
+  if (typeof window !== 'undefined') return `${window.location.origin}${pfad}`
+  return staticFile(pfad.replace(/^\/+/, ''))
 }
 
 function HookLeinwand({ src, frame, ambient }: { src: string; frame: number; ambient: boolean }) {
