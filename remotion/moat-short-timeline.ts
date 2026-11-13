@@ -1,4 +1,5 @@
 import { moatShortSprechzeilen, sprechzeilenMitZeiten } from '@/lib/youtube/moat-short-voice'
+import { SFX_CONFIG } from './sfx-config'
 import {
   MOAT_SHORT_FPS,
   type MoatShortBeat,
@@ -344,7 +345,8 @@ function schliesseTimeline(
   voiceSchnitte: MoatShortVoiceSchnitt[],
   metricFrame: number | null,
 ): MoatShortTimeline {
-  const durationInFrames = Math.max(1, cursor)
+  const luft = Math.round(SFX_CONFIG.loopLuftSekunden * MOAT_SHORT_FPS)
+  const durationInFrames = Math.max(1, cursor + luft)
   const saubereCaptions = legeCaptionsOhneUeberlappung(captions)
     .map((c) => ({ ...c, duration: Math.min(c.duration, Math.max(1, durationInFrames - c.from)) }))
     .filter((c) => c.from < durationInFrames && c.duration >= 1)

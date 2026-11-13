@@ -16,6 +16,7 @@ import { tagsSichtbar } from '@/lib/youtube/youtube-tags'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
+import { heroMetricAus } from '@/lib/youtube/moat-hero-metric'
 import { doppelteWendung, fremderKlassenSatz, hookKarteFuerUnternehmen, hookPaar, istOffeneBruecke, kuerzeGesprocheneZeile, ohneKennzahlId, sanitiereMoatFuerStimme, schaetzeSprechsekunden, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
@@ -614,7 +615,14 @@ export function YoutubeShortsClient() {
             ...p,
             hook: frage,
             proof: antwort,
-            ...(m ? { metricValue: m.value, metricLabel: m.label } : {}),
+            ...(m
+              ? {
+                  metricValue: m.value,
+                  metricLabel: m.label,
+                  heroMetric: heroMetricAus(m.value, m.label, antwort),
+                  proof: heroMetricAus(m.value, m.label, antwort).spoken_reference,
+                }
+              : {}),
           }
         : p,
     )
@@ -1124,7 +1132,19 @@ export function YoutubeShortsClient() {
                   value={ergebnis.metriken.find((m) => m.value === props.metricValue && m.label === props.metricLabel)?.id ?? ''}
                   onChange={(e) => {
                     const m = ergebnis.metriken.find((x) => x.id === e.target.value)
-                    if (m) setProps((p) => (p ? { ...p, metricValue: m.value, metricLabel: m.label } : p))
+                    if (m) {
+                      setProps((p) =>
+                        p
+                          ? {
+                              ...p,
+                              metricValue: m.value,
+                              metricLabel: m.label,
+                              proof: heroMetricAus(m.value, m.label, p.proof).spoken_reference,
+                              heroMetric: heroMetricAus(m.value, m.label, p.proof),
+                            }
+                          : p,
+                      )
+                    }
                   }}
                   className={`${studioFeld} mt-1`}
                 >

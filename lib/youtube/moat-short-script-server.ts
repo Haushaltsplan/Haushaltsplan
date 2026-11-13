@@ -33,6 +33,7 @@ import {
   scriptTonWarnungen,
   titelFuerUpload,
 } from '@/lib/youtube/moat-short-script'
+import { heroMetricAus, heroMetricPasst, korrigiereHeroSatz } from '@/lib/youtube/moat-hero-metric'
 import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
 
@@ -160,6 +161,7 @@ Bad land
 Land rules
 - 6-12 words. One clause, NO metric value, NO second sentence.
 - End exactly on "so the question is". Never end with . ! ? and never with a dash.
+- The clause before that ending is grammatical. Do not stop on a bare verb or a chopped noun. Read land and then the opening question as one sentence. Pattern: an open bridge, then the question restarts. Example shape: "which leaves one key question" is the move; this show says "so the question is".
 - Do not say the score, "wide moat", "narrow moat", or recap the pillars. The stamp already shows the score. After this line the video loops.
 
 Opening rules, seconds 0 to 5. These override the word targets above for claim and proof.
@@ -199,6 +201,7 @@ There is no "what they sell" line. Do not describe the business model as its own
 5. land (bridge into the question, then stop)
 
 The number is spoken once, in proof, around the third second, in the same breath as the driver. The next sentence must not repeat the driver, the metric name, or the consequence. The crack comes after all four pillars.
+In the first ten seconds the spoken proof must explain the on-screen metric. A gross margin is not an operating margin, and neither number is a share of revenue. Use the English name from the metric list and the exact value. Do not mix two metrics in one sentence.
 
 ## Each hook
 Write THREE hooks. Each has these fields:
@@ -278,6 +281,49 @@ function baueUserPrompt(
   ]
     .filter((z) => z != null)
     .join('\n')
+}
+
+const HERO_CHECK = `You repair one spoken sentence so it matches the on-screen metric.
+The sentence must explain that exact metric. A gross margin is not an operating margin. A margin is not a share of revenue.
+Return JSON {"proof":"...","context_note":""}.
+proof is one English sentence and contains the exact value and the metric name. Invent no new number.
+context_note is empty, unless the metric name already carries a short qualifier.`
+
+async function heroPruefen(
+  apiKey: string,
+  proof: string,
+  value: string,
+  label: string,
+): Promise<ReturnType<typeof heroMetricAus>> {
+  const lokal = korrigiereHeroSatz(proof, value, label)
+  const erster = heroMetricAus(value, label, lokal)
+  if (heroMetricPasst(erster, lokal)) return erster
+  const result = await runCoachCompletion(
+    'gemini',
+    apiKey,
+    HERO_CHECK,
+    [{ role: 'user', content: `On screen: ${label} = ${value}\nSpoken now: ${proof}` }],
+    {
+      geminiModels: geminiFreeTierFlashModelKandidaten(),
+      geminiForceFreeApiKey: true,
+      jsonResponse: {
+        schema: {
+          type: 'object',
+          properties: { proof: { type: 'string' }, context_note: { type: 'string' } },
+          required: ['proof', 'context_note'],
+        },
+      },
+      maxOutputTokens: 400,
+      timeoutMs: 30_000,
+      geminiTotalBudgetMs: 40_000,
+    },
+  )
+  if (!result.ok) return erster
+  const roh = parseJson(result.reply)
+  const satz = korrigiereHeroSatz(sprechtext(roh?.proof) || lokal, value, label)
+  const note = text(roh?.context_note)
+  const zweiter = heroMetricAus(value, label, satz.includes(value) ? satz : lokal, note.length <= 48 ? note : '')
+  return heroMetricPasst(zweiter, zweiter.spoken_reference) ? zweiter : erster
 }
 
 function parseJson(reply: string): Record<string, unknown> | null {
@@ -520,6 +566,13 @@ export async function generiereMoatShort(opts: {
   start.loop = ''
   start.land = props.closing
 
+  const hero = await heroPruefen(provider.apiKey, props.proof, props.metricValue, props.metricLabel)
+  props.proof = hero.spoken_reference
+  props.metricValue = hero.value
+  props.metricLabel = hero.label
+  props.heroMetric = hero
+  start.proof = props.proof
+
   const warnungen: string[] = []
   warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof, props.metricLabel))
   warnungen.push(...scriptStoryWarnungen(props.hookLoop, props.crack))
@@ -531,6 +584,7 @@ export async function generiereMoatShort(opts: {
   if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — zu lang für 30–35 Sekunden.`)
   if (zeilen.size < 4) warnungen.push('Nicht alle vier Pfeiler haben einen eigenen Satz bekommen.')
   if (!logoUrl) warnungen.push('Kein drucktaugliches Firmenlogo gefunden — die Business-Szene zeigt nur den Ticker.')
+  if (!heroMetricPasst(props.heroMetric ?? hero, props.proof)) warnungen.push('Bildzahl und gesprochener Satz nennen nicht dieselbe Kennzahl.')
 
   const titel = titelFuerUpload(text(roh.title), ticker, startMetrik.value, suchphrasen, {
     firmenname: paket.firmenname,

@@ -2,7 +2,7 @@ import { loadFont as loadInter } from '@remotion/google-fonts/Inter'
 import { loadFont as loadInterTight } from '@remotion/google-fonts/InterTight'
 import { loadFont as loadMono } from '@remotion/google-fonts/JetBrainsMono'
 import { Audio } from '@remotion/media'
-import { mouseClick, shutterModern, shutterOld, whoosh } from '@remotion/sfx'
+import { mouseClick, shutterModern, whoosh } from '@remotion/sfx'
 import { useMemo } from 'react'
 import {
   AbsoluteFill,
@@ -21,7 +21,8 @@ import { ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-scr
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline } from './moat-short-timeline'
 import { SubscribeBadge } from './SubscribeBadge'
-import { MOAT_SHORT_HEIGHT, type MoatShortBeat, type MoatShortProps, type MoatShortTimeline, type MoatShortVerdict } from './moat-short-types'
+import { SFX_CONFIG } from './sfx-config'
+import { MOAT_SHORT_FPS, MOAT_SHORT_HEIGHT, type MoatShortBeat, type MoatShortProps, type MoatShortTimeline, type MoatShortVerdict } from './moat-short-types'
 
 const { fontFamily: DISPLAY } = loadInterTight('normal', { weights: ['600', '800', '900'], subsets: ['latin'] })
 const { fontFamily: SANS } = loadInter('normal', { weights: ['600', '700'], subsets: ['latin'] })
@@ -196,6 +197,15 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
   )
 }
 
+function wortAusklang(laenge: number) {
+  const fade = Math.max(1, Math.round((SFX_CONFIG.wortFadeMs / 1000) * MOAT_SHORT_FPS))
+  return (frame: number) => {
+    const rest = laenge - 1 - frame
+    if (rest >= fade) return 1
+    return Math.max(0, (rest + 1) / fade)
+  }
+}
+
 function Stimme({
   src,
   trim,
@@ -209,9 +219,18 @@ function Stimme({
 }) {
   const datei = stimmeAudioSrc(src)
   const lead = Math.max(0, trim)
+  const luft = Math.round(SFX_CONFIG.loopLuftSekunden * MOAT_SHORT_FPS)
+  const stimmeBis = Math.max(1, dauer - luft)
   const cuts = schnitte.filter((s) => s.bisFrame > s.vonFrame && s.vonFrame >= lead)
   if (!cuts.length) {
-    return <Audio src={datei} volume={1} trimBefore={lead > 0 ? lead : undefined} />
+    return (
+      <Audio
+        src={datei}
+        volume={wortAusklang(stimmeBis)}
+        trimBefore={lead > 0 ? lead : undefined}
+        durationInFrames={stimmeBis}
+      />
+    )
   }
   const teile: { from: number; trimBefore: number; duration: number }[] = []
   let cursor = lead
@@ -224,12 +243,17 @@ function Stimme({
     }
     cursor = Math.max(cursor, s.bisFrame)
   }
-  teile.push({ from: komposition, trimBefore: cursor, duration: Math.max(1, dauer - komposition) })
+  teile.push({ from: komposition, trimBefore: cursor, duration: Math.max(1, stimmeBis - komposition) })
   return (
     <>
       {teile.map((t, i) => (
         <Sequence key={i} from={t.from} durationInFrames={t.duration} layout="none">
-          <Audio src={datei} volume={1} trimBefore={t.trimBefore > 0 ? t.trimBefore : undefined} durationInFrames={t.duration} />
+          <Audio
+            src={datei}
+            volume={i === teile.length - 1 ? wortAusklang(t.duration) : 1}
+            trimBefore={t.trimBefore > 0 ? t.trimBefore : undefined}
+            durationInFrames={t.duration}
+          />
         </Sequence>
       ))}
     </>
@@ -259,17 +283,14 @@ function Ton({
   dauer: number
   beats: MoatShortBeat[]
 }) {
-  /** Schnitt-Sounds bleiben leise. Der Hook-Impact liegt nur auf Frame 0, unter der Stimme. */
-  const sfxPegel = 0.21
-  const whooshPegel = 0.1
+  /** Schnitt-Sounds bleiben unter der Stimme. Pegel stehen in SFX_CONFIG. */
   const cues: { from: number; src: string; volume: number }[] = []
   for (const b of beats) {
-    if (b.from > 0 && b.id !== 'proof' && b.id !== 'crack') cues.push({ from: b.from, src: whoosh, volume: whooshPegel })
-    if (b.id === 'proof') cues.push({ from: metricFrame ?? b.from, src: mouseClick, volume: sfxPegel })
-    if (b.id.startsWith('pillar')) cues.push({ from: b.from + PILLAR_ZAHL_FRAME, src: mouseClick, volume: sfxPegel * 0.7 })
-    if (b.id === 'crack') cues.push({ from: b.from, src: shutterOld, volume: 0.48 })
-    if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: sfxPegel })
+    if (b.id === 'pillar0' || b.id === 'crack') cues.push({ from: b.from, src: whoosh, volume: SFX_CONFIG.uebergang.pegel })
+    if (b.id.startsWith('pillar')) cues.push({ from: b.from + PILLAR_ZAHL_FRAME, src: mouseClick, volume: SFX_CONFIG.balken.pegel })
+    if (b.id === 'verdict') cues.push({ from: b.from + STEMPEL_AUFPRALL - 1, src: shutterModern, volume: SFX_CONFIG.stempel.pegel })
   }
+  if (metricFrame != null) cues.push({ from: metricFrame, src: mouseClick, volume: SFX_CONFIG.balken.pegel })
 
   const deckel = voiceSrc ? 0.063 : 0.126
   const relativ = Math.max(0, musicGain) / 0.5
@@ -288,7 +309,7 @@ function Ton({
       {voiceSrc ? <Stimme src={voiceSrc} trim={voiceTrim} schnitte={voiceSchnitte} dauer={dauer} /> : null}
       {sfx ? (
         <Sequence from={0} durationInFrames={8} layout="none">
-          <Audio src={hookImpactSrc()} volume={0.5} />
+          <Audio src={hookImpactSrc()} volume={SFX_CONFIG.hookImpact.pegel} />
         </Sequence>
       ) : null}
       {sfx
@@ -311,9 +332,9 @@ function logoSrc(url: string): string {
 
 function hookImpactSrc(): string {
   if (typeof window !== 'undefined' && !('remotion_staticBase' in window && window.remotion_staticBase)) {
-    return `${window.location.origin}/sfx/hook-impact.mp3`
+    return `${window.location.origin}/${SFX_CONFIG.hookImpact.datei}`
   }
-  return staticFile('sfx/hook-impact.mp3')
+  return staticFile(SFX_CONFIG.hookImpact.datei)
 }
 
 function stimmeAudioSrc(src: string): string {

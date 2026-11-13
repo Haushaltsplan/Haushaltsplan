@@ -23,6 +23,16 @@ export type MoatShortProps = {
   /** Wert exakt aus dem Export, englisch formatiert (z. B. „71.2%“). */
   metricValue: string
   metricLabel: string
+  /**
+   * Dieselbe Zahl wie metricValue. Bild, Stimme und Bezeichnung müssen zusammenpassen.
+   * context_note bleibt leer, solange die Bezeichnung keinen Zusatz braucht.
+   */
+  heroMetric?: {
+    value: string
+    label: string
+    context_note: string
+    spoken_reference: string
+  }
   business: string
   pillars: { id: MoatShortPillarId; label: string; score: number; line: string; stat: MoatShortStat | null }[]
   crack: string
@@ -101,6 +111,12 @@ export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
   hookLoop: '',
   metricValue: '51.3%',
   metricLabel: 'Gross margin',
+  heroMetric: {
+    value: '51.3%',
+    label: 'Gross margin',
+    context_note: '',
+    spoken_reference: 'Because those machines print a 51.3% margin.',
+  },
   business: '',
   pillars: [
     {
