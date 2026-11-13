@@ -9,22 +9,13 @@ export type ShortSprechzeile<T extends string = string> = { id: T; text: string 
 
 const PILLAR_IDS = ['pillar0', 'pillar1', 'pillar2', 'pillar3'] as const
 
-/** Die drei höchsten Scores. Der vierte bleibt in der Note und wird nicht gesprochen. */
-export function gesprochenePfeiler<T extends { score: number }>(pillars: T[]): T[] {
-  return pillars
-    .map((p, i) => ({ p, i }))
-    .sort((a, b) => b.p.score - a.p.score || a.i - b.i)
-    .slice(0, 3)
-    .map((x) => x.p)
-}
-
 export function moatShortSprechzeilen(
   props: Pick<MoatShortProps, 'hook' | 'proof' | 'hookLoop' | 'pillars' | 'crack' | 'closing'>,
 ): MoatShortSprechzeile[] {
   const zeilen: MoatShortSprechzeile[] = [
     { id: 'hook', text: props.hook },
     { id: 'proof', text: props.proof },
-    ...gesprochenePfeiler(props.pillars).map((p, i) => ({
+    ...props.pillars.slice(0, 4).map((p, i) => ({
       id: PILLAR_IDS[i] ?? 'pillar0',
       text: p.line,
     })),

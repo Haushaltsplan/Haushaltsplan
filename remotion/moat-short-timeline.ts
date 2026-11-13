@@ -344,7 +344,7 @@ function schliesseTimeline(
   voiceSchnitte: MoatShortVoiceSchnitt[],
   metricFrame: number | null,
 ): MoatShortTimeline {
-  const durationInFrames = Math.max(25 * MOAT_SHORT_FPS, cursor)
+  const durationInFrames = Math.max(1, cursor)
   const saubereCaptions = legeCaptionsOhneUeberlappung(captions)
     .map((c) => ({ ...c, duration: Math.min(c.duration, Math.max(1, durationInFrames - c.from)) }))
     .filter((c) => c.from < durationInFrames && c.duration >= 1)
