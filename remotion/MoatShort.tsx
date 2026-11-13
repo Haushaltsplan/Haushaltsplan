@@ -363,7 +363,7 @@ function HookLeinwand({ src, frame, ambient }: { src: string; frame: number; amb
   const schwenk = interpolate(frame, [0, 150], [0, -18], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   const lauf = interpolate(frame, [0, 150], [-30, 130], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   const datei = hookMedienSrc(src)
-  const bild = src.endsWith('.mp4') ? (
+  const bild = src.endsWith('.mp4') || src.includes('art=video') ? (
     <OffthreadVideo src={datei} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
   ) : (
     <Img src={datei} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
