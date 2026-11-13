@@ -32,6 +32,12 @@ export type MoatShortProps = {
   closing: string
   /** Haushaltsmarken, die im Text dieser Firma schon stehen. Leer, wenn keine genannt ist. */
   anchorNamen?: string[]
+  /** Dieselben Marken als Bildzeile im farbigen Hook. Keine erfundenen Logos. */
+  anchorLogos?: string[]
+  /** Filmpfad unter /hooks, mp4 oder png. */
+  hookVisualSrc?: string | null
+  /** Szenentext für Veo oder Imagen. Kein gesprochenes Wort. */
+  hookVisualPrompt?: string
   /** Pfad relativ zu `public/`, z. B. „youtube-music/track.mp3“. */
   musicSrc: string | null
   /** Linearer Pegel: Katalog-Angleich × Nutzerregler. */

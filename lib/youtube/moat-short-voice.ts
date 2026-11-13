@@ -9,12 +9,12 @@ export type ShortSprechzeile<T extends string = string> = { id: T; text: string 
 
 const PILLAR_IDS = ['pillar0', 'pillar1', 'pillar2', 'pillar3'] as const
 
-/** Die zwei höchsten Scores. Der Rest bleibt in der Note, wird aber nicht gesprochen. */
+/** Die drei höchsten Scores. Der vierte bleibt in der Note und wird nicht gesprochen. */
 export function gesprochenePfeiler<T extends { score: number }>(pillars: T[]): T[] {
   return pillars
     .map((p, i) => ({ p, i }))
     .sort((a, b) => b.p.score - a.p.score || a.i - b.i)
-    .slice(0, 2)
+    .slice(0, 3)
     .map((x) => x.p)
 }
 

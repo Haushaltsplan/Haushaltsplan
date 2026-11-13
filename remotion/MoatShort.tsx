@@ -8,6 +8,7 @@ import {
   AbsoluteFill,
   Easing,
   Img,
+  OffthreadVideo,
   Sequence,
   interpolate,
   interpolateColors,
@@ -117,7 +118,7 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
   const hook = beat(beats, 'hook')
   const proof = beats.find((b) => b.id === 'proof')
   const gesprochen = gesprochenePfeiler(props.pillars)
-  const pillarBeats = (['pillar0', 'pillar1'] as const)
+  const pillarBeats = (['pillar0', 'pillar1', 'pillar2'] as const)
     .map((id) => beats.find((b) => b.id === id))
     .filter((b): b is MoatShortBeat => Boolean(b))
   const p0 = pillarBeats[0] ?? beat(beats, 'pillar0')
@@ -141,10 +142,11 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: bg, color: TEXT, fontFamily: DISPLAY }}>
+      {props.hookVisualSrc ? <HookLeinwand src={props.hookVisualSrc} frame={frame} ambient={frame >= 150} /> : null}
       <div style={{ position: 'absolute', inset: 0, transform: `scale(${schub})`, transformOrigin: 'center center' }}>
       <Sequence
         from={hook.from}
-        durationInFrames={Math.max(1, (p0.from > hook.from ? p0.from : proof ? proof.from + proof.duration : hook.from + hook.duration) - hook.from)}
+        durationInFrames={Math.max(150, p0.from > hook.from ? p0.from : proof ? proof.from + proof.duration : hook.from + hook.duration) - hook.from}
         layout="none"
       >
         <HookSzene
@@ -152,7 +154,8 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
           logoUrl={props.logoUrl}
           value={props.metricValue}
           label={props.metricLabel}
-          anker={(props.anchorNamen?.length ? props.anchorNamen : ankerAusText(`${props.hook} ${props.business} ${props.kicker}`, props.firmenname)).slice(0, 2)}
+          anker={(props.anchorLogos?.length ? props.anchorLogos : props.anchorNamen?.length ? props.anchorNamen : ankerAusText(`${props.hook} ${props.business} ${props.kicker}`, props.firmenname)).slice(0, 3)}
+          kino={Boolean(props.hookVisualSrc)}
           proofAb={
             timeline.metricFrame != null
               ? Math.max(0, timeline.metricFrame - hook.from)
@@ -162,14 +165,17 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
           }
         />
       </Sequence>
-      {pillarBeats.length ? (
+      {frame >= 150 && pillarBeats.length ? (
       <Sequence from={p0.from} durationInFrames={Math.max(1, pLetzte.from + pLetzte.duration - p0.from)} layout="none">
         <PillarSzene pillars={gesprochen} starts={pillarBeats.map((b) => b.from - p0.from)} />
       </Sequence>
       ) : null}
+      {frame >= 150 ? (
       <Sequence from={crack.from} durationInFrames={crack.duration} layout="none">
         <CrackSzene />
       </Sequence>
+      ) : null}
+      {frame >= 150 ? (
       <Sequence from={verdict.from} durationInFrames={Math.max(1, durationInFrames - verdict.from)} layout="none">
         <VerdictSzene
           verdict={props.verdict}
@@ -177,9 +183,10 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
           fadeOut={0}
         />
       </Sequence>
+      ) : null}
       </div>
 
-      {frame >= p0.from ? (
+      {frame >= 150 && frame >= p0.from ? (
         <Kopfzeile
           ticker={props.ticker}
           logoUrl={props.logoUrl}
@@ -190,7 +197,7 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
 
       {captions.map((c, i) => (
         <Sequence key={i} from={c.from} durationInFrames={c.duration} layout="none">
-          <Caption text={c.text} woerter={c.woerter} top={captionTop(c.from, proof?.from ?? null, p0.from)} />
+          <Caption text={c.text} woerter={c.woerter} ab={c.from} top={captionTop(c.from, proof?.from ?? null, p0.from)} />
         </Sequence>
       ))}
 
@@ -344,6 +351,49 @@ function musikAudioSrc(src: string): string {
   return staticFile(src.replace(/^\/+/, ''))
 }
 
+function hookMedienSrc(url: string): string {
+  if (/^(data:|blob:|https?:)/i.test(url)) return url
+  if (typeof window !== 'undefined' && !('remotion_staticBase' in window && window.remotion_staticBase)) return url
+  return staticFile(url.replace(/^\/+/, ''))
+}
+
+function HookLeinwand({ src, frame, ambient }: { src: string; frame: number; ambient: boolean }) {
+  const schub = interpolate(frame, [0, 150], [1, 1.12], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const schwenk = interpolate(frame, [0, 150], [0, -18], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const lauf = interpolate(frame, [0, 150], [-30, 130], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const datei = hookMedienSrc(src)
+  const bild = src.endsWith('.mp4') ? (
+    <OffthreadVideo src={datei} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+  ) : (
+    <Img src={datei} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+  )
+  if (ambient) {
+    return (
+      <AbsoluteFill style={{ overflow: 'hidden', opacity: 0.08, filter: 'blur(10px)' }}>
+        <AbsoluteFill style={{ transform: `scale(${schub}) translateX(${schwenk}px)` }}>{bild}</AbsoluteFill>
+      </AbsoluteFill>
+    )
+  }
+  return (
+    <AbsoluteFill style={{ overflow: 'hidden' }}>
+      <AbsoluteFill style={{ transform: `scale(${schub}) translateX(${schwenk}px)` }}>{bild}</AbsoluteFill>
+      <AbsoluteFill
+        style={{
+          background: `linear-gradient(105deg, transparent ${lauf - 18}%, rgba(255,255,255,0.14) ${lauf}%, transparent ${lauf + 18}%)`,
+          mixBlendMode: 'soft-light',
+        }}
+      />
+      <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0, opacity: 0.16, mixBlendMode: 'overlay', pointerEvents: 'none' }}>
+        <filter id="hook-korn">
+          <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves={2} seed={Math.floor(frame / 2) % 8} stitchTiles="stitch" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#hook-korn)" />
+      </svg>
+      <AbsoluteFill style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0.15), rgba(0,0,0,0.7))' }} />
+    </AbsoluteFill>
+  )
+}
+
 function zaehle(value: string, frame: number): string {
   const treffer = value.trim().match(/^(-?\d+(?:[.,]\d+)?)(.*)$/)
   if (!treffer) return value
@@ -364,6 +414,7 @@ function HookSzene({
   value,
   label,
   anker,
+  kino,
   proofAb,
 }: {
   kicker: string
@@ -371,6 +422,7 @@ function HookSzene({
   value: string
   label: string
   anker: string[]
+  kino: boolean
   /** Frame, ab dem die Zahl als Antwort hart einschlägt. */
   proofAb: number
 }) {
@@ -381,19 +433,20 @@ function HookSzene({
       : 1
   const kickerGroesse = kicker.length <= 16 ? 64 : kicker.length <= 24 ? 52 : 44
   const zeigeAnker = anker.length > 0 && frame < 75
-  const buehneOben = logoUrl || zeigeAnker ? SAFE_TOP + 248 : SAFE_TOP
+  const zeigeLogo = Boolean(logoUrl) && !zeigeAnker && !(kino && frame < 150)
+  const buehneOben = zeigeLogo || zeigeAnker ? SAFE_TOP + 248 : SAFE_TOP
   const takt = (frame % 45) / 45
   return (
     <AbsoluteFill>
       {zeigeAnker ? (
         <div style={{ position: 'absolute', top: SAFE_TOP + 36, left: SAFE_LEFT, right: SAFE_RIGHT, display: 'flex', justifyContent: 'center', gap: 16 }}>
           {anker.map((name) => (
-            <div key={name} style={{ fontFamily: MONO, fontSize: 28, letterSpacing: 2, color: '#67e8f9', border: '1px solid rgba(52,211,153,0.7)', borderRadius: 999, padding: '14px 22px', background: 'rgba(12,12,14,0.8)' }}>
+            <div key={name} style={{ fontFamily: MONO, fontSize: 28, letterSpacing: 2, color: '#67e8f9', border: '1px solid rgba(52,211,153,0.7)', borderRadius: 999, padding: '14px 22px', background: 'rgba(12,12,14,0.8)', textShadow: '0 4px 24px rgba(0,0,0,0.92)' }}>
               {name}
             </div>
           ))}
         </div>
-      ) : logoUrl ? (
+      ) : zeigeLogo && logoUrl ? (
         <div
           style={{
             position: 'absolute',
@@ -436,7 +489,7 @@ function HookSzene({
         }}
       >
         <div style={{ transform: `scale(${zahlScale})`, transformOrigin: 'center center' }}>
-          <div style={{ fontSize: value.length > 7 ? 132 : 168, fontWeight: 900, letterSpacing: -6, lineHeight: 1, fontVariantNumeric: 'tabular-nums', textShadow: `0 0 ${12 + takt * 18}px rgba(52,211,153,0.45)` }}>
+          <div style={{ fontSize: value.length > 7 ? 132 : 168, fontWeight: 900, letterSpacing: -6, lineHeight: 1, fontVariantNumeric: 'tabular-nums', textShadow: kino && frame < 150 ? '0 4px 24px rgba(0,0,0,0.92)' : `0 0 ${12 + takt * 18}px rgba(52,211,153,0.45)` }}>
             {zaehle(value, frame)}
           </div>
           <div style={{ marginTop: 14, fontFamily: MONO, fontSize: 26, letterSpacing: 6, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
@@ -445,7 +498,7 @@ function HookSzene({
           </div>
         </div>
         {kicker ? (
-          <div style={{ marginTop: 28, maxWidth: 820, fontSize: kickerGroesse, fontWeight: 900, letterSpacing: -1.5, lineHeight: 0.98 }}>
+          <div style={{ marginTop: 28, maxWidth: 820, fontSize: kickerGroesse, fontWeight: 900, letterSpacing: -1.5, lineHeight: 0.98, textShadow: kino && frame < 150 ? '0 4px 24px rgba(0,0,0,0.92)' : undefined }}>
             {kicker}
           </div>
         ) : null}
@@ -585,9 +638,10 @@ function aktivesWort(woerter: { start: number; end: number }[], frame: number): 
   return last
 }
 
-function Caption({ text, woerter, top }: { text: string; woerter: { text: string; start: number; end: number }[]; top: number }) {
+function Caption({ text, woerter, top, ab }: { text: string; woerter: { text: string; start: number; end: number }[]; top: number; ab: number }) {
   const frame = useCurrentFrame()
   const aktiv = aktivesWort(woerter, frame)
+  const imHook = ab + frame < 150
   return (
     <div
       style={{
@@ -621,6 +675,7 @@ function Caption({ text, woerter, top }: { text: string; woerter: { text: string
             letterSpacing: -0.5,
             lineHeight: CAPTION_LINE,
             textAlign: 'center',
+            textShadow: imHook ? '0 4px 24px rgba(0,0,0,0.92)' : undefined,
           }}
         >
           <Wortzeile text={text} farbeFuer={(_w, i) => (i === aktiv ? CAPTION_YELLOW : TEXT)} />

@@ -36,6 +36,7 @@ import {
 } from '@/lib/youtube/moat-short-script'
 import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import { gesprochenePfeiler } from '@/lib/youtube/moat-short-voice'
+import { HOOK_VISUAL_ANWEISUNG, MOAT_WORTE_MAX, MOAT_WORTE_MIN, satzGeschlossen, schliesseHookVisualPrompt } from '@/lib/script-sanitizer'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
 
 const PFEILER_LABEL: Record<MoatPfeilerId, string> = {
@@ -52,7 +53,7 @@ const VERDICT_SATZ: Record<MoatShortVerdict, string> = {
 }
 
 const KEINE_METRIK = 'none'
-const MAX_WOERTER_GESAMT = 55
+const MAX_WOERTER_GESAMT = 65
 
 function verdictAusUrteil(urteil: MoatKiBewertung['urteil']): MoatShortVerdict {
   if (urteil === 'tief') return 'wide'
@@ -96,15 +97,16 @@ function baueSchema(hookIds: string[], alleIds: string[]) {
         },
       },
       crack: { type: 'string' },
+      hookVisualPrompt: { type: 'string' },
       title: { type: 'string' },
       description: { type: 'string' },
       comment: { type: 'string' },
     },
-    required: ['hooks', 'pillarLines', 'crack', 'title', 'description', 'comment'],
+    required: ['hooks', 'pillarLines', 'crack', 'hookVisualPrompt', 'title', 'description', 'comment'],
   } as const
 }
 
-const SYSTEM = `You write the spoken voiceover for "Moat Check", a YouTube Short that judges one company's moat in 18 to 22 seconds.
+const SYSTEM = `You write the spoken voiceover for "Moat Check", a YouTube Short that judges one company's moat in 25 to 27 seconds.
 
 Persona: a grounded, sharp equity analyst talking to another investor over coffee. Complete sentences. Direct. Dry. Specific. You are not a presenter, not a marketer, and not a slogan writer.
 
@@ -197,11 +199,11 @@ Causality
 There is no "what they sell" line. Do not describe the business model as its own beat. There is no teaser between the number and the pillars. Do not say "one thing could break that lock" or hint at the threat before the crack.
 1. claim (the question, no number, no bare ticker). The number is already on screen beside the question. No pillar, no score, no bar yet. The spoken question still does not say the number.
 2. proof (driver, then the number once, then the consequence, in the same sentence)
-3. only the two highest-scoring pillars, each its own sentence
-4. crack (the FIRST and only time the threat is named)
+3. the three highest-scoring pillars, each its own complete sentence
+4. crack (the FIRST and only time the threat is named). One finished sentence. The last word is a noun. It ends with a period.
 5. land (bridge into the question, then stop)
 
-The number is spoken once, in proof, around the third second, in the same breath as the driver. The next sentence must not repeat the driver, the metric name, or the consequence. The crack comes after the two spoken pillars. The other two pillars still get a line for the score card, and that line is not spoken.
+The number is spoken once, in proof, around the third second, in the same breath as the driver. The next sentence must not repeat the driver, the metric name, or the consequence. The first five seconds are only the question and the proof. The crack comes after the three spoken pillars. The fourth pillar still gets a line for the score card, and that line is not spoken.
 
 ## Each hook
 Write THREE hooks. Each has these fields:
@@ -224,8 +226,8 @@ Good: "Government fee caps and instant payments threaten margins."
 Bad: "Stricter government fee caps and direct account to account payment rails could compress margins."
 Same move for every company: name the threat and stop. Do not explain the mechanism in the same sentence.
 
-- pillarLines: one per pillar, so the score card still has four reasons. The two highest scores are the only spoken lines: 8 to 10 words, under 70 characters, one complete sentence. The other two are one short sentence and will not be spoken. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none". No pillar may repeat a phrase from the sentence before it. The first spoken pillar must not say the hook metric, the driver, or "pricing power" again. A later pillar may use a different metric.
-- crack: 8-9 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. No sign-off.
+- pillarLines: one per pillar, so the score card still has four reasons. The three highest scores are the only spoken lines: 8 to 10 words, under 70 characters, one complete sentence. The remaining pillar is one short sentence and will not be spoken. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none". No pillar may repeat a phrase from the sentence before it. The first spoken pillar must not say the hook metric, the driver, or "pricing power" again. A later pillar may use a different metric.
+- crack: 8-12 words, under 78 characters, ONE finished sentence ending with a period. The last word is a noun. This is the first time the threat is named. No sign-off.
 
 ## Hard rules
 - Use ONLY facts and numbers from the data provided. Never invent numbers, customers, market shares, years or events.
@@ -233,7 +235,8 @@ Same move for every company: name the threat and stop. Do not explain the mechan
 - The first spoken line is the question. Never open with the metric, "Did you know", "In this video", or "Let's talk about".
 - No buy/sell/hold advice, no price targets, no emojis, no hashtags in spoken text.
 - Do not speak the score as "X out of 10".
-- Whole spoken script, counting only the question, the proof, the two highest pillars, the crack, and the land, stays between 45 and 55 words. With the existing brisk voice the Short lands at 18 to 22 seconds.
+- Whole spoken script, counting the question, the proof, the three highest pillars, the crack, and the land, stays between 60 and 65 words. With the existing 1.15 voice the Short lands at 25 to 27 seconds. The first five seconds are the question and the metric. Do not change the voice.
+- ${HOOK_VISUAL_ANWEISUNG}
 
 Also return
 - title: 40-60 characters. One spoken Shorts line, not a label. No colon. Company name in the first words, not a two-letter ticker. Include the hook number. No slang ("the tell"), no "Back on track", no "breakdown", no ALL-CAPS, no hashtags. Good shape: "Why [company]'s 58.3% margin is the moat".
@@ -269,7 +272,7 @@ function baueUserPrompt(
     `Moat verdict: ${VERDICT_SATZ[verdictAusUrteil(moat.urteil)]} Score ${moat.score}/10.`,
     'Pillars (score / reason / risk, German):',
     ...moat.pfeiler.map((p) => `- ${p.id} (${PFEILER_LABEL[p.id]}): ${p.score}/10 — ${p.begruendung} — Risk: ${p.risiko}`),
-    `Spoken pillars only: ${[...moat.pfeiler].sort((a, b) => b.score - a.score).slice(0, 2).map((p) => PFEILER_LABEL[p.id]).join(', ')}. Write those two as the sharp lines. The other two stay one short sentence and are not spoken.`,
+    `Spoken pillars only: ${[...moat.pfeiler].sort((a, b) => b.score - a.score).slice(0, 3).map((p) => PFEILER_LABEL[p.id]).join(', ')}. Write those three as the sharp lines. The remaining pillar stays one short sentence and is not spoken.`,
     '',
     'Destruction scenarios (German):',
     ...moat.zerstoerungsszenarien.map((s) => `- ${s}`),
@@ -443,6 +446,15 @@ export async function generiereMoatShort(opts: {
       [paket.beschreibung, moat.geschaeftsmodell, ...moat.pfeiler.map((p) => `${p.begruendung} ${p.risiko}`)].filter(Boolean).join(' '),
       paket.firmenname,
     ),
+    anchorLogos: ankerAusText(
+      [paket.beschreibung, moat.geschaeftsmodell, ...moat.pfeiler.map((p) => `${p.begruendung} ${p.risiko}`)].filter(Boolean).join(' '),
+      paket.firmenname,
+    ),
+    hookVisualPrompt: schliesseHookVisualPrompt(
+      text(roh.hookVisualPrompt),
+      `Macro photograph of the physical work behind ${paket.firmenname}, warm gold and electric cyan against deep shadow, shallow depth of field, volumetric studio lighting, 8K hyper-detailed commercial photography`,
+    ),
+    hookVisualSrc: null,
     musicSrc: null,
     musicGain: 0.5,
     musicTrim: 0,
@@ -535,7 +547,9 @@ export async function generiereMoatShort(opts: {
   const fremd = fremdeZahlen(gesprochen.join(' '), metriken, scores)
   if (fremd.length) warnungen.push(`Zahlen ohne Quelle im Export: ${fremd.join(', ')} — bitte prüfen oder streichen.`)
   const gesamt = gesprochen.map(woerter).reduce((a, b) => a + b, 0)
-  if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — zu lang für 18–22 Sekunden.`)
+  if (gesamt > MOAT_WORTE_MAX) warnungen.push(`${gesamt} Wörter — zu lang für 25–27 Sekunden.`)
+  else if (gesamt < MOAT_WORTE_MIN) warnungen.push(`${gesamt} Wörter — zu kurz für 25–27 Sekunden.`)
+  if (!satzGeschlossen(props.crack)) warnungen.push('Der Crack endet nicht als ganzer Satz.')
   if (zeilen.size < 4) warnungen.push('Nicht alle vier Pfeiler haben einen eigenen Satz bekommen.')
   if (!logoUrl) warnungen.push('Kein drucktaugliches Firmenlogo gefunden — die Business-Szene zeigt nur den Ticker.')
 

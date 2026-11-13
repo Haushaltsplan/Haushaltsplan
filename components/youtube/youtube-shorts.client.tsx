@@ -451,8 +451,8 @@ export function YoutubeShortsClient() {
   const sprechSekunden = props
     ? schaetzeSprechsekunden(moatShortSprechzeilen(props).map((z) => z.text), tempo)
     : 0
-  const dauerImFenster = sprechSekunden >= 18 && sprechSekunden <= 22
-  const dauerZuLang = sprechSekunden > 22
+  const dauerImFenster = sprechSekunden >= 25 && sprechSekunden <= 27
+  const dauerZuLang = sprechSekunden > 27
   const gesprochenIds = new Set((props ? gesprochenePfeiler(props.pillars) : []).map((p) => p.id))
 
   useEffect(() => {
@@ -677,6 +677,26 @@ export function YoutubeShortsClient() {
       return null
     })
     setStimmeFp(null)
+    const prompt = stand.props.hookVisualPrompt?.trim()
+    if (prompt && stand.props.ticker) void ladeHookBild(stand.props.ticker, prompt)
+  }
+
+  async function ladeHookBild(ticker: string, prompt: string) {
+    try {
+      const res = await fetch('/api/youtube/hook-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker, prompt }),
+      })
+      const j = (await res.json()) as { ok?: boolean; src?: string; fehler?: string }
+      if (!j.ok || !j.src) {
+        if (j.fehler) toast.error(j.fehler)
+        return
+      }
+      setProps((p) => (p && p.ticker === ticker ? { ...p, hookVisualSrc: j.src } : p))
+    } catch {
+      toast.error('Das Hook-Bild konnte nicht geladen werden.')
+    }
   }
 
   async function richtungWaehlen(richtung: 'groesser' | 'kleiner') {
@@ -1072,7 +1092,7 @@ export function YoutubeShortsClient() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${dauerImFenster ? 'border-emerald-500/40 text-emerald-200' : 'border-amber-500/40 text-amber-200'}`}>
-                      {dauerZuLang ? `~${sprechSekunden.toFixed(0)}s · über 22s` : `~${sprechSekunden.toFixed(0)}s · Ziel 18–22s`}
+                      {dauerZuLang ? `~${sprechSekunden.toFixed(0)}s · über 27s` : `~${sprechSekunden.toFixed(0)}s · Ziel 25–27s`}
                     </span>
                     <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${flussOk ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-amber-400/60 bg-amber-400/10 text-amber-100'}`}>
                       {doppelHinweis ? 'Warning: Duplicate Phrase Detected' : stoppVorZahl ? 'Warning: Pause Before Number' : 'Grammar & Pacing OK'}
