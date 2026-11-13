@@ -30,6 +30,8 @@ export type MoatShortProps = {
   score: number
   /** Offene Brücke in den Hook — kein Schlusssatz, keine Hook-Zahl. */
   closing: string
+  /** Haushaltsmarken, die im Text dieser Firma schon stehen. Leer, wenn keine genannt ist. */
+  anchorNamen?: string[]
   /** Pfad relativ zu `public/`, z. B. „youtube-music/track.mp3“. */
   musicSrc: string | null
   /** Linearer Pegel: Katalog-Angleich × Nutzerregler. */

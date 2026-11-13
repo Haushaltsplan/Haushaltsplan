@@ -741,6 +741,23 @@ export function schaetzeSprechsekunden(texte: string[], tempo = 1.15): number {
   return n / (2.3 * t)
 }
 
+const HAUSHALTE = ['Apple', 'Nvidia', 'NVIDIA', 'TSMC', 'Microsoft', 'Google', 'Amazon', 'Tesla', 'Samsung', 'Coca-Cola', 'Nike', 'Disney', 'Netflix', 'Meta', 'Sony', 'Intel', 'Adidas', 'BMW', 'Mercedes', 'Toyota', 'Pfizer', 'Starbucks', 'McDonald']
+
+/** Nur Marken, die im Text dieser Firma wörtlich stehen. Keine wird dazuerfunden. */
+export function ankerAusText(text: string, firma: string): string[] {
+  const eigene = firma.toLowerCase()
+  const treffer: string[] = []
+  for (const name of HAUSHALTE) {
+    if (!new RegExp(`\\b${name}\\b`, 'i').test(text)) continue
+    if (eigene.includes(name.toLowerCase())) continue
+    const label = name === 'NVIDIA' ? 'Nvidia' : name
+    if (treffer.some((t) => t.toLowerCase() === label.toLowerCase())) continue
+    treffer.push(label)
+    if (treffer.length === 2) break
+  }
+  return treffer
+}
+
 export function istOffeneBruecke(land: string, value?: string): boolean {
   const t = oeffneSprechende(ohneKiBindestrich(land))
   if (!t || ABSCHIED.test(t) || /\bout of 10\b/i.test(t)) return false

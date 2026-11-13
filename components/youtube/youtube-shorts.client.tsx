@@ -17,6 +17,7 @@ import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { doppelteWendung, fremderKlassenSatz, hookKarteFuerUnternehmen, hookPaar, istOffeneBruecke, kuerzeGesprocheneZeile, ohneKennzahlId, sanitiereMoatFuerStimme, schaetzeSprechsekunden, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
+import { gesprochenePfeiler, moatShortSprechzeilen } from '@/lib/youtube/moat-short-voice'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
 import { gespeicherteStimmeRegler, moatShortSprechFingerprint, speichereStimmeRegler } from '@/lib/youtube/moat-short-voice'
@@ -448,9 +449,11 @@ export function YoutubeShortsClient() {
   const stoppVorZahl = props ? /[.!?…,:;—–-]\s+(?:an?\s+)?\d/.test([props.proof, props.hook, props.crack, props.closing].join(' ')) : false
   const flussOk = !doppelHinweis && !stoppVorZahl
   const sprechSekunden = props
-    ? schaetzeSprechsekunden([props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing], tempo)
+    ? schaetzeSprechsekunden(moatShortSprechzeilen(props).map((z) => z.text), tempo)
     : 0
-  const dauerImFenster = sprechSekunden >= 27 && sprechSekunden <= 30
+  const dauerImFenster = sprechSekunden >= 18 && sprechSekunden <= 22
+  const dauerZuLang = sprechSekunden > 22
+  const gesprochenIds = new Set((props ? gesprochenePfeiler(props.pillars) : []).map((p) => p.id))
 
   useEffect(() => {
     if (!ergebnis) return
@@ -1069,7 +1072,7 @@ export function YoutubeShortsClient() {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${dauerImFenster ? 'border-emerald-500/40 text-emerald-200' : 'border-amber-500/40 text-amber-200'}`}>
-                      ~{sprechSekunden.toFixed(0)}s · Ziel 27–30s
+                      {dauerZuLang ? `~${sprechSekunden.toFixed(0)}s · über 22s` : `~${sprechSekunden.toFixed(0)}s · Ziel 18–22s`}
                     </span>
                     <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${flussOk ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-amber-400/60 bg-amber-400/10 text-amber-100'}`}>
                       {doppelHinweis ? 'Warning: Duplicate Phrase Detected' : stoppVorZahl ? 'Warning: Pause Before Number' : 'Grammar & Pacing OK'}
@@ -1157,7 +1160,7 @@ export function YoutubeShortsClient() {
               {props.pillars.map((p, i) => (
                 <div key={p.id} className="rounded-xl border border-neutral-800 bg-neutral-950 p-2">
                   <label className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">
-                    {p.label} · {p.score}/10
+                    {p.label} · {p.score}/10{gesprochenIds.has(p.id) ? ' · gesprochen' : ' · nur Score'}
                   </label>
                   <input
                     value={p.line}

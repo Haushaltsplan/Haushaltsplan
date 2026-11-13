@@ -17,7 +17,8 @@ import {
   useVideoConfig,
 } from 'remotion'
 import { gesamtScoreAusPfeilern } from '../lib/portfolio-analyse/moat-ki-types'
-import { ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-script'
+import { ankerAusText, ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-script'
+import { gesprochenePfeiler } from '../lib/youtube/moat-short-voice'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline } from './moat-short-timeline'
 import { SubscribeBadge } from './SubscribeBadge'
@@ -115,11 +116,19 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
 
   const hook = beat(beats, 'hook')
   const proof = beats.find((b) => b.id === 'proof')
-  const p0 = beat(beats, 'pillar0')
-  const p3 = beat(beats, 'pillar3')
+  const gesprochen = gesprochenePfeiler(props.pillars)
+  const pillarBeats = (['pillar0', 'pillar1'] as const)
+    .map((id) => beats.find((b) => b.id === id))
+    .filter((b): b is MoatShortBeat => Boolean(b))
+  const p0 = pillarBeats[0] ?? beat(beats, 'pillar0')
+  const pLetzte = pillarBeats[pillarBeats.length - 1] ?? p0
   const crack = beat(beats, 'crack')
   const verdict = beat(beats, 'verdict')
   const crackEnde = crack.from + crack.duration
+  const schub = interpolate(frame, [0, Math.max(1, durationInFrames - 1)], [1, 1.06], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
 
   const bg =
     beats.some((b) => b.id === 'crack') && crack.from > 0
@@ -132,6 +141,7 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: bg, color: TEXT, fontFamily: DISPLAY }}>
+      <div style={{ position: 'absolute', inset: 0, transform: `scale(${schub})`, transformOrigin: 'center center' }}>
       <Sequence
         from={hook.from}
         durationInFrames={Math.max(1, (p0.from > hook.from ? p0.from : proof ? proof.from + proof.duration : hook.from + hook.duration) - hook.from)}
@@ -142,6 +152,7 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
           logoUrl={props.logoUrl}
           value={props.metricValue}
           label={props.metricLabel}
+          anker={(props.anchorNamen?.length ? props.anchorNamen : ankerAusText(`${props.hook} ${props.business} ${props.kicker}`, props.firmenname)).slice(0, 2)}
           proofAb={
             timeline.metricFrame != null
               ? Math.max(0, timeline.metricFrame - hook.from)
@@ -151,9 +162,11 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
           }
         />
       </Sequence>
-      <Sequence from={p0.from} durationInFrames={p3.from + p3.duration - p0.from} layout="none">
-        <PillarSzene pillars={props.pillars} starts={[0, 1, 2, 3].map((i) => beat(beats, `pillar${i}` as MoatShortBeat['id']).from - p0.from)} />
+      {pillarBeats.length ? (
+      <Sequence from={p0.from} durationInFrames={Math.max(1, pLetzte.from + pLetzte.duration - p0.from)} layout="none">
+        <PillarSzene pillars={gesprochen} starts={pillarBeats.map((b) => b.from - p0.from)} />
       </Sequence>
+      ) : null}
       <Sequence from={crack.from} durationInFrames={crack.duration} layout="none">
         <CrackSzene />
       </Sequence>
@@ -164,6 +177,7 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
           fadeOut={0}
         />
       </Sequence>
+      </div>
 
       {frame >= p0.from ? (
         <Kopfzeile
@@ -330,44 +344,18 @@ function musikAudioSrc(src: string): string {
   return staticFile(src.replace(/^\/+/, ''))
 }
 
-function kamera(frame: number): number {
-  return interpolate(frame, [0, 80], [1, 1.04], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-}
-
-function captionTop(frame: number, proofFrom: number | null, pillarFrom: number): number {
-  if (proofFrom != null && pillarFrom > proofFrom && frame >= proofFrom && frame < pillarFrom) return 1120
-  if (frame < pillarFrom) return 900
-  return 1040
-}
-
-function Kopfzeile({
-  ticker,
-  logoUrl,
-  fortschritt,
-}: {
-  ticker: string
-  logoUrl: string | null
-  fortschritt: number
-}) {
-  return (
-    <div style={{ position: 'absolute', top: SAFE_TOP, left: SAFE_LEFT, right: SAFE_RIGHT }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: MONO, fontSize: 28, letterSpacing: 6, fontWeight: 700 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span style={{ width: 14, height: 14, borderRadius: 7, background: BRAND }} />
-          MOAT CHECK
-        </span>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 14, color: MUTED }}>
-          {logoUrl ? (
-            <Img src={logoSrc(logoUrl)} style={{ width: 44, height: 44, objectFit: 'contain', borderRadius: 10, background: '#FFFFFF', padding: 4 }} />
-          ) : null}
-          ${ticker}
-        </span>
-      </div>
-      <div style={{ marginTop: 26, height: 3, background: 'rgba(243,241,236,0.1)', borderRadius: 2 }}>
-        <div style={{ width: `${Math.min(0.92, fortschritt) * 100}%`, height: '100%', background: BRAND, borderRadius: 2 }} />
-      </div>
-    </div>
-  )
+function zaehle(value: string, frame: number): string {
+  const treffer = value.trim().match(/^(-?\d+(?:[.,]\d+)?)(.*)$/)
+  if (!treffer) return value
+  const ziel = Number(treffer[1].replace(',', '.'))
+  if (!Number.isFinite(ziel)) return value
+  const lauf = interpolate(frame, [0, 36], [0, 1], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+    easing: Easing.out(Easing.cubic),
+  })
+  const stellen = (treffer[1].split(/[.,]/)[1] ?? '').length
+  return `${(ziel * lauf).toFixed(stellen)}${treffer[2]}`
 }
 
 function HookSzene({
@@ -375,12 +363,14 @@ function HookSzene({
   logoUrl,
   value,
   label,
+  anker,
   proofAb,
 }: {
   kicker: string
   logoUrl: string | null
   value: string
   label: string
+  anker: string[]
   /** Frame, ab dem die Zahl als Antwort hart einschlägt. */
   proofAb: number
 }) {
@@ -390,10 +380,20 @@ function HookSzene({
       ? interpolate(frame - proofAb, [0, 4], [1.12, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
       : 1
   const kickerGroesse = kicker.length <= 16 ? 64 : kicker.length <= 24 ? 52 : 44
-  const buehneOben = logoUrl ? SAFE_TOP + 248 : SAFE_TOP
+  const zeigeAnker = anker.length > 0 && frame < 75
+  const buehneOben = logoUrl || zeigeAnker ? SAFE_TOP + 248 : SAFE_TOP
+  const takt = (frame % 45) / 45
   return (
-    <AbsoluteFill style={{ transform: `scale(${kamera(frame)})`, transformOrigin: `center ${SAFE_TOP + 12}px` }}>
-      {logoUrl ? (
+    <AbsoluteFill>
+      {zeigeAnker ? (
+        <div style={{ position: 'absolute', top: SAFE_TOP + 36, left: SAFE_LEFT, right: SAFE_RIGHT, display: 'flex', justifyContent: 'center', gap: 16 }}>
+          {anker.map((name) => (
+            <div key={name} style={{ fontFamily: MONO, fontSize: 28, letterSpacing: 2, color: '#67e8f9', border: '1px solid rgba(52,211,153,0.7)', borderRadius: 999, padding: '14px 22px', background: 'rgba(12,12,14,0.8)' }}>
+              {name}
+            </div>
+          ))}
+        </div>
+      ) : logoUrl ? (
         <div
           style={{
             position: 'absolute',
@@ -436,10 +436,13 @@ function HookSzene({
         }}
       >
         <div style={{ transform: `scale(${zahlScale})`, transformOrigin: 'center center' }}>
-          <div style={{ fontSize: value.length > 7 ? 132 : 168, fontWeight: 900, letterSpacing: -6, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {value}
+          <div style={{ fontSize: value.length > 7 ? 132 : 168, fontWeight: 900, letterSpacing: -6, lineHeight: 1, fontVariantNumeric: 'tabular-nums', textShadow: `0 0 ${12 + takt * 18}px rgba(52,211,153,0.45)` }}>
+            {zaehle(value, frame)}
           </div>
           <div style={{ marginTop: 14, fontFamily: MONO, fontSize: 26, letterSpacing: 6, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
+          <div style={{ marginTop: 16, height: 3, width: 280, background: 'rgba(243,241,236,0.1)' }}>
+            <div style={{ width: `${takt * 100}%`, height: '100%', background: '#22d3ee' }} />
+          </div>
         </div>
         {kicker ? (
           <div style={{ marginTop: 28, maxWidth: 820, fontSize: kickerGroesse, fontWeight: 900, letterSpacing: -1.5, lineHeight: 0.98 }}>
@@ -448,6 +451,41 @@ function HookSzene({
         ) : null}
       </div>
     </AbsoluteFill>
+  )
+}
+function captionTop(frame: number, proofFrom: number | null, pillarFrom: number): number {
+  if (proofFrom != null && pillarFrom > proofFrom && frame >= proofFrom && frame < pillarFrom) return 1120
+  if (frame < pillarFrom) return 900
+  return 1040
+}
+
+function Kopfzeile({
+  ticker,
+  logoUrl,
+  fortschritt,
+}: {
+  ticker: string
+  logoUrl: string | null
+  fortschritt: number
+}) {
+  return (
+    <div style={{ position: 'absolute', top: SAFE_TOP, left: SAFE_LEFT, right: SAFE_RIGHT }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontFamily: MONO, fontSize: 28, letterSpacing: 6, fontWeight: 700 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <span style={{ width: 14, height: 14, borderRadius: 7, background: BRAND }} />
+          MOAT CHECK
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 14, color: MUTED }}>
+          {logoUrl ? (
+            <Img src={logoSrc(logoUrl)} style={{ width: 44, height: 44, objectFit: 'contain', borderRadius: 10, background: '#FFFFFF', padding: 4 }} />
+          ) : null}
+          ${ticker}
+        </span>
+      </div>
+      <div style={{ marginTop: 26, height: 3, background: 'rgba(243,241,236,0.1)', borderRadius: 2 }}>
+        <div style={{ width: `${Math.min(0.92, fortschritt) * 100}%`, height: '100%', background: BRAND, borderRadius: 2 }} />
+      </div>
+    </div>
   )
 }
 
@@ -461,14 +499,14 @@ function PillarSzene({ pillars, starts }: { pillars: MoatShortProps['pillars']; 
   const fuell = spring({ frame: Math.max(0, lokal), fps, config: { damping: 22, mass: 0.7 }, durationInFrames: 14 })
   const farbe = scoreFarbe(p.score)
   return (
-    <AbsoluteFill style={{ transform: `scale(${kamera(lokal)})`, transformOrigin: `center ${INHALT_TOP}px` }}>
+    <AbsoluteFill>
       <div style={{ position: 'absolute', top: INHALT_TOP + 80, left: SAFE_LEFT, right: SAFE_RIGHT }}>
         <div style={{ fontSize: 72, fontWeight: 800, letterSpacing: -1.2, lineHeight: 0.95 }}>{p.label}</div>
         <div style={{ marginTop: 12, fontFamily: MONO, fontSize: 200, fontWeight: 700, color: farbe, lineHeight: 0.86, fontVariantNumeric: 'tabular-nums' }}>
           {p.score}
           <span style={{ color: MUTED, fontSize: 64 }}>/10</span>
         </div>
-        <div style={{ marginTop: 28, height: 48, borderRadius: 24, background: 'rgba(243,241,236,0.09)', overflow: 'hidden' }}>
+        <div style={{ marginTop: 28, height: 48, borderRadius: 24, background: 'rgba(243,241,236,0.09)', overflow: 'hidden', boxShadow: `0 0 ${8 + ((lokal % 45) / 45) * 16}px ${farbe}` }}>
           <div style={{ width: `${(p.score / 10) * Math.min(1, fuell) * 100}%`, height: '100%', borderRadius: 24, background: farbe }} />
         </div>
         {p.stat ? (
@@ -488,7 +526,7 @@ function CrackSzene() {
   const pfad = 'M 8 100 L 120 48 L 210 128 L 320 36 L 430 140 L 540 52 L 650 132 L 760 40 L 830 96'
   const laenge = 1400
   return (
-    <AbsoluteFill style={{ transform: `scale(${kamera(frame)})`, transformOrigin: `center ${INHALT_TOP}px` }}>
+    <AbsoluteFill>
       <div style={{ position: 'absolute', top: INHALT_TOP + 40, left: SAFE_LEFT, right: SAFE_RIGHT, textAlign: 'center' }}>
         <div style={{ fontFamily: MONO, fontSize: 28, letterSpacing: 8, color: VERDICT_FARBE.none }}>WHAT COULD BREAK IT</div>
         <div style={{ marginTop: 18, fontSize: 132, fontWeight: 900, letterSpacing: -4, lineHeight: 0.92 }}>The crack</div>
@@ -508,7 +546,7 @@ function VerdictSzene({ verdict, score, fadeOut }: { verdict: MoatShortVerdict; 
   const wackeln = fadeOut > 0.2 ? 0 : aufprall * Math.sin(frame * 2.3) * 4
   const farbe = VERDICT_FARBE[verdict]
   return (
-    <AbsoluteFill style={{ opacity: 1 - fadeOut, transform: `scale(${kamera(frame)}) translate(${wackeln}px, ${wackeln * 0.4}px)`, transformOrigin: `center ${INHALT_TOP}px` }}>
+    <AbsoluteFill style={{ opacity: 1 - fadeOut, transform: `translate(${wackeln}px, ${wackeln * 0.4}px)` }}>
       <div style={{ position: 'absolute', top: INHALT_TOP + 80, left: SAFE_LEFT, right: SAFE_RIGHT, textAlign: 'center' }}>
         <div style={{ fontFamily: MONO, fontSize: 28, letterSpacing: 8, color: MUTED }}>VERDICT</div>
         <div

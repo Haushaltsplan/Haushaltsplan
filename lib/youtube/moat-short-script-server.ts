@@ -16,6 +16,7 @@ import type { MoatShortErgebnis, MoatShortHookVariante, MoatShortMetrik } from '
 import { sucheYoutubePhrasen } from '@/lib/youtube/youtube-keywords'
 import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
 import {
+  ankerAusText,
   beschreibungFuerUpload,
   kommentarFuerUpload,
   istOffeneBruecke,
@@ -34,6 +35,7 @@ import {
   titelFuerUpload,
 } from '@/lib/youtube/moat-short-script'
 import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
+import { gesprochenePfeiler } from '@/lib/youtube/moat-short-voice'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
 
 const PFEILER_LABEL: Record<MoatPfeilerId, string> = {
@@ -50,7 +52,7 @@ const VERDICT_SATZ: Record<MoatShortVerdict, string> = {
 }
 
 const KEINE_METRIK = 'none'
-const MAX_WOERTER_GESAMT = 78
+const MAX_WOERTER_GESAMT = 55
 
 function verdictAusUrteil(urteil: MoatKiBewertung['urteil']): MoatShortVerdict {
   if (urteil === 'tief') return 'wide'
@@ -102,7 +104,7 @@ function baueSchema(hookIds: string[], alleIds: string[]) {
   } as const
 }
 
-const SYSTEM = `You write the spoken voiceover for "Moat Check", a YouTube Short that judges one company's moat in 30 to 35 seconds.
+const SYSTEM = `You write the spoken voiceover for "Moat Check", a YouTube Short that judges one company's moat in 18 to 22 seconds.
 
 Persona: a grounded, sharp equity analyst talking to another investor over coffee. Complete sentences. Direct. Dry. Specific. You are not a presenter, not a marketer, and not a slogan writer.
 
@@ -187,18 +189,19 @@ Causality
 - Do not repeat the driver, the metric name, or "pricing power" in the next sentence.
 - A verb such as losing, charging, or paying needs its object. "losing market share", never "losing".
 - kicker: 2 to 5 words, under 28 characters, the engine of THIS company, not the product the customer sees. "The formula" for a specialty-ingredient business. "Owns the land" only for a landlord. On screen only. Never spoken. No invented number.
-- claim: the first spoken line, seconds 0 to 3. 6 to 10 words. A complete question about that engine. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know". The number is already on screen; the question does not say it.
-- proof: the second spoken line. One breath. The number is spoken once, then the consequence in the same sentence. Never the metricId. Never "an ltm_ebit of 47.1%". Never the metric phrase a second time.
+- claim: the first spoken line, seconds 0 to 3. 8 to 12 words. A complete question. Start with Why, How, What, Who, Is, or Can. No metric value. No ticker alone. No "Did you know". The number is already on screen; the question does not say it.
+- If this company sells to other businesses, and the business text names a household customer, the question names that customer first, then this company. Never invent Apple, Nvidia, TSMC, or any other brand. If no customer is named, open on the physical thing this company sells, not on the ticker.
+- proof: the second spoken line, seconds 3 to 9. One breath. Shape stays: [business driver] + drives/drive + "a massive" + the metric once + ", proving" + the consequence. Never the metricId. Never "an ltm_ebit of 47.1%". Never the metric phrase a second time.
 
 ## Story order, do not skip ahead
 There is no "what they sell" line. Do not describe the business model as its own beat. There is no teaser between the number and the pillars. Do not say "one thing could break that lock" or hint at the threat before the crack.
-1. claim (the question, no number). The number is already on screen beside the question. No pillar, no score, no bar yet. The spoken question still does not say the number.
+1. claim (the question, no number, no bare ticker). The number is already on screen beside the question. No pillar, no score, no bar yet. The spoken question still does not say the number.
 2. proof (driver, then the number once, then the consequence, in the same sentence)
-3. four pillars, in order, each its own sentence
+3. only the two highest-scoring pillars, each its own sentence
 4. crack (the FIRST and only time the threat is named)
 5. land (bridge into the question, then stop)
 
-The number is spoken once, in proof, around the third second, in the same breath as the driver. The next sentence must not repeat the driver, the metric name, or the consequence. The crack comes after all four pillars.
+The number is spoken once, in proof, around the third second, in the same breath as the driver. The next sentence must not repeat the driver, the metric name, or the consequence. The crack comes after the two spoken pillars. The other two pillars still get a line for the score card, and that line is not spoken.
 
 ## Each hook
 Write THREE hooks. Each has these fields:
@@ -221,7 +224,7 @@ Good: "Government fee caps and instant payments threaten margins."
 Bad: "Stricter government fee caps and direct account to account payment rails could compress margins."
 Same move for every company: name the threat and stop. Do not explain the mechanism in the same sentence.
 
-- pillarLines: one per pillar, 8-9 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none". No pillar may repeat a phrase from the sentence before it. The first pillar must not say the hook metric, the driver, or "pricing power" again. A later pillar may use a different metric.
+- pillarLines: one per pillar, so the score card still has four reasons. The two highest scores are the only spoken lines: 8 to 10 words, under 70 characters, one complete sentence. The other two are one short sentence and will not be spoken. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none". No pillar may repeat a phrase from the sentence before it. The first spoken pillar must not say the hook metric, the driver, or "pricing power" again. A later pillar may use a different metric.
 - crack: 8-9 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. No sign-off.
 
 ## Hard rules
@@ -230,7 +233,7 @@ Same move for every company: name the threat and stop. Do not explain the mechan
 - The first spoken line is the question. Never open with the metric, "Did you know", "In this video", or "Let's talk about".
 - No buy/sell/hold advice, no price targets, no emojis, no hashtags in spoken text.
 - Do not speak the score as "X out of 10".
-- Whole spoken script stays under 72 words. Count every spoken line. With a slightly brisk voice the Short lands at 30 to 35 seconds.
+- Whole spoken script, counting only the question, the proof, the two highest pillars, the crack, and the land, stays between 45 and 55 words. With the existing brisk voice the Short lands at 18 to 22 seconds.
 
 Also return
 - title: 40-60 characters. One spoken Shorts line, not a label. No colon. Company name in the first words, not a two-letter ticker. Include the hook number. No slang ("the tell"), no "Back on track", no "breakdown", no ALL-CAPS, no hashtags. Good shape: "Why [company]'s 58.3% margin is the moat".
@@ -266,6 +269,7 @@ function baueUserPrompt(
     `Moat verdict: ${VERDICT_SATZ[verdictAusUrteil(moat.urteil)]} Score ${moat.score}/10.`,
     'Pillars (score / reason / risk, German):',
     ...moat.pfeiler.map((p) => `- ${p.id} (${PFEILER_LABEL[p.id]}): ${p.score}/10 — ${p.begruendung} — Risk: ${p.risiko}`),
+    `Spoken pillars only: ${[...moat.pfeiler].sort((a, b) => b.score - a.score).slice(0, 2).map((p) => PFEILER_LABEL[p.id]).join(', ')}. Write those two as the sharp lines. The other two stay one short sentence and are not spoken.`,
     '',
     'Destruction scenarios (German):',
     ...moat.zerstoerungsszenarien.map((s) => `- ${s}`),
@@ -435,6 +439,10 @@ export async function generiereMoatShort(opts: {
     verdict,
     score: gesamtScoreAusPfeilern(moat.pfeiler.map((p) => p.score)),
     closing: start.land,
+    anchorNamen: ankerAusText(
+      [paket.beschreibung, moat.geschaeftsmodell, ...moat.pfeiler.map((p) => `${p.begruendung} ${p.risiko}`)].filter(Boolean).join(' '),
+      paket.firmenname,
+    ),
     musicSrc: null,
     musicGain: 0.5,
     musicTrim: 0,
@@ -445,10 +453,11 @@ export async function generiereMoatShort(opts: {
 
   const fest = new Set<string>()
   for (let runde = 0; runde < 16; runde++) {
+    const gesprochenIds = new Set(gesprochenePfeiler(props.pillars).map((p) => p.id))
     const teile = [
       { key: 'hook', text: props.hook, behalten: undefined as string | undefined, frage: true },
       { key: 'proof', text: props.proof, behalten: props.metricValue, frage: false },
-      ...props.pillars.map((p, i) => ({ key: `p${i}`, text: p.line, behalten: p.stat?.value, frage: false })),
+      ...props.pillars.filter((p) => gesprochenIds.has(p.id)).map((p) => ({ key: p.id, text: p.line, behalten: p.stat?.value, frage: false })),
       { key: 'crack', text: props.crack, behalten: undefined as string | undefined, frage: false },
     ]
     const summe = [...teile.map((t) => t.text), props.closing].map(woerter).reduce((a, b) => a + b, 0)
@@ -471,9 +480,7 @@ export async function generiereMoatShort(opts: {
     else if (ziel.key === 'proof') props.proof = neu
     else if (ziel.key === 'crack') props.crack = neu
     else {
-      const idx = Number(ziel.key.slice(1))
-      const pfeiler = props.pillars[idx]
-      if (pfeiler) props.pillars[idx] = { ...pfeiler, line: neu }
+      props.pillars = props.pillars.map((p) => (p.id === ziel.key ? { ...p, line: neu } : p))
     }
   }
   const repariert = hookPaar(
@@ -523,12 +530,12 @@ export async function generiereMoatShort(opts: {
   const warnungen: string[] = []
   warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof, props.metricLabel))
   warnungen.push(...scriptStoryWarnungen(props.hookLoop, props.crack))
-  const gesprochen = [props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing]
+  const gesprochen = [props.hook, props.proof, ...gesprochenePfeiler(props.pillars).map((p) => p.line), props.crack, props.closing]
   warnungen.push(...scriptTonWarnungen(gesprochen))
   const fremd = fremdeZahlen(gesprochen.join(' '), metriken, scores)
   if (fremd.length) warnungen.push(`Zahlen ohne Quelle im Export: ${fremd.join(', ')} — bitte prüfen oder streichen.`)
   const gesamt = gesprochen.map(woerter).reduce((a, b) => a + b, 0)
-  if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — zu lang für 30–35 Sekunden.`)
+  if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — zu lang für 18–22 Sekunden.`)
   if (zeilen.size < 4) warnungen.push('Nicht alle vier Pfeiler haben einen eigenen Satz bekommen.')
   if (!logoUrl) warnungen.push('Kein drucktaugliches Firmenlogo gefunden — die Business-Szene zeigt nur den Ticker.')
 
