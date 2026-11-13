@@ -1,11 +1,15 @@
 import 'server-only'
 
-import { access, mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { GoogleGenAI, PersonGeneration } from '@google/genai'
+import { GoogleGenAI, Modality } from '@google/genai'
 
-/** Nur dieses Bild. Script, Stimme und VidIQ bleiben auf GEMINI_API_KEY_FREE. */
-const IMAGEN_MODELL = 'imagen-3.0-generate-002'
+/**
+ * Nur dieses Bild. Script, Stimme und VidIQ bleiben auf GEMINI_API_KEY_FREE.
+ * generateImages (Imagen 3) läuft auf diesem Schlüssel nicht: das ist nur Vertex.
+ * Dasselbe Billing-Konto erzeugt das Standbild über das Gemini-Bildmodell.
+ */
+const BILD_MODELLE = ['gemini-3.1-flash-image', 'gemini-3.1-flash-lite-image', 'gemini-2.5-flash-image']
 /** Optional. Standard ist aus: ein Standbild, die Fahrt macht Remotion. */
 const VEO_MODELL = 'veo-3.1-fast-generate-preview'
 const VEO_SEKUNDEN = 6
@@ -32,24 +36,41 @@ function veoGewuenscht(): boolean {
   return process.env.USE_VEO === 'true'
 }
 
-async function liegtSchon(datei: string): Promise<boolean> {
+async function brauchbareDatei(datei: string): Promise<boolean> {
   try {
-    await access(datei)
-    return true
+    const info = await stat(datei)
+    return info.size > 1000
   } catch {
     return false
   }
 }
 
-async function imagen(ai: GoogleGenAI, prompt: string, datei: string): Promise<void> {
-  const antwort = await ai.models.generateImages({
-    model: IMAGEN_MODELL,
-    prompt,
-    config: { numberOfImages: 1, aspectRatio: '9:16', personGeneration: PersonGeneration.DONT_ALLOW },
-  })
-  const bytes = antwort.generatedImages?.[0]?.image?.imageBytes
-  if (!bytes) throw new Error('Imagen lieferte kein Bild.')
-  await writeFile(datei, Buffer.from(bytes, 'base64'))
+async function bildErzeugen(ai: GoogleGenAI, prompt: string): Promise<{ bytes: Buffer; ext: 'jpg' | 'png' }> {
+  let letzter = 'Kein Bildmodell hat geantwortet.'
+  for (const model of BILD_MODELLE) {
+    try {
+      const antwort = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          responseModalities: [Modality.IMAGE],
+          imageConfig: { aspectRatio: '9:16', imageSize: '2K' },
+        },
+      })
+      const parts = antwort.candidates?.[0]?.content?.parts ?? []
+      const inline = parts.find((teil) => teil.inlineData?.data)?.inlineData
+      if (!inline?.data) {
+        const text = parts.map((teil) => teil.text).filter(Boolean).join(' ')
+        letzter = text || `${model} lieferte kein Bild.`
+        continue
+      }
+      const png = (inline.mimeType || '').includes('png')
+      return { bytes: Buffer.from(inline.data, 'base64'), ext: png ? 'png' : 'jpg' }
+    } catch (fehler) {
+      letzter = fehler instanceof Error ? fehler.message : String(fehler)
+    }
+  }
+  throw new Error(letzter)
 }
 
 async function veo(ai: GoogleGenAI, prompt: string, datei: string): Promise<void> {
@@ -82,7 +103,7 @@ async function veo(ai: GoogleGenAI, prompt: string, datei: string): Promise<void
 
 /**
  * Hochformat-Standbild für die ersten fünf Sekunden.
- * Liegt die PNG schon, kostet der nächste Lauf nichts. Veo nur bei USE_VEO=true.
+ * Liegt eine brauchbare Datei schon, kostet der nächste Lauf nichts. Veo nur bei USE_VEO=true.
  */
 export async function fetchHookVideo(prompt: string, ticker: string): Promise<string> {
   const text = prompt.replace(/\s+/g, ' ').trim()
@@ -92,14 +113,16 @@ export async function fetchHookVideo(prompt: string, ticker: string): Promise<st
   await mkdir(ordner, { recursive: true })
   if (veoGewuenscht()) {
     const mp4 = path.join(ordner, `${name}-hook.mp4`)
-    if (await liegtSchon(mp4)) return `/hooks/${name}-hook.mp4`
+    if (await brauchbareDatei(mp4)) return `/hooks/${name}-hook.mp4`
     const ai = new GoogleGenAI({ apiKey: billingKey() })
     await veo(ai, text, mp4)
     return `/hooks/${name}-hook.mp4`
   }
-  const png = path.join(ordner, `${name}-hook.png`)
-  if (await liegtSchon(png)) return `/hooks/${name}-hook.png`
+  for (const ext of ['jpg', 'png'] as const) {
+    if (await brauchbareDatei(path.join(ordner, `${name}-hook.${ext}`))) return `/hooks/${name}-hook.${ext}`
+  }
   const ai = new GoogleGenAI({ apiKey: billingKey() })
-  await imagen(ai, text, png)
-  return `/hooks/${name}-hook.png`
+  const bild = await bildErzeugen(ai, text)
+  await writeFile(path.join(ordner, `${name}-hook.${bild.ext}`), bild.bytes)
+  return `/hooks/${name}-hook.${bild.ext}`
 }

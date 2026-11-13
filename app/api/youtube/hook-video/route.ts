@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const prompt = String(body.prompt ?? body.keyword ?? '')
     try {
       const src = await fetchHookVideo(prompt, ticker)
-      return { ok: true as const, src, art: src.endsWith('.png') ? 'bild' : 'video' }
+      return { ok: true as const, src, art: src.endsWith('.mp4') ? 'video' : 'bild' }
     } catch (e) {
       return { ok: false as const, fehler: e instanceof Error ? e.message : 'Hook-Video fehlgeschlagen.' }
     }
