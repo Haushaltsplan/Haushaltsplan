@@ -1,3 +1,4 @@
+import { ziffernImText } from '@/lib/youtube/moat-caption'
 import { earningsShortSprechzeilen, earningsShortZeilenMitZeiten } from '@/lib/youtube/earnings-short-voice'
 import {
   EARNINGS_SHORT_FPS,
@@ -114,7 +115,7 @@ function captionsFuerBeat(
       const quelle = teil.length ? teil : woerterDerZeile
       const from = msZuFrame(quelle[0]!.startMs)
       const ende = msZuFrame(quelle[quelle.length - 1]!.endMs)
-      out.push({ text: chunk, from, duration: Math.max(6, ende - from) })
+      out.push({ text: ziffernImText(chunk), from, duration: Math.max(6, ende - from) })
     }
     return out
   }
@@ -128,7 +129,7 @@ function captionsFuerBeat(
       i === chunks.length - 1
         ? Math.max(6, beatFrom + sprechFrames - c)
         : Math.max(6, Math.round((chunk.length / zeichenGesamt) * sprechFrames))
-    out.push({ text: chunk, from: c, duration: len })
+    out.push({ text: ziffernImText(chunk), from: c, duration: len })
     c += len
   })
   return out

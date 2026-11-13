@@ -1,3 +1,4 @@
+import { captionBruecke, ziffernInZeitworten } from '@/lib/youtube/moat-caption'
 import { moatShortSprechzeilen, sprechzeilenMitZeiten } from '@/lib/youtube/moat-short-voice'
 import { SFX_CONFIG } from './sfx-config'
 import {
@@ -140,8 +141,16 @@ function captionsFuerBeat(
   woerterDerZeile: MoatShortVoiceWort[] | null,
 ): MoatShortCaption[] {
   if (!text.trim()) return []
-  const quelle = woerterDerZeile?.length ? woerterDerZeile : schaetzeWoerter(text, beatFrom)
-  return captionsAusWoertern(quelle)
+  const roh = woerterDerZeile?.length ? woerterDerZeile : schaetzeWoerter(text, beatFrom)
+  const caps = captionsAusWoertern(ziffernInZeitworten(roh))
+  if (!caps.length || !/\bso the question is\b/i.test(text)) return caps
+  const last = caps[caps.length - 1]!
+  const anzeige = captionBruecke(last.text, text)
+  if (anzeige === last.text) return caps
+  const woerterAnzeige = last.woerter.map((w, i) =>
+    i === last.woerter.length - 1 && /^is[.!?…:]*$/i.test(w.text) ? { ...w, text: 'is:' } : w,
+  )
+  return [...caps.slice(0, -1), { ...last, text: anzeige, woerter: woerterAnzeige }]
 }
 
 function ersterBlockAufFrameNull(captions: MoatShortCaption[]): MoatShortCaption[] {

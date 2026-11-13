@@ -194,6 +194,42 @@ export function landZurFrage(land: string, verdict: MoatShortVerdict, value: str
   return fallbackLand(verdict)
 }
 
+const FINANZZEILE =
+  /\b(margins?|fees?|revenues?|sales|incomes?|memberships?|profits?|earnings|ebitda|ebit|roic|retentions?|conversions?|dividends?|yields?|markups?)\b/i
+
+function gleicheKennzahl(a: string, b: string): boolean {
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
+  const x = norm(a)
+  const y = norm(b)
+  if (!x || !y) return false
+  return x === y || x.includes(y) || y.includes(x)
+}
+
+function treiberZeile(gesprochen: string): string {
+  const treffer = gesprochen.match(/\b([A-Za-z][\w'’-]*(?:\s+[A-Za-z][\w'’-]*){0,4})\s+(?:drives|drive)\b/)
+  if (!treffer) return ''
+  let t = treffer[1]!.replace(/^(?:a|an|the|those|these|their|its)\s+/i, '').trim()
+  const w = t.split(/\s+/).filter(Boolean).slice(0, 5)
+  t = w.join(' ')
+  if (t.length > 28) t = t.slice(0, 28).replace(/\s+\S*$/, '').trim()
+  if (t.split(/\s+/).filter(Boolean).length < 2) return ''
+  if (FINANZZEILE.test(t)) return ''
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
+/**
+ * Zeile unter der Hero-Zahl. Eine andere Finanzgröße als das Label darf dort nicht stehen,
+ * solange der Voiceover sie nicht sagt. Dann der gesprochene Treiber, sonst nichts.
+ */
+export function kickerZurZahl(kicker: string, label: string, gesprochen: string): string {
+  const t = ohneKiBindestrich(kicker).replace(/[.!?…]/g, '').replace(/\s+/g, ' ').trim()
+  if (!t) return ''
+  if (gleicheKennzahl(t, label)) return ''
+  const gesagt = gesprochen.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').includes(t.toLowerCase())
+  if (FINANZZEILE.test(t) && !gesagt) return treiberZeile(gesprochen)
+  return t
+}
+
 /** Blickfang, eine Zeile, in unter einer Sekunde lesbar. Keine erfundene Zahl. */
 export function kickerFuerBild(roh: string, firma: string): string {
   const name = firma.split(/\s+/)[0] || 'This'

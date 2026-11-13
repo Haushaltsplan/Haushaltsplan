@@ -16,8 +16,9 @@ import { tagsSichtbar } from '@/lib/youtube/youtube-tags'
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
+import { ziffernImText } from '@/lib/youtube/moat-caption'
 import { heroMetricAus } from '@/lib/youtube/moat-hero-metric'
-import { doppelteWendung, fremderKlassenSatz, hookKarteFuerUnternehmen, hookPaar, istOffeneBruecke, kuerzeGesprocheneZeile, ohneKennzahlId, sanitiereMoatFuerStimme, schaetzeSprechsekunden, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
+import { doppelteWendung, fremderKlassenSatz, hookKarteFuerUnternehmen, hookPaar, istOffeneBruecke, kickerZurZahl, kuerzeGesprocheneZeile, oeffneSprechende, ohneKennzahlId, sanitiereMoatFuerStimme, schaetzeSprechsekunden, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
 import { gespeicherteStimmeRegler, moatShortSprechFingerprint, speichereStimmeRegler } from '@/lib/youtube/moat-short-voice'
@@ -228,24 +229,31 @@ function kickerWennNoetig(kicker: string): string {
 
 function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
   const alsFrage = Boolean(p.proof.trim()) || /\?\s*$/.test(p.hook.trim())
-  return {
-    ...p,
-    kicker: kickerWennNoetig(p.kicker),
-    hook: zeileWennNoetig(p.hook, {
+  const hook = ziffernImText(
+    zeileWennNoetig(p.hook, {
       behalten: alsFrage ? undefined : p.metricValue,
       maxWoerter: alsFrage ? 10 : 12,
       frage: alsFrage,
     }),
-    proof: p.proof.trim()
+  )
+  const proof = ziffernImText(
+    p.proof.trim()
       ? /\b(?:lets|let) them print\b|\b(?:drives|drive)\b/i.test(p.proof)
         ? p.proof.replace(/\s+/g, ' ').trim()
         : zeileWennNoetig(p.proof, { behalten: p.metricValue, maxWoerter: 14 })
       : p.proof,
+  )
+  const closingRoh = ziffernImText(istOffeneBruecke(p.closing, p.metricValue) ? ohneKennzahlId(p.closing) : p.closing)
+  return {
+    ...p,
+    kicker: kickerZurZahl(kickerWennNoetig(p.kicker), p.metricLabel, `${hook} ${proof}`),
+    hook,
+    proof,
     hookLoop: '',
     business: ohneKennzahlId(p.business),
-    crack: zeileWennNoetig(p.crack),
-    closing: istOffeneBruecke(p.closing, p.metricValue) ? ohneKennzahlId(p.closing) : p.closing,
-    pillars: p.pillars.map((x) => ({ ...x, line: zeileWennNoetig(x.line, { behalten: x.stat?.value }) })),
+    crack: ziffernImText(zeileWennNoetig(p.crack)),
+    closing: istOffeneBruecke(closingRoh, p.metricValue) ? oeffneSprechende(closingRoh) : closingRoh,
+    pillars: p.pillars.map((x) => ({ ...x, line: ziffernImText(zeileWennNoetig(x.line, { behalten: x.stat?.value })) })),
   }
 }
 

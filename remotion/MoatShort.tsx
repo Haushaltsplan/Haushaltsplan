@@ -17,7 +17,7 @@ import {
   useVideoConfig,
 } from 'remotion'
 import { gesamtScoreAusPfeilern } from '../lib/portfolio-analyse/moat-ki-types'
-import { ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-script'
+import { istOffeneBruecke, kickerZurZahl, oeffneSprechende, ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-script'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline } from './moat-short-timeline'
 import { SubscribeBadge } from './SubscribeBadge'
@@ -51,15 +51,18 @@ const INHALT_TOP = SAFE_TOP + 130
 const PILLAR_ZAHL_FRAME = 15
 
 function saubereProps(p: MoatShortProps): MoatShortProps {
+  const hook = ohneKennzahlId(ohneKiBindestrich(p.hook))
+  const proof = ohneKennzahlId(ohneKiBindestrich(p.proof))
+  const closing = ohneKennzahlId(ohneKiBindestrich(p.closing))
   return {
     ...p,
-    kicker: ohneKennzahlId(ohneKiBindestrich(p.kicker)),
-    hook: ohneKennzahlId(ohneKiBindestrich(p.hook)),
-    proof: ohneKennzahlId(ohneKiBindestrich(p.proof)),
+    kicker: kickerZurZahl(ohneKennzahlId(ohneKiBindestrich(p.kicker)), p.metricLabel, `${hook} ${proof}`),
+    hook,
+    proof,
     hookLoop: ohneKennzahlId(ohneKiBindestrich(p.hookLoop)),
     business: ohneKennzahlId(ohneKiBindestrich(p.business)),
     crack: ohneKennzahlId(ohneKiBindestrich(p.crack)),
-    closing: ohneKennzahlId(ohneKiBindestrich(p.closing)),
+    closing: istOffeneBruecke(closing, p.metricValue) ? oeffneSprechende(closing) : closing,
     pillars: p.pillars.map((x) => ({ ...x, line: ohneKennzahlId(ohneKiBindestrich(x.line)) })),
   }
 }

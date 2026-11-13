@@ -26,6 +26,8 @@ import {
   ohneGeteiltePhrase,
   ohneNackteKennzahl,
   kickerFuerBild,
+  kickerZurZahl,
+  oeffneSprechende,
   kuerzeGesprocheneZeile,
   landZurFrage,
   scriptLoopWarnungen,
@@ -33,6 +35,7 @@ import {
   scriptTonWarnungen,
   titelFuerUpload,
 } from '@/lib/youtube/moat-short-script'
+import { ziffernImText } from '@/lib/youtube/moat-caption'
 import { heroMetricAus, heroMetricPasst, korrigiereHeroSatz } from '@/lib/youtube/moat-hero-metric'
 import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
@@ -188,7 +191,8 @@ Causality
 - Never open the answer with Because. No period, comma, dash, or ellipsis between the verb and the number. "drives a massive 46.2%", never "drives. A 46.2%".
 - Do not repeat the driver, the metric name, or "pricing power" in the next sentence.
 - A verb such as losing, charging, or paying needs its object. "losing market share", never "losing".
-- kicker: 2 to 5 words, under 28 characters, the engine of THIS company, not the product the customer sees. "The formula" for a specialty-ingredient business. "Owns the land" only for a landlord. On screen only. Never spoken. No invented number.
+- kicker: 2 to 5 words, under 28 characters, the engine of THIS company, not the product the customer sees. "The formula" for a specialty-ingredient business. "Owns the land" only for a landlord. On screen only. Never spoken. No invented number. It sits directly under the metric, so it must not name a fee, a margin, membership, or any metric other than the one on screen. If that phrase is not in the proof, leave the kicker empty.
+- Every percentage is digits with a percent sign: "90%", never "ninety percent". The hook metric value is copied exactly from the metric list.
 - claim: the first spoken line, seconds 0 to 3. 6 to 10 words. A complete question about that engine. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know". The number is already on screen; the question does not say it.
 - proof: the second spoken line. One breath. The number is spoken once, then the consequence in the same sentence. Never the metricId. Never "an ltm_ebit of 47.1%". Never the metric phrase a second time.
 
@@ -488,6 +492,11 @@ export async function generiereMoatShort(opts: {
     voiceSrc: null,
     voiceAlignment: null,
   }
+  props.hook = ziffernImText(props.hook)
+  props.proof = ziffernImText(props.proof)
+  props.crack = ziffernImText(props.crack)
+  props.closing = ziffernImText(props.closing)
+  props.pillars = props.pillars.map((p) => ({ ...p, line: ziffernImText(p.line) }))
 
   const fest = new Set<string>()
   for (let runde = 0; runde < 16; runde++) {
@@ -570,8 +579,13 @@ export async function generiereMoatShort(opts: {
   props.proof = hero.spoken_reference
   props.metricValue = hero.value
   props.metricLabel = hero.label
-  props.heroMetric = hero
+  props.proof = ziffernImText(props.proof)
+  props.heroMetric = { ...hero, spoken_reference: props.proof }
+  props.kicker = kickerZurZahl(props.kicker, props.metricLabel, `${props.hook} ${props.proof}`)
+  if (istOffeneBruecke(props.closing, props.metricValue)) props.closing = oeffneSprechende(props.closing)
+  start.kicker = props.kicker
   start.proof = props.proof
+  start.land = props.closing
 
   const warnungen: string[] = []
   warnungen.push(...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof, props.metricLabel))

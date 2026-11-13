@@ -1,6 +1,7 @@
 /** Spoken lines + ElevenLabs-Wortzeiten — client- und servertauglich. */
 
 import type { MoatShortBeatId, MoatShortProps, MoatShortVoiceWort } from '@/remotion/moat-short-types'
+import { ziffernImText } from '@/lib/youtube/moat-caption'
 import { flussZurZahl } from '@/lib/youtube/moat-short-script'
 
 export type MoatShortSprechzeile = { id: Exclude<MoatShortBeatId, 'loop'>; text: string }
@@ -173,7 +174,22 @@ function locker(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-type PaarSchritt = 'diag' | 'zwei' | 'script' | 'audio'
+type PaarSchritt = 'diag' | 'zwei' | 'script' | 'audio' | 'zahl'
+
+function audioIstZiffer(scriptWort: string, audioWorte: string[]): boolean {
+  const ziel = locker(scriptWort)
+  if (!/\d/.test(ziel)) return false
+  return locker(ziffernImText(audioWorte.join(' '))) === ziel
+}
+
+function spanneFuerZiffer(scriptWort: string, audio: MoatShortVoiceWort[], j: number): number {
+  let treffer = 0
+  const bis = Math.min(6, j)
+  for (let s = 2; s <= bis; s++) {
+    if (audioIstZiffer(scriptWort, audio.slice(j - s, j).map((w) => w.text))) treffer = s
+  }
+  return treffer
+}
 
 /**
  * Hängt die gesprochenen Zeiten an die aktuellen Wörter.
@@ -187,6 +203,7 @@ function zeitenFuerScript(script: string[], audio: MoatShortVoiceWort[]): { star
   const INF = 1_000_000
   const dp: number[][] = Array.from({ length: n + 1 }, () => Array(m + 1).fill(INF))
   const weg: PaarSchritt[][] = Array.from({ length: n + 1 }, () => Array<PaarSchritt>(m + 1).fill('diag'))
+  const span: number[][] = Array.from({ length: n + 1 }, () => Array<number>(m + 1).fill(0))
   dp[0][0] = 0
   for (let i = 1; i <= n; i++) {
     dp[i][0] = i * 2
@@ -222,6 +239,15 @@ function zeitenFuerScript(script: string[], audio: MoatShortVoiceWort[]): { star
             schritt = 'zwei'
           }
         }
+        const zahlSpan = spanneFuerZiffer(script[i - 1] ?? '', audio, j)
+        if (zahlSpan >= 2) {
+          const kosten = dp[i - 1]![j - zahlSpan]!
+          if (kosten < best) {
+            best = kosten
+            schritt = 'zahl'
+            span[i]![j] = zahlSpan
+          }
+        }
       }
       dp[i]![j] = best
       weg[i]![j] = schritt
@@ -241,6 +267,11 @@ function zeitenFuerScript(script: string[], audio: MoatShortVoiceWort[]): { star
       roh[i - 1] = { startMs: audio[j - 2]!.startMs, endMs: audio[j - 1]!.endMs }
       i -= 1
       j -= 2
+    } else if (schritt === 'zahl' && i > 0) {
+      const s = Math.max(2, span[i]![j]!)
+      roh[i - 1] = { startMs: audio[j - s]!.startMs, endMs: audio[j - 1]!.endMs }
+      i -= 1
+      j -= s
     } else if (schritt === 'script' && i > 0) {
       i -= 1
     } else if (j > 0) {
