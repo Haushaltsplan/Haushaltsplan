@@ -141,60 +141,63 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
   return (
     <AbsoluteFill style={{ backgroundColor: bg, color: TEXT, fontFamily: DISPLAY }}>
       {props.backgroundImageUrl ? <HintergrundBild src={props.backgroundImageUrl} dauer={durationInFrames} /> : null}
-      <AbsoluteFill style={{ zIndex: 1 }}>
-      <Sequence
-        from={hook.from}
-        durationInFrames={Math.max(1, (p0.from > hook.from ? p0.from : proof ? proof.from + proof.duration : hook.from + hook.duration) - hook.from)}
-        layout="none"
-      >
-        <HookSzene
-          kicker={props.kicker}
-          logoUrl={props.logoUrl}
-          ticker={props.ticker}
-          value={props.metricValue}
-          label={props.metricLabel}
-          satz2Ab={satz2Frame(proof?.from ?? null, hook.from)}
-        />
-      </Sequence>
-      <Sequence from={p0.from} durationInFrames={p3.from + p3.duration - p0.from} layout="none">
-        <PillarSzene pillars={props.pillars} starts={[0, 1, 2, 3].map((i) => beat(beats, `pillar${i}` as MoatShortBeat['id']).from - p0.from)} />
-      </Sequence>
-      <Sequence from={crack.from} durationInFrames={crack.duration} layout="none">
-        <CrackSzene />
-      </Sequence>
-      <Sequence from={verdict.from} durationInFrames={Math.max(1, durationInFrames - verdict.from)} layout="none">
-        <VerdictSzene
-          verdict={props.verdict}
-          score={gesamtScoreAusPfeilern(props.pillars.map((p) => p.score))}
-          fadeOut={0}
-        />
-      </Sequence>
-
-      {frame >= p0.from ? (
-        <Kopfzeile
-          ticker={props.ticker}
-          logoUrl={props.logoUrl}
-          fortschritt={frame / Math.max(1, durationInFrames - 1)}
-        />
-      ) : null}
-      <Koernung />
-
-      {captions.map((c, i) => (
-        <Sequence key={i} from={c.from} durationInFrames={c.duration} layout="none">
-          <Caption text={c.text} woerter={c.woerter} top={captionTop(c.from, proof?.from ?? null, p0.from)} />
+      <AbsoluteFill style={{ zIndex: 1, backgroundColor: 'transparent' }}>
+        <Sequence
+          from={hook.from}
+          durationInFrames={Math.max(1, (p0.from > hook.from ? p0.from : proof ? proof.from + proof.duration : hook.from + hook.duration) - hook.from)}
+          layout="none"
+        >
+          <HookSzene
+            kicker={props.kicker}
+            logoUrl={props.logoUrl}
+            ticker={props.ticker}
+            value={props.metricValue}
+            label={props.metricLabel}
+            satz2Ab={satz2Frame(proof?.from ?? null, hook.from)}
+          />
         </Sequence>
-      ))}
-      <LiveScore
-        ticker={props.ticker}
-        karten={props.pillars.flatMap((p, i) => {
-          const b = beats.find((x) => x.id === (`pillar${i}` as MoatShortBeat['id']))
-          return b ? [{ score: p.score, from: b.from }] : []
-        })}
-        crackPenalty={props.crackPenalty}
-        crackFrom={crack.from}
-        stempelFrom={verdict.from + STEMPEL_AUFPRALL}
-        captionTop={captionTop(frame, proof?.from ?? null, p0.from)}
-      />
+        <Sequence from={p0.from} durationInFrames={p3.from + p3.duration - p0.from} layout="none">
+          <PillarSzene pillars={props.pillars} starts={[0, 1, 2, 3].map((i) => beat(beats, `pillar${i}` as MoatShortBeat['id']).from - p0.from)} />
+        </Sequence>
+        <Sequence from={crack.from} durationInFrames={crack.duration} layout="none">
+          <CrackSzene />
+        </Sequence>
+        <Sequence from={verdict.from} durationInFrames={Math.max(1, durationInFrames - verdict.from)} layout="none">
+          <VerdictSzene
+            verdict={props.verdict}
+            score={gesamtScoreAusPfeilern(props.pillars.map((p) => p.score))}
+            fadeOut={0}
+          />
+        </Sequence>
+
+        {frame >= p0.from ? (
+          <Kopfzeile
+            ticker={props.ticker}
+            logoUrl={props.logoUrl}
+            fortschritt={frame / Math.max(1, durationInFrames - 1)}
+          />
+        ) : null}
+        <Koernung />
+
+        {captions.map((c, i) => (
+          <Sequence key={i} from={c.from} durationInFrames={c.duration} layout="none">
+            <Caption text={c.text} woerter={c.woerter} top={captionTop(c.from, proof?.from ?? null, p0.from)} />
+          </Sequence>
+        ))}
+      </AbsoluteFill>
+
+      <AbsoluteFill style={{ zIndex: 2, backgroundColor: 'transparent', pointerEvents: 'none' }}>
+        <LiveScore
+          ticker={props.ticker}
+          karten={props.pillars.flatMap((p, i) => {
+            const b = beats.find((x) => x.id === (`pillar${i}` as MoatShortBeat['id']))
+            return b ? [{ score: p.score, from: b.from }] : []
+          })}
+          crackPenalty={props.crackPenalty}
+          crackFrom={crack.from}
+          stempelFrom={verdict.from + STEMPEL_AUFPRALL}
+          captionTop={captionTop(frame, proof?.from ?? null, p0.from)}
+        />
       </AbsoluteFill>
 
       <Ton
@@ -348,44 +351,55 @@ function HintergrundBild({ src, dauer }: { src: string; dauer: number }) {
     extrapolateLeft: 'clamp',
     extrapolateRight: 'clamp',
   })
-  const maske = 'linear-gradient(to bottom, transparent 0%, #000 35%, #000 100%)'
+  const bildSrc = logoSrc(src)
+  const zone = Math.round(MOAT_SHORT_HEIGHT * 0.38)
   return (
-    <AbsoluteFill style={{ zIndex: 0, pointerEvents: 'none' }}>
+    <AbsoluteFill style={{ zIndex: 0, pointerEvents: 'none', overflow: 'hidden' }}>
       <div
         style={{
           position: 'absolute',
           left: 0,
           right: 0,
           bottom: 0,
-          height: '38%',
+          height: zone,
           overflow: 'hidden',
-          maskImage: maske,
-          WebkitMaskImage: maske,
         }}
       >
         <Img
-          src={logoSrc(src)}
+          src={bildSrc}
           style={{
-            width: '100%',
-            height: '100%',
+            position: 'absolute',
+            inset: -8,
+            width: 'calc(100% + 16px)',
+            height: 'calc(100% + 16px)',
             objectFit: 'cover',
-            opacity: 0.14,
-            filter: 'blur(2px)',
+            opacity: 0.22,
             transform: `scale(${zoom})`,
             transformOrigin: 'center center',
           }}
         />
+        {/* Verlauf statt CSS-mask: Remotion/Canvas maskiert Gradienten oft komplett weg. */}
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            top: 0,
+            height: '42%',
+            background: 'linear-gradient(to bottom, #0B0B0B 0%, rgba(11,11,11,0.72) 45%, rgba(11,11,11,0) 100%)',
+          }}
+        />
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: '28%',
+            background: 'linear-gradient(to bottom, rgba(11,11,11,0) 0%, rgba(11,11,11,0.55) 55%, #0B0B0B 100%)',
+          }}
+        />
       </div>
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: '10%',
-          background: 'linear-gradient(to bottom, rgba(11,11,11,0), #0B0B0B)',
-        }}
-      />
     </AbsoluteFill>
   )
 }
@@ -720,7 +734,8 @@ function LiveScore({
   const ruhe = plan.finalScore >= 8 ? VERDICT_FARBE.wide : TEXT
   const zahl = interpolateColors(stand.rot, [0, 1], [ruhe, VERDICT_FARBE.none])
   const name = ticker.replace(/[^A-Za-z0-9]/g, '').toUpperCase() || 'LIVE'
-  const top = Math.min(captionOben + 168, MOAT_SHORT_HEIGHT - SAFE_BOTTOM - 72)
+  /** Unter zweizeiligen Captions, oberhalb der YouTube-UI. */
+  const top = Math.min(Math.max(captionOben + 250, 1320), MOAT_SHORT_HEIGHT - SAFE_BOTTOM - 88)
   return (
     <div
       style={{
@@ -730,8 +745,7 @@ function LiveScore({
         right: SAFE_RIGHT,
         display: 'flex',
         justifyContent: 'center',
-        zIndex: 2,
-        opacity: stand.deckkraft * 0.65,
+        opacity: stand.deckkraft * 0.9,
         pointerEvents: 'none',
       }}
     >
@@ -741,11 +755,12 @@ function LiveScore({
           alignItems: 'baseline',
           gap: 12,
           borderRadius: 999,
-          background: 'rgba(11, 11, 11, 0.78)',
-          border: '1px solid rgba(255, 255, 255, 0.12)',
-          padding: '12px 26px',
+          background: 'rgba(11, 11, 11, 0.9)',
+          border: '1px solid rgba(255, 255, 255, 0.22)',
+          boxShadow: '0 8px 28px rgba(0,0,0,0.45)',
+          padding: '14px 30px',
           fontFamily: MONO,
-          fontSize: 32,
+          fontSize: 36,
           letterSpacing: 1.4,
           fontVariantNumeric: 'tabular-nums',
           color: zahl,

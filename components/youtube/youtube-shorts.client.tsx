@@ -186,30 +186,52 @@ function logoHref(url: string): string {
   return logoPlaySrc(url) ?? `/${url.replace(/^\/+/, '')}`
 }
 
+function dateiAlsDataUrl(datei: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const leser = new FileReader()
+    leser.onload = () => {
+      const out = typeof leser.result === 'string' ? leser.result : ''
+      if (!out.startsWith('data:')) reject(new Error('Bild lässt sich nicht lesen.'))
+      else resolve(out)
+    }
+    leser.onerror = () => reject(new Error('Bild lässt sich nicht lesen.'))
+    leser.readAsDataURL(datei)
+  })
+}
+
 function dateiZuBild(datei: File, maxKante: number, format: 'image/png' | 'image/jpeg'): Promise<string> {
   return new Promise((resolve, reject) => {
     const objekt = URL.createObjectURL(datei)
     const img = new Image()
     img.onload = () => {
-      const faktor = Math.min(1, maxKante / Math.max(img.naturalWidth, img.naturalHeight, 1))
-      const w = Math.max(1, Math.round(img.naturalWidth * faktor))
-      const h = Math.max(1, Math.round(img.naturalHeight * faktor))
-      const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
-      const ctx = canvas.getContext('2d')
-      if (!ctx) {
+      try {
+        const faktor = Math.min(1, maxKante / Math.max(img.naturalWidth, img.naturalHeight, 1))
+        const w = Math.max(1, Math.round(img.naturalWidth * faktor))
+        const h = Math.max(1, Math.round(img.naturalHeight * faktor))
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          URL.revokeObjectURL(objekt)
+          void dateiAlsDataUrl(datei).then(resolve, reject)
+          return
+        }
+        if (format === 'image/jpeg') {
+          ctx.fillStyle = '#0B0B0B'
+          ctx.fillRect(0, 0, w, h)
+        }
+        ctx.drawImage(img, 0, 0, w, h)
         URL.revokeObjectURL(objekt)
-        reject(new Error('Bild lässt sich nicht lesen.'))
-        return
+        resolve(format === 'image/jpeg' ? canvas.toDataURL(format, 0.85) : canvas.toDataURL(format))
+      } catch {
+        URL.revokeObjectURL(objekt)
+        void dateiAlsDataUrl(datei).then(resolve, reject)
       }
-      ctx.drawImage(img, 0, 0, w, h)
-      URL.revokeObjectURL(objekt)
-      resolve(format === 'image/jpeg' ? canvas.toDataURL(format, 0.82) : canvas.toDataURL(format))
     }
     img.onerror = () => {
       URL.revokeObjectURL(objekt)
-      reject(new Error('Das ist kein lesbares Bild.'))
+      void dateiAlsDataUrl(datei).then(resolve, reject)
     }
     img.src = objekt
   })
@@ -220,7 +242,7 @@ function dateiZuLogo(datei: File): Promise<string> {
 }
 
 function dateiZuHintergrund(datei: File): Promise<string> {
-  return dateiZuBild(datei, 1280, 'image/jpeg')
+  return dateiZuBild(datei, 1600, 'image/jpeg')
 }
 
 function pruefeLogo(url: string | null): Promise<string | null> {
@@ -461,6 +483,7 @@ export function YoutubeShortsClient() {
         ...props,
         musicSrc: musikPlaySrc(musik),
         logoUrl: logoPlaySrc(props.logoUrl),
+        backgroundImageUrl: props.backgroundImageUrl ? logoPlaySrc(props.backgroundImageUrl) : null,
         musicGain: (track?.gain ?? 1) * (musikPegel / 100),
         musicTrim: Math.round((track?.startSekunden ?? 0) * MOAT_SHORT_FPS),
         sfx,
@@ -722,7 +745,9 @@ export function YoutubeShortsClient() {
 
   async function hintergrundGewaehlt(datei: File | undefined) {
     if (!datei) return
-    if (!/^image\/(png|jpeg|webp|avif)$/.test(datei.type) && !/\.(png|jpe?g|webp|avif)$/i.test(datei.name)) {
+    const typOk = !datei.type || /^image\/(png|jpeg|jpg|webp|avif)$/i.test(datei.type)
+    const nameOk = /\.(png|jpe?g|webp|avif)$/i.test(datei.name)
+    if (!typOk && !nameOk) {
       toast.error('Hintergrund als JPG, PNG, WebP oder AVIF.')
       return
     }
@@ -732,8 +757,14 @@ export function YoutubeShortsClient() {
     }
     try {
       const url = await dateiZuHintergrund(datei)
+      if (!url.startsWith('data:image/')) {
+        toast.error('Hintergrundbild konnte nicht geladen werden.')
+        return
+      }
+      setHintergrundAusgeblendet(null)
       setEigenerHintergrund(url)
       setProps((p) => (p ? { ...p, backgroundImageUrl: url } : p))
+      toast.success('Hintergrundbild wird verwendet.')
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Hintergrund lässt sich nicht lesen.')
     }
@@ -747,7 +778,7 @@ export function YoutubeShortsClient() {
   }
 
   function scriptAusAntwort(j: MoatShortErgebnis, logoUrl: string | null): MoatShortErgebnis {
-    const sauber = gesprocheneZeilen({ ...j.props, logoUrl })
+    const sauber = gesprocheneZeilen({ ...j.props, logoUrl, backgroundImageUrl: hintergrundAktiv })
     return {
       ...j,
       props: sauber,
