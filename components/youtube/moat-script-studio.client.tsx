@@ -98,6 +98,7 @@ export function MoatScriptStudio({
 }: Props) {
   const [busyFeld, setBusyFeld] = useState<StudioFeldId | null>(null)
   const [batchLaedt, setBatchLaedt] = useState(false)
+  const [orientierung, setOrientierung] = useState('')
 
   const bericht = useMemo(() => pruefeMoatScript(props, ergebnis.metriken, tempo), [props, ergebnis.metriken, tempo])
 
@@ -105,13 +106,25 @@ export function MoatScriptStudio({
     onProps((p) => ({ ...p, [key]: wert }))
   }
 
-  async function optimiere(feld: StudioFeldId, hinweis?: string) {
+  async function optimiere(
+    feld: StudioFeldId,
+    hinweis?: string,
+    stand?: MoatShortProps,
+    opts?: { still?: boolean },
+  ): Promise<MoatShortProps | null> {
+    const basis = stand ?? props
     setBusyFeld(feld)
     try {
       const res = await fetch('/api/youtube/script-optimize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ props, feld, hinweis, geschaeft }),
+        body: JSON.stringify({
+          props: basis,
+          feld,
+          hinweis,
+          orientierung: orientierung.trim() || undefined,
+          geschaeft,
+        }),
       })
       const j = (await res.json()) as {
         ok?: boolean
@@ -123,12 +136,20 @@ export function MoatScriptStudio({
       }
       if (!res.ok || !j.ok || !j.props) {
         toast.error(j.fehler || j.error || 'Optimierung fehlgeschlagen.')
-        return
+        return null
       }
       onProps(j.props)
-      toast.success(j.quelle === 'lokal' ? `${felderLabel(feld)} lokal korrigiert.` : `${felderLabel(feld)} per KI geschärft.`)
+      if (!opts?.still) {
+        toast.success(
+          j.quelle === 'lokal'
+            ? `${felderLabel(feld)} lokal korrigiert (KI nicht erreichbar).`
+            : `${felderLabel(feld)} per KI geschärft.`,
+        )
+      }
+      return j.props
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Optimierung fehlgeschlagen.')
+      return null
     } finally {
       setBusyFeld(null)
     }
@@ -144,24 +165,17 @@ export function MoatScriptStudio({
     }
     setBatchLaedt(true)
     let aktuell = props
+    let ok = 0
     try {
       for (const feld of liste) {
         const hinweis = bericht.funds.find((f) => f.feld === feld && f.stufe === 'fail')?.hinweis
-        setBusyFeld(feld)
-        const res = await fetch('/api/youtube/script-optimize', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ props: aktuell, feld, hinweis, geschaeft }),
-        })
-        const j = (await res.json()) as { ok?: boolean; props?: MoatShortProps; fehler?: string }
-        if (!res.ok || !j.ok || !j.props) {
-          toast.error(j.fehler || `${felderLabel(feld)} fehlgeschlagen.`)
-          break
-        }
-        aktuell = j.props
-        onProps(aktuell)
+        const next = await optimiere(feld, hinweis, aktuell, { still: true })
+        if (!next) break
+        aktuell = next
+        ok += 1
       }
-      toast.success('Kritische Punkte nachgezogen.')
+      if (ok === liste.length) toast.success(`${ok} kritische Punkte nachgezogen.`)
+      else if (ok > 0) toast.error(`${ok}/${liste.length} Felder geschafft — Rest abgebrochen.`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Batch fehlgeschlagen.')
     } finally {
@@ -199,6 +213,25 @@ export function MoatScriptStudio({
             ~{bericht.sekunden.toFixed(0)}s · Ziel 27–32s
           </span>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
+        <label htmlFor="moat-ki-orientierung" className="font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-200/80">
+          KI-Hinweis
+        </label>
+        <p className="mt-1 text-[11px] text-neutral-400">
+          Orientiert jeden „KI optimieren“- und Fix-Aufruf — z.&nbsp;B. Ton, Fokus, was falsch ist, woran sie sich halten soll.
+        </p>
+        <textarea
+          id="moat-ki-orientierung"
+          value={orientierung}
+          onChange={(e) => setOrientierung(e.target.value)}
+          rows={2}
+          maxLength={800}
+          placeholder="z. B. Mehr Lager-Netz und Wholesale, weniger Abstraktion. Crack = stagnante Renewal-Rates, nicht Image."
+          className={`${studioFeld} mt-2 border-emerald-500/25`}
+        />
+        <p className="mt-1 text-right font-mono text-[10px] text-neutral-600">{orientierung.length}/800</p>
       </div>
 
       <div className="rounded-xl border border-neutral-800 bg-black/40 p-3">

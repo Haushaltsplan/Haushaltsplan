@@ -19,7 +19,10 @@ import type { MoatShortProps } from '@/remotion/moat-short-types'
 export type OptimiererKontext = {
   props: MoatShortProps
   feld: StudioFeldId
+  /** Supervisor-Fund oder Feld-Hinweis. */
   hinweis?: string
+  /** Freitext vom Nutzer: Woran sich die KI orientieren soll. */
+  orientierung?: string
   geschaeft?: string
 }
 
@@ -56,7 +59,9 @@ function lokalFix(opts: OptimiererKontext): string | null {
   }
   if (feld === 'closing' && !istOffeneBruecke(props.closing, props.metricValue)) {
     const kern = oeffneSprechende(props.closing).replace(/\bso the question is\b/i, '').trim()
-    const bruecke = kern ? `${kern.replace(/[,:\s]+$/g, '')}, so the question is` : 'Nobody else has a lock like this, so the question is'
+    const bruecke = kern
+      ? `${kern.replace(/[,:\s]+$/g, '')}, so the question is`
+      : 'Nobody else has a lock like this, so the question is'
     return oeffneSprechende(bruecke)
   }
   if (feld === 'crack') {
@@ -76,7 +81,8 @@ function lokalFix(opts: OptimiererKontext): string | null {
 function systemFuer(feld: StudioFeldId): string {
   const basis = `You are a ruthless YouTube Shorts script editor for English finance shorts.
 Return JSON {"text":"..."}. One spoken line only. Digits with % (22.6% not twenty-two). No em dash. No buy/sell advice.
-Company nouns only — never copy fees onto machines or drugs.`
+Company nouns only — never copy fees onto machines or drugs.
+If the user gives EDITOR NOTES, obey them — they override vague style defaults, not the hard rules above.`
   if (feld === 'hook') {
     return `${basis}
 Rewrite the opening QUESTION. 6–10 words. Starts with Why/How/What/Is/Can. No metric number. Complete grammar.`
@@ -111,7 +117,7 @@ Tighten the spoken line. Keep meaning. Complete grammar.`
 }
 
 function userFuer(opts: OptimiererKontext): string {
-  const { props, feld, hinweis } = opts
+  const { props, feld, hinweis, orientierung } = opts
   const anker = branchenAnker(opts.geschaeft || props.business, '')
   const lines = [
     `Company: ${props.firmenname} (${props.ticker})`,
@@ -123,7 +129,8 @@ function userFuer(opts: OptimiererKontext): string {
     `Pillars: ${props.pillars.map((p) => `${p.label} ${p.score}/10: ${p.line}`).join(' | ')}`,
     `Crack: ${props.crack}`,
     `Closing: ${props.closing}`,
-    hinweis ? `Fix this issue: ${hinweis}` : null,
+    orientierung?.trim() ? `EDITOR NOTES (obey): ${orientierung.trim().slice(0, 800)}` : null,
+    hinweis?.trim() ? `Fix this issue: ${hinweis.trim()}` : null,
     `Field to rewrite: ${feld}`,
   ]
   if (feld.startsWith('pillar')) {
@@ -156,14 +163,7 @@ function nachziehen(feld: StudioFeldId, roh: string, props: MoatShortProps): str
   return t
 }
 
-/** Optimiert ein Feld. Zuerst lokale Regeln, sonst Free-Gemini. */
-export async function optimiereScriptFeld(opts: OptimiererKontext): Promise<{ text: string; quelle: 'lokal' | 'ki' }> {
-  if (opts.feld === 'gesamt') throw new Error('Gesamt ist kein einzelnes Feld.')
-  const lokal = lokalFix(opts)
-  if (lokal && lokal.trim() && lokal.trim() !== feldText(opts).trim()) {
-    return { text: nachziehen(opts.feld, lokal, opts.props), quelle: 'lokal' }
-  }
-
+async function kiFix(opts: OptimiererKontext): Promise<string> {
   const provider = resolveGeminiFreeTierProvider()
   if (!provider) throw new Error('GEMINI_API_KEY_FREE fehlt.')
 
@@ -182,7 +182,7 @@ export async function optimiereScriptFeld(opts: OptimiererKontext): Promise<{ te
           required: ['text'],
         },
       },
-      maxOutputTokens: 400,
+      maxOutputTokens: 512,
       timeoutMs: 45_000,
       geminiTotalBudgetMs: 55_000,
     },
@@ -191,7 +191,34 @@ export async function optimiereScriptFeld(opts: OptimiererKontext): Promise<{ te
   const roh = parseJson(result.reply)
   const textOut = nachziehen(opts.feld, text(roh?.text), opts.props)
   if (!textOut) throw new Error('Die KI lieferte keinen Text.')
-  return { text: textOut, quelle: 'ki' }
+  return textOut
+}
+
+/**
+ * Optimiert ein Feld.
+ * Mit Nutzer-Orientierung oder Supervisor-Hinweis: immer Free-Gemini zuerst.
+ * Sonst KI zuerst, lokaler Regel-Fix nur als Fallback.
+ */
+export async function optimiereScriptFeld(opts: OptimiererKontext): Promise<{ text: string; quelle: 'lokal' | 'ki' }> {
+  if (opts.feld === 'gesamt') throw new Error('Gesamt ist kein einzelnes Feld.')
+
+  const vorher = feldText(opts).trim()
+  let kiFehler: string | null = null
+
+  try {
+    const textOut = await kiFix(opts)
+    return { text: textOut, quelle: 'ki' }
+  } catch (e) {
+    kiFehler = e instanceof Error ? e.message : 'KI-Optimierung fehlgeschlagen.'
+  }
+
+  const lokal = lokalFix(opts)
+  if (lokal?.trim()) {
+    const textOut = nachziehen(opts.feld, lokal, opts.props)
+    if (textOut && textOut !== vorher) return { text: textOut, quelle: 'lokal' }
+  }
+
+  throw new Error(kiFehler || 'Optimierung fehlgeschlagen.')
 }
 
 function feldText(opts: OptimiererKontext): string {

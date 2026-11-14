@@ -1,5 +1,5 @@
 /**
- * POST { props, feld, hinweis?, geschaeft? } — ein Script-Feld mit Free-Key nachziehen.
+ * POST { props, feld, hinweis?, orientierung?, geschaeft? } — ein Script-Feld mit Free-Key nachziehen.
  */
 import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
@@ -42,6 +42,7 @@ export async function POST(req: Request) {
         props,
         feld,
         hinweis: typeof body.hinweis === 'string' ? body.hinweis : undefined,
+        orientierung: typeof body.orientierung === 'string' ? body.orientierung : undefined,
         geschaeft: typeof body.geschaeft === 'string' ? body.geschaeft : undefined,
       })
       return {

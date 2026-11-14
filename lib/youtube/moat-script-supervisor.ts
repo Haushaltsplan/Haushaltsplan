@@ -85,8 +85,8 @@ export function pruefeMoatScript(
         'gesamt',
         sekunden < 24 || sekunden > 36 ? 'fail' : 'warn',
         'Länge',
-        `Geschätzt ~${sekunden.toFixed(0)}s. Shorts-Ziel 27–32s.`,
-        true,
+        `Geschätzt ~${sekunden.toFixed(0)}s. Shorts-Ziel 27–32s. Kürze oder strecke einzelne Zeilen manuell / per KI-Hinweis.`,
+        false,
       ),
     )
   }
