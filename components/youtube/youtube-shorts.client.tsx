@@ -165,18 +165,33 @@ function beispielErgebnis(): MoatShortErgebnis {
   }
 }
 
+function hintergrundAusExport(text: string): string | null {
+  try {
+    const j = JSON.parse(text) as Record<string, unknown>
+    const meta = j.meta && typeof j.meta === 'object' ? (j.meta as Record<string, unknown>) : null
+    const kandidaten = [meta?.backgroundImage, meta?.backgroundImageUrl, j.backgroundImageUrl, j.backgroundImage]
+    for (const kandidat of kandidaten) {
+      if (typeof kandidat !== 'string') continue
+      const url = kandidat.trim()
+      if (/^(https?:|data:image\/|blob:|\/)/i.test(url)) return url
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
 function logoHref(url: string): string {
   if (/^(data:|blob:)/i.test(url)) return url
   return logoPlaySrc(url) ?? `/${url.replace(/^\/+/, '')}`
 }
 
-function dateiZuLogo(datei: File): Promise<string> {
+function dateiZuBild(datei: File, maxKante: number, format: 'image/png' | 'image/jpeg'): Promise<string> {
   return new Promise((resolve, reject) => {
     const objekt = URL.createObjectURL(datei)
     const img = new Image()
     img.onload = () => {
-      const max = 512
-      const faktor = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight, 1))
+      const faktor = Math.min(1, maxKante / Math.max(img.naturalWidth, img.naturalHeight, 1))
       const w = Math.max(1, Math.round(img.naturalWidth * faktor))
       const h = Math.max(1, Math.round(img.naturalHeight * faktor))
       const canvas = document.createElement('canvas')
@@ -188,10 +203,9 @@ function dateiZuLogo(datei: File): Promise<string> {
         reject(new Error('Bild lässt sich nicht lesen.'))
         return
       }
-      ctx.clearRect(0, 0, w, h)
       ctx.drawImage(img, 0, 0, w, h)
       URL.revokeObjectURL(objekt)
-      resolve(canvas.toDataURL('image/png'))
+      resolve(format === 'image/jpeg' ? canvas.toDataURL(format, 0.82) : canvas.toDataURL(format))
     }
     img.onerror = () => {
       URL.revokeObjectURL(objekt)
@@ -199,6 +213,14 @@ function dateiZuLogo(datei: File): Promise<string> {
     }
     img.src = objekt
   })
+}
+
+function dateiZuLogo(datei: File): Promise<string> {
+  return dateiZuBild(datei, 512, 'image/png')
+}
+
+function dateiZuHintergrund(datei: File): Promise<string> {
+  return dateiZuBild(datei, 1280, 'image/jpeg')
 }
 
 function pruefeLogo(url: string | null): Promise<string | null> {
@@ -314,6 +336,8 @@ export function YoutubeShortsClient() {
   const [modus, setModus] = useState<YoutubeModus>('moat')
   const [rohText, setRohText] = useState('')
   const [eigenesLogo, setEigenesLogo] = useState<string | null>(null)
+  const [eigenerHintergrund, setEigenerHintergrund] = useState<string | null>(null)
+  const [hintergrundAusgeblendet, setHintergrundAusgeblendet] = useState<string | null>(null)
   const [logoAusSuche, setLogoAusSuche] = useState<string | null>(null)
   const [moatNeu, setMoatNeu] = useState(false)
   const [laedt, setLaedt] = useState(false)
@@ -686,6 +710,42 @@ export function YoutubeShortsClient() {
     setProps((p) => (p ? { ...p, logoUrl: logoAusSuche } : p))
   }
 
+  const jsonHintergrund = hintergrundAusExport(rohText)
+  const hintergrundAktiv = eigenerHintergrund ?? (jsonHintergrund && hintergrundAusgeblendet !== jsonHintergrund ? jsonHintergrund : null)
+
+  useEffect(() => {
+    setProps((p) => {
+      if (!p || (p.backgroundImageUrl ?? null) === hintergrundAktiv) return p
+      return { ...p, backgroundImageUrl: hintergrundAktiv }
+    })
+  }, [hintergrundAktiv])
+
+  async function hintergrundGewaehlt(datei: File | undefined) {
+    if (!datei) return
+    if (!/^image\/(png|jpeg|webp|avif)$/.test(datei.type) && !/\.(png|jpe?g|webp|avif)$/i.test(datei.name)) {
+      toast.error('Hintergrund als JPG, PNG, WebP oder AVIF.')
+      return
+    }
+    if (datei.size > 12_000_000) {
+      toast.error('Das Hintergrundbild ist größer als 12 MB.')
+      return
+    }
+    try {
+      const url = await dateiZuHintergrund(datei)
+      setEigenerHintergrund(url)
+      setProps((p) => (p ? { ...p, backgroundImageUrl: url } : p))
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Hintergrund lässt sich nicht lesen.')
+    }
+  }
+
+  function hintergrundEntfernen() {
+    const naechstes = eigenerHintergrund ? (jsonHintergrund && hintergrundAusgeblendet !== jsonHintergrund ? jsonHintergrund : null) : null
+    if (eigenerHintergrund) setEigenerHintergrund(null)
+    else if (jsonHintergrund) setHintergrundAusgeblendet(jsonHintergrund)
+    setProps((p) => (p ? { ...p, backgroundImageUrl: naechstes } : p))
+  }
+
   function scriptAusAntwort(j: MoatShortErgebnis, logoUrl: string | null): MoatShortErgebnis {
     const sauber = gesprocheneZeilen({ ...j.props, logoUrl })
     return {
@@ -704,7 +764,7 @@ export function YoutubeShortsClient() {
 
   function zeigeScript(stand: MoatShortErgebnis, logoUrl: string | null) {
     setErgebnis(stand)
-    setProps({ ...stand.props, logoUrl, voiceSrc: null, voiceAlignment: null })
+    setProps({ ...stand.props, logoUrl, backgroundImageUrl: hintergrundAktiv, voiceSrc: null, voiceAlignment: null })
     setMp4Blob(null)
     setVideoId(null)
     setVoiceUrl((alt) => {
@@ -766,7 +826,7 @@ export function YoutubeShortsClient() {
       const gefunden = await pruefeLogo(j.props.logoUrl)
       setLogoAusSuche(gefunden)
       const logoUrl = eigenesLogo ?? gefunden
-      const sauber = gesprocheneZeilen({ ...j.props, logoUrl })
+      const sauber = gesprocheneZeilen({ ...j.props, logoUrl, backgroundImageUrl: hintergrundAktiv })
       const stand: MoatShortErgebnis = {
         ...j,
         warnungen: eigenesLogo ? j.warnungen.filter((w) => !w.includes('Firmenlogo')) : j.warnungen,
@@ -782,7 +842,7 @@ export function YoutubeShortsClient() {
       }
       setMoatWahl('ki')
       setErgebnis(stand)
-      setProps({ ...sauber, logoUrl, voiceSrc: null, voiceAlignment: null })
+      setProps({ ...sauber, logoUrl, backgroundImageUrl: hintergrundAktiv, voiceSrc: null, voiceAlignment: null })
       setMp4Blob(null)
       setVideoId(null)
       setVoiceUrl((alt) => {
@@ -984,13 +1044,36 @@ export function YoutubeShortsClient() {
             ) : (
               <span className="text-xs text-[var(--app-text-muted)]">PNG, JPG oder WebP. Ersetzt die Logo-Suche.</span>
             )}
+            <label className="cursor-pointer rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-sm text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]">
+              Hintergrundbild hochladen
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/avif,.jpg,.jpeg,.png,.webp,.avif"
+                className="hidden"
+                onChange={(e) => {
+                  void hintergrundGewaehlt(e.target.files?.[0])
+                  e.target.value = ''
+                }}
+              />
+            </label>
+            {hintergrundAktiv ? (
+              <span className="inline-flex items-center gap-2 text-sm text-[var(--app-text-muted)]">
+                <img src={logoHref(hintergrundAktiv)} alt="" className="h-9 w-9 rounded-md border border-[var(--app-border)] bg-black object-cover" />
+                wird verwendet
+                <button type="button" onClick={hintergrundEntfernen} className="underline">
+                  entfernen
+                </button>
+              </span>
+            ) : (
+              <span className="text-xs text-[var(--app-text-muted)]">JPG, PNG, WebP oder AVIF. Optional, unteres Drittel.</span>
+            )}
             <button
               type="button"
               onClick={() => {
                 const b = beispielErgebnis()
                 setMoatWahl('ki')
                 setErgebnis(b)
-                setProps({ ...b.props, logoUrl: eigenesLogo ?? b.props.logoUrl })
+                setProps({ ...b.props, logoUrl: eigenesLogo ?? b.props.logoUrl, backgroundImageUrl: hintergrundAktiv })
                 setMp4Blob(null)
                 setVideoId(null)
                 setVoiceUrl((alt) => {

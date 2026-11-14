@@ -39,6 +39,7 @@ import {
 import { ziffernImText } from '@/lib/youtube/moat-caption'
 import { heroMetricAus, heroMetricPasst, korrigiereHeroSatz } from '@/lib/youtube/moat-hero-metric'
 import { branchenAnker, subLabelAusBeweis } from '@/lib/youtube/moat-branchen-anker'
+import { liveScorePlan } from '@/lib/youtube/moat-live-score'
 import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
 
@@ -503,6 +504,7 @@ export async function generiereMoatShort(opts: {
       }
     }),
     crack,
+    crackPenalty: liveScorePlan(moat.pfeiler.map((p) => p.score)).crackPenalty,
     verdict,
     score: gesamtScoreAusPfeilern(moat.pfeiler.map((p) => p.score)),
     closing: start.land,

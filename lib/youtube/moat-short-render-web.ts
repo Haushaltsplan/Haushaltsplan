@@ -33,6 +33,7 @@ export async function rendereMoatShortImBrowser(
     ...props,
     musicSrc: musikPlaySrc(props.musicSrc),
     logoUrl: logoPlaySrc(props.logoUrl),
+    backgroundImageUrl: props.backgroundImageUrl ? logoPlaySrc(props.backgroundImageUrl) : null,
   }
   const dauer = berechneMoatShortTimeline(webProps).durationInFrames
   const { getBlob } = await renderMediaOnWeb({

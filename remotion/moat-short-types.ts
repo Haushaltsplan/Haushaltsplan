@@ -12,6 +12,11 @@ export type MoatShortProps = {
   ticker: string
   firmenname: string
   logoUrl: string | null
+  /**
+   * Optionales Foto im unteren Drittel. Data-URL oder Bildpfad.
+   * Fehlt es, bleibt der Grund schwarz.
+   */
+  backgroundImageUrl?: string | null
   /** Blickfang, 2–5 Wörter, nur Bild, nicht gesprochen. */
   kicker: string
   /** Frage in Sekunde 0. Ohne Kennzahl. */
@@ -36,6 +41,11 @@ export type MoatShortProps = {
   business: string
   pillars: { id: MoatShortPillarId; label: string; score: number; line: string; stat: MoatShortStat | null }[]
   crack: string
+  /**
+   * Abzug beim Crack, eine Nachkommastelle. Fehlt er, kommt er aus der Streuung der Karten.
+   * Der Live-Score landet danach exakt auf dem Mittel der Pfeiler.
+   */
+  crackPenalty?: number | null
   verdict: MoatShortVerdict
   score: number
   /** Offene Brücke in den Hook — kein Schlusssatz, keine Hook-Zahl. */
@@ -105,6 +115,7 @@ export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
   ticker: 'ASML',
   firmenname: 'ASML Holding',
   logoUrl: 'portfolio-logos/asml.png',
+  backgroundImageUrl: null,
   kicker: 'No second shop',
   hook: 'Why can ASML charge whatever the chip needs?',
   proof: 'Because those machines print a 51.3% margin.',
@@ -137,6 +148,7 @@ export const MOAT_SHORT_DEFAULT_PROPS: MoatShortProps = {
     { id: 'marktdichte', label: 'Market control', score: 9, line: 'In EUV there is simply no second shop you can call.', stat: null },
   ],
   crack: 'The real risk is export controls cutting off its biggest customers.',
+  crackPenalty: 0.3,
   verdict: 'wide',
   score: 9,
   closing: 'Nobody else has a lock like this, so the question is',

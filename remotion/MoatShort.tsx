@@ -17,6 +17,7 @@ import {
   useVideoConfig,
 } from 'remotion'
 import { gesamtScoreAusPfeilern } from '../lib/portfolio-analyse/moat-ki-types'
+import { liveScoreBeiFrame, liveScorePlan } from '../lib/youtube/moat-live-score'
 import { subLabelAusBeweis } from '../lib/youtube/moat-branchen-anker'
 import { istOffeneBruecke, kickerZurZahl, oeffneSprechende, ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-script'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
@@ -139,6 +140,8 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
 
   return (
     <AbsoluteFill style={{ backgroundColor: bg, color: TEXT, fontFamily: DISPLAY }}>
+      {props.backgroundImageUrl ? <HintergrundBild src={props.backgroundImageUrl} dauer={durationInFrames} /> : null}
+      <AbsoluteFill style={{ zIndex: 1 }}>
       <Sequence
         from={hook.from}
         durationInFrames={Math.max(1, (p0.from > hook.from ? p0.from : proof ? proof.from + proof.duration : hook.from + hook.duration) - hook.from)}
@@ -181,6 +184,18 @@ export const MoatShort: React.FC<MoatShortProps> = (roh) => {
           <Caption text={c.text} woerter={c.woerter} top={captionTop(c.from, proof?.from ?? null, p0.from)} />
         </Sequence>
       ))}
+      <LiveScore
+        ticker={props.ticker}
+        karten={props.pillars.flatMap((p, i) => {
+          const b = beats.find((x) => x.id === (`pillar${i}` as MoatShortBeat['id']))
+          return b ? [{ score: p.score, from: b.from }] : []
+        })}
+        crackPenalty={props.crackPenalty}
+        crackFrom={crack.from}
+        stempelFrom={verdict.from + STEMPEL_AUFPRALL}
+        captionTop={captionTop(frame, proof?.from ?? null, p0.from)}
+      />
+      </AbsoluteFill>
 
       <Ton
         musicSrc={props.musicSrc}
@@ -323,6 +338,55 @@ function Ton({
           ))
         : null}
     </>
+  )
+}
+
+/** Unteres Drittel, hinter Text, Balken, Captions und Stempeln. */
+function HintergrundBild({ src, dauer }: { src: string; dauer: number }) {
+  const frame = useCurrentFrame()
+  const zoom = interpolate(frame, [0, Math.max(1, dauer - 1)], [1, 1.06], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
+  const maske = 'linear-gradient(to bottom, transparent 0%, #000 35%, #000 100%)'
+  return (
+    <AbsoluteFill style={{ zIndex: 0, pointerEvents: 'none' }}>
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: '38%',
+          overflow: 'hidden',
+          maskImage: maske,
+          WebkitMaskImage: maske,
+        }}
+      >
+        <Img
+          src={logoSrc(src)}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            opacity: 0.14,
+            filter: 'blur(2px)',
+            transform: `scale(${zoom})`,
+            transformOrigin: 'center center',
+          }}
+        />
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: '10%',
+          background: 'linear-gradient(to bottom, rgba(11,11,11,0), #0B0B0B)',
+        }}
+      />
+    </AbsoluteFill>
   )
 }
 
@@ -624,6 +688,78 @@ function aktivesWort(woerter: { start: number; end: number }[], frame: number): 
   let last = 0
   for (let i = 0; i < woerter.length; i++) if (frame >= woerter[i]!.start) last = i
   return last
+}
+
+function LiveScore({
+  ticker,
+  karten,
+  crackPenalty,
+  crackFrom,
+  stempelFrom,
+  captionTop: captionOben,
+}: {
+  ticker: string
+  karten: { score: number; from: number }[]
+  crackPenalty?: number | null
+  crackFrom: number
+  stempelFrom: number
+  captionTop: number
+}) {
+  const frame = useCurrentFrame()
+  const { fps } = useVideoConfig()
+  const plan = useMemo(() => liveScorePlan(karten.map((k) => k.score), crackPenalty), [karten, crackPenalty])
+  const stand = liveScoreBeiFrame({
+    frame,
+    fps,
+    pillarFrom: karten.map((k) => k.from),
+    crackFrom,
+    stempelFrom,
+    plan,
+  })
+  if (!stand.zeigen) return null
+  const ruhe = plan.finalScore >= 8 ? VERDICT_FARBE.wide : TEXT
+  const zahl = interpolateColors(stand.rot, [0, 1], [ruhe, VERDICT_FARBE.none])
+  const name = ticker.replace(/[^A-Za-z0-9]/g, '').toUpperCase() || 'LIVE'
+  const top = Math.min(captionOben + 168, MOAT_SHORT_HEIGHT - SAFE_BOTTOM - 72)
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        top,
+        left: SAFE_LEFT,
+        right: SAFE_RIGHT,
+        display: 'flex',
+        justifyContent: 'center',
+        zIndex: 2,
+        opacity: stand.deckkraft * 0.65,
+        pointerEvents: 'none',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 12,
+          borderRadius: 999,
+          background: 'rgba(11, 11, 11, 0.78)',
+          border: '1px solid rgba(255, 255, 255, 0.12)',
+          padding: '12px 26px',
+          fontFamily: MONO,
+          fontSize: 32,
+          letterSpacing: 1.4,
+          fontVariantNumeric: 'tabular-nums',
+          color: zahl,
+        }}
+      >
+        <span>
+          {name} LIVE SCORE: {stand.wert.toFixed(1)} / 10
+        </span>
+        {stand.delta ? (
+          <span style={{ color: VERDICT_FARBE.none, fontWeight: 700 }}>-{plan.crackPenalty.toFixed(1)}</span>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 function Caption({ text, woerter, top }: { text: string; woerter: { text: string; start: number; end: number }[]; top: number }) {

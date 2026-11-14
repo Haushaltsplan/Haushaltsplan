@@ -70,6 +70,7 @@ export function normalisiereRenderProps(props: MoatShortProps): MoatShortProps {
     musicTrim: Number.isFinite(props.musicTrim) ? Math.max(0, Math.floor(props.musicTrim)) : 0,
     sfx: props.sfx !== false,
     logoUrl: props.logoUrl || null,
+    backgroundImageUrl: props.backgroundImageUrl?.trim() || null,
   }
 }
 
