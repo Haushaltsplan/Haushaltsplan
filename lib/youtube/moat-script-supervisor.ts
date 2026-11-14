@@ -218,6 +218,50 @@ export function felderZumOptimieren(bericht: SupervisorBericht): StudioFeldId[] 
   return [...set]
 }
 
+/**
+ * Welche Passagen der KI-Hinweis meint — Labels/Aliases im Text.
+ * Treffer zuerst; sonst leere Liste (Caller entscheidet Fallback).
+ */
+export function felderAusOrientierung(
+  orientierung: string,
+  pillarLabels: string[],
+): StudioFeldId[] {
+  const t = orientierung.toLowerCase()
+  if (!t.trim()) return []
+  const aus: StudioFeldId[] = []
+  const merke = (id: StudioFeldId) => {
+    if (!aus.includes(id)) aus.push(id)
+  }
+
+  if (/\b(kicker|blickfang|sub[- ]?label|vs\.?\s*\d)/i.test(t)) merke('kicker')
+  if (/\b(hook|frage|claim|einstieg|opening)\b/i.test(t)) merke('hook')
+  if (/\b(proof|antwort|satz\s*2|branchen|peer|typical|handoff|and it starts with)\b/i.test(t)) merke('proof')
+  if (/\b(crack|risiko|bedrohung|threat|schwäche)\b/i.test(t)) merke('crack')
+  if (/\b(closing|landung|brücke|loop|so the question is)\b/i.test(t)) merke('closing')
+
+  const alias: Record<string, RegExp> = {
+    pricing: /\bpricing\s*power\b|\bpreismacht\b/i,
+    hard: /\bhard\s*to\s*copy\b|\bschwer\s*zu\s*kopieren\b/i,
+    switching: /\bswitching\s*costs?\b|\bwechselkosten\b/i,
+    market: /\bmarket\s*control\b|\bmarktmacht\b|\bmarktkontrolle\b/i,
+  }
+
+  pillarLabels.forEach((label, i) => {
+    const id = `pillar${i}` as StudioFeldId
+    const l = label.toLowerCase()
+    if (l && t.includes(l)) {
+      merke(id)
+      return
+    }
+    if (/pricing/i.test(label) && alias.pricing.test(t)) merke(id)
+    else if (/hard|copy/i.test(label) && alias.hard.test(t)) merke(id)
+    else if (/switch/i.test(label) && alias.switching.test(t)) merke(id)
+    else if (/market|control/i.test(label) && alias.market.test(t)) merke(id)
+  })
+
+  return aus
+}
+
 export function felderLabel(id: StudioFeldId): string {
   if (id === 'hook') return 'Frage'
   if (id === 'proof') return 'Antwort'

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
+  felderAusOrientierung,
   felderLabel,
   felderZumOptimieren,
   pruefeMoatScript,
@@ -155,6 +156,38 @@ export function MoatScriptStudio({
     }
   }
 
+  function hinweisFuerFeld(feld: StudioFeldId): string | undefined {
+    return (
+      bericht.funds.find((f) => f.feld === feld && f.stufe === 'fail')?.hinweis ??
+      bericht.funds.find((f) => f.feld === feld)?.hinweis
+    )
+  }
+
+  async function batchOptimieren(liste: StudioFeldId[], erfolgText: string) {
+    if (!liste.length) {
+      toast.error('Keine Passagen zum Optimieren gefunden.')
+      return
+    }
+    setBatchLaedt(true)
+    let aktuell = props
+    let ok = 0
+    try {
+      for (const feld of liste) {
+        const next = await optimiere(feld, hinweisFuerFeld(feld), aktuell, { still: true })
+        if (!next) break
+        aktuell = next
+        ok += 1
+      }
+      if (ok === liste.length) toast.success(erfolgText.replace('{n}', String(ok)))
+      else if (ok > 0) toast.error(`${ok}/${liste.length} Passagen geschafft — Rest abgebrochen.`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Batch fehlgeschlagen.')
+    } finally {
+      setBusyFeld(null)
+      setBatchLaedt(false)
+    }
+  }
+
   async function kritischeFixen() {
     const liste = felderZumOptimieren(bericht).filter((f) =>
       bericht.funds.some((x) => x.feld === f && x.stufe === 'fail' && x.optimierbar),
@@ -163,25 +196,29 @@ export function MoatScriptStudio({
       toast.success('Keine kritischen Punkte.')
       return
     }
-    setBatchLaedt(true)
-    let aktuell = props
-    let ok = 0
-    try {
-      for (const feld of liste) {
-        const hinweis = bericht.funds.find((f) => f.feld === feld && f.stufe === 'fail')?.hinweis
-        const next = await optimiere(feld, hinweis, aktuell, { still: true })
-        if (!next) break
-        aktuell = next
-        ok += 1
-      }
-      if (ok === liste.length) toast.success(`${ok} kritische Punkte nachgezogen.`)
-      else if (ok > 0) toast.error(`${ok}/${liste.length} Felder geschafft — Rest abgebrochen.`)
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Batch fehlgeschlagen.')
-    } finally {
-      setBusyFeld(null)
-      setBatchLaedt(false)
+    await batchOptimieren(liste, '{n} kritische Punkte nachgezogen.')
+  }
+
+  /** Absenden: Hinweis anwenden und genannte / betroffene Passagen per KI nachziehen. */
+  async function hinweisAbsenden() {
+    const text = orientierung.trim()
+    if (!text) {
+      toast.error('Schreib zuerst einen KI-Hinweis.')
+      return
     }
+    const genannt = felderAusOrientierung(
+      text,
+      props.pillars.map((p) => p.label),
+    )
+    const beanstandet = felderZumOptimieren(bericht).filter((f) => f !== 'gesamt')
+    const alleKarten = props.pillars.map((_, i) => `pillar${i}` as StudioFeldId)
+    const liste = genannt.length ? genannt : beanstandet.length ? beanstandet : alleKarten
+    await batchOptimieren(
+      liste,
+      genannt.length
+        ? '{n} Passagen aus dem Hinweis per KI nachgezogen.'
+        : '{n} Passagen mit dem Hinweis per KI nachgezogen.',
+    )
   }
 
   return (
@@ -220,18 +257,34 @@ export function MoatScriptStudio({
           KI-Hinweis
         </label>
         <p className="mt-1 text-[11px] text-neutral-400">
-          Orientiert jeden „KI optimieren“- und Fix-Aufruf — z.&nbsp;B. Ton, Fokus, was falsch ist, woran sie sich halten soll.
+          Absenden wendet den Hinweis auf die genannten Passagen an (z.&nbsp;B. Hard to Copy, Crack). Einzel-Fix nutzt ihn ebenfalls.
         </p>
         <textarea
           id="moat-ki-orientierung"
           value={orientierung}
           onChange={(e) => setOrientierung(e.target.value)}
-          rows={2}
+          rows={3}
           maxLength={800}
-          placeholder="z. B. Mehr Lager-Netz und Wholesale, weniger Abstraktion. Crack = stagnante Renewal-Rates, nicht Image."
+          placeholder="z. B. Hard to Copy = Milliarden-Budgets auf Haushalte. Market Control = globale Sehdaten, nicht dasselbe wie Hard to Copy."
           className={`${studioFeld} mt-2 border-emerald-500/25`}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !batchLaedt && busyFeld == null) {
+              e.preventDefault()
+              void hinweisAbsenden()
+            }
+          }}
         />
-        <p className="mt-1 text-right font-mono text-[10px] text-neutral-600">{orientierung.length}/800</p>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <p className="font-mono text-[10px] text-neutral-600">{orientierung.length}/800 · Ctrl+Enter</p>
+          <button
+            type="button"
+            disabled={batchLaedt || busyFeld != null || !orientierung.trim()}
+            onClick={() => void hinweisAbsenden()}
+            className="rounded-full border border-emerald-500/50 bg-emerald-500/15 px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-emerald-100 hover:border-emerald-400/80 disabled:opacity-50"
+          >
+            {batchLaedt ? 'Optimiert…' : 'Absenden & optimieren'}
+          </button>
+        </div>
       </div>
 
       <div className="rounded-xl border border-neutral-800 bg-black/40 p-3">
