@@ -31,6 +31,8 @@ import {
   oeffneSprechende,
   schliesseBeweis,
   kuerzeGesprocheneZeile,
+  sichereKartenZeile,
+  istUnvollstaendigerSprechsatz,
   landZurFrage,
   scriptLoopWarnungen,
   scriptStoryWarnungen,
@@ -233,14 +235,13 @@ Bad: "Stigmatized renewal rates hurt the brand." — wrong word. Use the finance
 Same move for every company: name the measurable threat and stop. Do not explain the mechanism in the same sentence. Prefer precise finance nouns: renewal rates, fee caps, churn, regulation, export controls, margin compression.
 
 Pillar cards, every spoken line
-- A complete English sentence with subject, verb, and a concrete noun object. End with a period.
-- Bad: "Membership brings massive recurring." The adjective has no noun.
-- Good: "Membership brings massive recurring revenue."
-- Bad: "High barriers drive durable." Good: "High barriers drive durable pricing power."
-- Never end a pillar on an adjective alone: recurring, massive, endless, durable, sticky, structural, financial.
+- Exactly ONE concise, grammatically complete English sentence per card. Maximum 12 words. Subject, verb, and a concrete noun object. End with a period.
+- Bad: "Membership brings massive recurring." / "extract steady cash without." / "grant exclusive wholesale." / "entering local."
+- Good: "Membership brings massive recurring revenue." / "Warehouses extract steady cash without middlemen." / "Scale grants exclusive wholesale pricing." / "Rivals struggle entering local markets."
+- Never end on a preposition (without, with, of, to), an article (the, a), or a bare adjective (local, wholesale, recurring, exclusive).
 
-- pillarLines: one per pillar, 8-9 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none". No pillar may repeat a phrase from the sentence before it. The first pillar must not say the hook metric, the driver, or "pricing power" again. A later pillar may use a different metric.
-- crack: 8-9 words, under 70 characters, ONE concrete finance threat with the right noun. This is the first time the threat is named. No sign-off.
+- pillarLines: one per pillar, exactly one complete sentence, max 12 words, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none". No pillar may repeat a phrase from the sentence before it. The first pillar must not say the hook metric, the driver, or "pricing power" again. A later pillar may use a different metric.
+- crack: exactly one complete sentence, max 12 words, ONE concrete finance threat with the right noun. This is the first time the threat is named. No sign-off. Never end on a preposition or bare adjective.
 
 ## Hard rules
 - Use ONLY facts and numbers from the data provided. Never invent numbers, customers, market shares, years or events.
@@ -431,7 +432,7 @@ export async function generiereMoatShort(opts: {
   ]
     .filter(Boolean)
     .join('\n')
-  const crack = kuerzeGesprocheneZeile(korrigiereCrackWortwahl(sprechtext(roh.crack)), { maxWoerter: 12, maxZeichen: 78 })
+  const crack = sichereKartenZeile(korrigiereCrackWortwahl(sprechtext(roh.crack)), { label: 'The crack' })
   const hookVarianten: MoatShortHookVariante[] = objekte(roh.hooks)
     .map((h) => {
       const metrikId = hookMetriken.some((m) => m.id === h.metricId) ? text(h.metricId) : hookMetriken[0]!.id
@@ -501,13 +502,14 @@ export async function generiereMoatShort(opts: {
     pillars: moat.pfeiler.map((p) => {
       const z = zeilen.get(p.id)
       const stat = metriken.find((m) => m.id === z?.metricId)
+      const label = PFEILER_LABEL[p.id]
       return {
         id: p.id,
-        label: PFEILER_LABEL[p.id],
+        label,
         score: p.score,
-        line: kuerzeGesprocheneZeile(sprechtext(z?.line) || `${PFEILER_LABEL[p.id]} is the weak spot.`, {
-          maxWoerter: 12,
-          maxZeichen: 78,
+        line: sichereKartenZeile(sprechtext(z?.line) || `${label} still holds against rivals.`, {
+          label,
+          score: p.score,
           behalten: stat?.value,
         }),
         stat: stat ? { value: stat.value, label: stat.label } : null,
@@ -527,26 +529,25 @@ export async function generiereMoatShort(opts: {
   }
   props.hook = ziffernImText(props.hook)
   props.proof = ziffernImText(props.proof)
-  props.crack = ziffernImText(korrigiereCrackWortwahl(props.crack))
+  props.crack = ziffernImText(sichereKartenZeile(korrigiereCrackWortwahl(props.crack), { label: 'The crack' }))
   props.closing = ziffernImText(props.closing)
   props.pillars = props.pillars.map((p) => ({
     ...p,
-    line: ziffernImText(kuerzeGesprocheneZeile(p.line, { maxWoerter: 12, maxZeichen: 78, behalten: p.stat?.value })),
+    line: ziffernImText(sichereKartenZeile(p.line, { label: p.label, score: p.score, behalten: p.stat?.value })),
   }))
 
+  // Wortbudget: Moat-Karten und Crack nie wortweise abschneiden — nur Hook kürzen.
   const fest = new Set<string>()
   for (let runde = 0; runde < 16; runde++) {
     const teile = [
       { key: 'hook', text: props.hook, behalten: undefined as string | undefined, frage: true },
       { key: 'proof', text: props.proof, behalten: props.metricValue, frage: false },
-      ...props.pillars.map((p, i) => ({ key: `p${i}`, text: p.line, behalten: p.stat?.value, frage: false })),
-      { key: 'crack', text: props.crack, behalten: undefined as string | undefined, frage: false },
     ]
-    const summe = [...teile.map((t) => t.text), props.closing].map(woerter).reduce((a, b) => a + b, 0)
+    const summe = [props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing]
+      .map(woerter)
+      .reduce((a, b) => a + b, 0)
     if (summe <= MAX_WOERTER_GESAMT) break
-    const ziel = teile
-      .filter((t) => t.key !== 'proof' && !fest.has(t.key) && woerter(t.text) > 7)
-      .sort((a, b) => woerter(b.text) - woerter(a.text))[0]
+    const ziel = teile.filter((t) => t.key !== 'proof' && !fest.has(t.key) && woerter(t.text) > 7).sort((a, b) => woerter(b.text) - woerter(a.text))[0]
     if (!ziel) break
     const neu = kuerzeGesprocheneZeile(ziel.text, {
       maxWoerter: woerter(ziel.text) - 1,
@@ -554,24 +555,17 @@ export async function generiereMoatShort(opts: {
       behalten: ziel.behalten,
       frage: ziel.frage,
     })
-    if (woerter(neu) >= woerter(ziel.text)) {
+    if (woerter(neu) >= woerter(ziel.text) || istUnvollstaendigerSprechsatz(neu)) {
       fest.add(ziel.key)
       continue
     }
     if (ziel.key === 'hook') props.hook = neu
-    else if (ziel.key === 'proof') props.proof = neu
-    else if (ziel.key === 'crack') props.crack = korrigiereCrackWortwahl(neu)
-    else {
-      const idx = Number(ziel.key.slice(1))
-      const pfeiler = props.pillars[idx]
-      if (pfeiler) {
-        // Abgeschnittene Adjektiv-Enden („massive recurring.“) verwerfen, Original behalten.
-        const probe = kuerzeGesprocheneZeile(neu, { maxWoerter: woerter(neu), maxZeichen: 78, behalten: ziel.behalten })
-        props.pillars[idx] = { ...pfeiler, line: probe }
-      }
-    }
   }
-  props.crack = korrigiereCrackWortwahl(props.crack)
+  props.crack = sichereKartenZeile(korrigiereCrackWortwahl(props.crack), { label: 'The crack' })
+  props.pillars = props.pillars.map((p) => ({
+    ...p,
+    line: sichereKartenZeile(p.line, { label: p.label, score: p.score }),
+  }))
   const repariert = hookPaar(
     props.hook,
     props.proof,
@@ -586,22 +580,28 @@ export async function generiereMoatShort(opts: {
   props.proof = repariert.proof
   let vorher = props.proof
   props.pillars = props.pillars.map((p) => {
-    const line = ohneNackteKennzahl(
-      vorher,
-      ohneGeteiltePhrase(vorher, ohneDoppelteWendung(vorher, p.line, props.metricValue, props.metricLabel, start.metrikId)),
-      props.metricValue,
-      props.metricLabel,
-      start.metrikId,
+    const line = sichereKartenZeile(
+      ohneNackteKennzahl(
+        vorher,
+        ohneGeteiltePhrase(vorher, ohneDoppelteWendung(vorher, p.line, props.metricValue, props.metricLabel, start.metrikId)),
+        props.metricValue,
+        props.metricLabel,
+        start.metrikId,
+      ),
+      { label: p.label, score: p.score },
     )
     vorher = line
     return line === p.line ? p : { ...p, line }
   })
-  props.crack = ohneNackteKennzahl(
-    vorher,
-    ohneGeteiltePhrase(vorher, ohneDoppelteWendung(vorher, props.crack, props.metricValue, props.metricLabel, start.metrikId)),
-    props.metricValue,
-    props.metricLabel,
-    start.metrikId,
+  props.crack = sichereKartenZeile(
+    ohneNackteKennzahl(
+      vorher,
+      ohneGeteiltePhrase(vorher, ohneDoppelteWendung(vorher, props.crack, props.metricValue, props.metricLabel, start.metrikId)),
+      props.metricValue,
+      props.metricLabel,
+      start.metrikId,
+    ),
+    { label: 'The crack' },
   )
   vorher = props.crack
   props.closing = ohneNackteKennzahl(

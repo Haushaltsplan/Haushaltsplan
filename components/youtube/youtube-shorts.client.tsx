@@ -19,7 +19,7 @@ import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { ziffernImText } from '@/lib/youtube/moat-caption'
 import { heroMetricAus } from '@/lib/youtube/moat-hero-metric'
-import { fremderKlassenSatz, hookPaar, istBeweisUebergabe, istOffeneBruecke, kickerZurZahl, korrigiereCrackWortwahl, kuerzeGesprocheneZeile, oeffneSprechende, ohneKennzahlId, sanitiereMoatFuerStimme, schliesseBeweis } from '@/lib/youtube/moat-short-script'
+import { fremderKlassenSatz, hookPaar, istBeweisUebergabe, istOffeneBruecke, istUnvollstaendigerSprechsatz, kickerZurZahl, korrigiereCrackWortwahl, kuerzeGesprocheneZeile, oeffneSprechende, ohneKennzahlId, sanitiereMoatFuerStimme, schliesseBeweis, sichereKartenZeile } from '@/lib/youtube/moat-short-script'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
 import { gespeicherteStimmeRegler, moatShortSprechFingerprint, speichereStimmeRegler } from '@/lib/youtube/moat-short-voice'
@@ -251,11 +251,14 @@ function pruefeLogo(url: string | null): Promise<string | null> {
 
 function zeileWennNoetig(text: string, opts?: { behalten?: string; maxWoerter?: number; frage?: boolean }): string {
   const roh = ohneKennzahlId(text).replace(/\s+/g, ' ').trim()
-  const woerter = roh.split(/\s+/).filter(Boolean).length
+  const n = roh.split(/\s+/).filter(Boolean).length
   const maxW = opts?.maxWoerter ?? 12
   const gestapelt = /\bno\s+\w+\s+can\s+avoid\b/i.test(roh) || /\bselling\s+\w+\s+no\s+/i.test(roh)
-  if (woerter <= maxW && roh.length <= 78 && !gestapelt) return roh
-  return kuerzeGesprocheneZeile(roh, { maxWoerter: maxW, maxZeichen: 78, behalten: opts?.behalten, frage: opts?.frage })
+  if (n <= maxW && roh.length <= 78 && !gestapelt) return roh
+  const kurz = kuerzeGesprocheneZeile(roh, { maxWoerter: maxW, maxZeichen: 78, behalten: opts?.behalten, frage: opts?.frage })
+  // Lieber das Original als einen Stummel mit Punkt.
+  if (!opts?.frage && istUnvollstaendigerSprechsatz(kurz) && !istUnvollstaendigerSprechsatz(roh)) return roh
+  return kurz
 }
 
 function kickerWennNoetig(kicker: string): string {
@@ -293,9 +296,12 @@ function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
     proof,
     hookLoop: '',
     business: ohneKennzahlId(p.business),
-    crack: ziffernImText(zeileWennNoetig(korrigiereCrackWortwahl(p.crack))),
+    crack: ziffernImText(sichereKartenZeile(korrigiereCrackWortwahl(p.crack), { label: 'The crack' })),
     closing: istOffeneBruecke(closingRoh, p.metricValue) ? oeffneSprechende(closingRoh) : closingRoh,
-    pillars: p.pillars.map((x) => ({ ...x, line: ziffernImText(zeileWennNoetig(x.line, { behalten: x.stat?.value })) })),
+    pillars: p.pillars.map((x) => ({
+      ...x,
+      line: ziffernImText(sichereKartenZeile(x.line, { label: x.label, score: x.score, behalten: x.stat?.value })),
+    })),
   }
 }
 

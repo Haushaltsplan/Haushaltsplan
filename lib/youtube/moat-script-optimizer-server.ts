@@ -11,6 +11,7 @@ import {
   kuerzeGesprocheneZeile,
   oeffneSprechende,
   schliesseBeweis,
+  sichereKartenZeile,
 } from '@/lib/youtube/moat-short-script'
 import type { StudioFeldId } from '@/lib/youtube/moat-script-supervisor'
 import type { MoatShortProps } from '@/remotion/moat-short-types'
@@ -59,15 +60,15 @@ function lokalFix(opts: OptimiererKontext): string | null {
     return oeffneSprechende(bruecke)
   }
   if (feld === 'crack') {
-    const t = korrigiereCrackWortwahl(props.crack)
+    const t = sichereKartenZeile(korrigiereCrackWortwahl(props.crack), { label: 'The crack' })
     if (t !== props.crack.replace(/\s+/g, ' ').trim()) return t
   }
   if (feld.startsWith('pillar')) {
     const i = Number(feld.slice(6))
-    const line = props.pillars[i]?.line
-    if (!line) return null
-    const neu = kuerzeGesprocheneZeile(line, { maxWoerter: 12, maxZeichen: 78 })
-    if (neu && neu !== line) return neu
+    const p = props.pillars[i]
+    if (!p?.line) return null
+    const neu = sichereKartenZeile(p.line, { label: p.label, score: p.score })
+    if (neu && neu !== p.line) return neu
   }
   return null
 }
@@ -141,8 +142,12 @@ function nachziehen(feld: StudioFeldId, roh: string, props: MoatShortProps): str
   let t = text(roh)
   if (feld === 'proof') t = schliesseBeweis(t)
   if (feld === 'closing') t = oeffneSprechende(t.includes('so the question is') ? t : `${t}, so the question is`)
-  if (feld === 'crack') t = korrigiereCrackWortwahl(kuerzeGesprocheneZeile(t, { maxWoerter: 12, maxZeichen: 78 }))
-  if (feld.startsWith('pillar')) t = kuerzeGesprocheneZeile(t, { maxWoerter: 12, maxZeichen: 78 })
+  if (feld === 'crack') t = sichereKartenZeile(korrigiereCrackWortwahl(t), { label: 'The crack' })
+  if (feld.startsWith('pillar')) {
+    const i = Number(feld.slice(6))
+    const p = props.pillars[i]
+    t = sichereKartenZeile(t, { label: p?.label, score: p?.score })
+  }
   if (feld === 'hook') t = kuerzeGesprocheneZeile(t, { maxWoerter: 10, maxZeichen: 78, frage: true })
   if (feld === 'kicker') {
     t = t.replace(/[.!?…]/g, '').trim()

@@ -650,7 +650,7 @@ export function ohneGeteiltePhrase(vorher: string, zeile: string): string {
   t = t.replace(/\s+/g, ' ').replace(/\bthat that\b/gi, 'that').replace(/\s+([,.;!?])/g, '$1').trim()
   if (istBeweisUebergabe(zeile) || BRUECKE_ENDE.test(oeffneSprechende(zeile))) return oeffneSprechende(t)
   if (!/[.!?]$/.test(t)) t = `${t}.`
-  if (t.split(/\s+/).filter(Boolean).length < 4) return zeile
+  if (t.split(/\s+/).filter(Boolean).length < 4 || istUnvollstaendigerSprechsatz(t)) return zeile
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
@@ -664,7 +664,7 @@ export function ohneNackteKennzahl(vorher: string, zeile: string, wert: string, 
   let t = zeile.replace(new RegExp(quelle, 'ig'), 'That figure')
   t = t.replace(/\s+/g, ' ').replace(/\bthat that\b/gi, 'that').replace(/\s+([,.;!?])/g, '$1').trim()
   if (!/[.!?]$/.test(t)) t = `${t}.`
-  if (t.split(/\s+/).filter(Boolean).length < 4) return zeile
+  if (t.split(/\s+/).filter(Boolean).length < 4 || istUnvollstaendigerSprechsatz(t)) return zeile
   return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
@@ -867,7 +867,7 @@ export function zuLangeSaetze(text: string, max = SATZ_MAX_WOERTER): string[] {
 }
 
 const SCHLECHTES_ENDE = new Set(
-  'a an the of and or to for in on with from by at out into that so because which who just than as if when while both every their its this these those next them him her your our per via can could would should might must will shall did does is are was were be been being'.split(
+  'a an the of and or to for in on with from by at out into onto upon over under across through during against toward towards among between until unless despite within without before after about around along near like as per via than vs versus can could would should might must will shall did does is are was were be been being'.split(
     ' ',
   ),
 )
@@ -906,7 +906,7 @@ function endetOhneObjekt(text: string): boolean {
  * „brings massive recurring.“ fehlt das Substantiv (revenue / fees / income).
  */
 const ABGEBROCHENES_ENDE = new Set(
-  'endless legal operational massive global institutional financial regulatory competitive significant extreme absolute huge tiny major severe heavy pure gross operating pricing dominant several various ongoing remaining potential existing recurring annual quarterly monthly total net free high low strong weak sticky stable rising falling growing shrinking durable structural recurring'.split(
+  'endless legal operational massive global local regional national international institutional regulatory competitive significant extreme absolute huge tiny major severe heavy pure dominant several various ongoing remaining potential existing recurring annual quarterly monthly total net free high low strong weak sticky stable rising falling growing shrinking durable structural exclusive wholesale retail strategic permanent temporary incremental'.split(
     ' ',
   ),
 )
@@ -915,7 +915,12 @@ function endetAufAbbruch(text: string): boolean {
   const last = letztesWort(text)
   if (!last || SCHLECHTES_ENDE.has(last)) return true
   if (ABGEBROCHENES_ENDE.has(last)) return true
-  if (/^(operating|gross|legal|operational|institutional|regulatory|competitive|financial|recurring)$/.test(last)) return true
+  // „gross“ / „operating“ allein am Ende = abgeschnittene Kennzahl, nicht „wholesale pricing“.
+  const w = woerter(text)
+  const prev = (w[w.length - 2] ?? '').replace(/[^A-Za-z]/g, '').toLowerCase()
+  if (/^(gross|operating|financial)$/.test(last) && (!prev || ABGEBROCHENES_ENDE.has(prev) || SCHLECHTES_ENDE.has(prev))) {
+    return true
+  }
   return false
 }
 
@@ -998,25 +1003,18 @@ function relativStummel(text: string): boolean {
   return rest.trim().split(/\s+/).filter(Boolean).length <= 3
 }
 
+/** Nur Füllphrasen — nie das Objekt hinter of/for/in/without abschneiden. */
 const KUERZ_MUSTER = [
-  /\s+no\s+.+$/i,
-  /\s+of\s+(?:a|an|the)\s+.+?(?=\s+(?:is|are|was|were)\b)/i,
-  /\s+of\s+(?:a|an|the)\s+.+$/i,
-  /\s+for\s+(?:a|an|the)\s+.+$/i,
+  /\s+\b(?:both|just|already|still|really|actually|very)\b/gi,
   /\s+just to\s+.+$/i,
-  /\s+that\s+.+$/i,
-  /\s+which\s+.+$/i,
-  /\s+who\s+.+$/i,
   /,\s*so\s+.+$/i,
-  /\s+so\s+.+$/i,
-  /\s+in\s+(?:one|a|the|this|that)\s+.+$/i,
-  /,\s+.+$/,
   /\s+because\s+.+$/i,
-  /\s+selling\s+.+$/i,
-  /\s+of\s+.+$/i,
 ]
 
-/** Schneidet Füllphrasen, bis der Satz in Untertitel und Zeitbudget passt. Die Kennzahl bleibt stehen. */
+/**
+ * Kürzt nur mit sicheren Muster-Cuts. Nie Wort-für-Wort vom Ende,
+ * nie ein unvollständiger Satz mit angehängtem Punkt.
+ */
 export function kuerzeGesprocheneZeile(
   roh: string,
   opts?: { maxWoerter?: number; maxZeichen?: number; behalten?: string; bruecke?: boolean; frage?: boolean },
@@ -1032,6 +1030,7 @@ export function kuerzeGesprocheneZeile(
   const fertig = (s: string) => satzEnde(s, bruecke, Boolean(opts?.frage))
   const gueltig = (s: string) => {
     const out = fertig(s)
+    if (istUnvollstaendigerSprechsatz(out) && !bruecke) return false
     return (
       woerter(out).length >= 7 &&
       woerter(out).length <= maxW &&
@@ -1042,52 +1041,97 @@ export function kuerzeGesprocheneZeile(
   }
   if (gueltig(start)) return fertig(start)
 
-  const nachbarn = (basis: string): { text: string; art: 'muster' | 'wort' }[] => {
+  const nachbarn = (basis: string): string[] => {
     const rohBasis = basis.replace(/[.!?…]+$/u, '').trim()
-    const aus: { text: string; art: 'muster' | 'wort' }[] = []
-    const merke = (next: string, art: 'muster' | 'wort') => {
+    const aus: string[] = []
+    const merke = (next: string) => {
       const s = next.replace(/[,;:\s]+$/g, '').replace(/\s+/g, ' ').trim()
-      if (s && s !== rohBasis) aus.push({ text: s, art })
+      if (s && s !== rohBasis) aus.push(s)
     }
-    merke(rohBasis.replace(/\b(?:both|just|already|still|really|actually|very)\b/i, ''), 'muster')
     for (const re of KUERZ_MUSTER) {
       if (!re.test(rohBasis)) continue
-      merke(rohBasis.replace(re, ''), 'muster')
+      merke(rohBasis.replace(re, ' '))
     }
-    const teile = rohBasis.split(/\s+/).filter(Boolean)
-    if (teile.length > 7) merke(teile.slice(0, -1).join(' '), 'wort')
     return aus
   }
 
-  let wahl: { text: string; art: 'muster' | 'wort' } | null = null
+  let wahl: string | null = null
   const queue = [start]
   const gesehen = new Set<string>([start])
   let schritte = 0
-  while (queue.length && schritte < 48) {
+  while (queue.length && schritte < 32) {
     const basis = queue.shift()!
     schritte += 1
     for (const v of nachbarn(basis)) {
-      if (gesehen.has(v.text)) continue
-      gesehen.add(v.text)
-      if (woerter(v.text).length < 7) continue
-      if (muss && !v.text.includes(muss)) continue
-      queue.push(v.text)
-      if (!gueltig(v.text)) continue
-      if (!wahl) {
-        wahl = v
-        continue
-      }
-      const neuSt = relativStummel(v.text)
-      const altSt = relativStummel(wahl.text)
-      const besser =
-        (altSt && !neuSt) ||
-        (altSt === neuSt &&
-          ((v.art === 'muster' && wahl.art === 'wort') ||
-            (v.art === wahl.art && woerter(v.text).length > woerter(wahl.text).length)))
-      if (besser) wahl = v
+      if (gesehen.has(v)) continue
+      gesehen.add(v)
+      if (woerter(v).length < 7) continue
+      if (muss && !v.includes(muss)) continue
+      queue.push(v)
+      if (!gueltig(v)) continue
+      if (!wahl || woerter(v).length > woerter(wahl).length) wahl = v
     }
   }
-  return fertig(wahl?.text ?? start)
+  // Kein gültiger kürzerer Satz → Original behalten, nie Stummel + Punkt.
+  if (wahl) return fertig(wahl)
+  return fertig(start)
+}
+
+/**
+ * Häufige Moat-Stummel: fehlendes Substantiv nach Präposition/Adjektiv nachziehen.
+ * Nur sichere Ergänzungen — sonst null → Fallback.
+ */
+function versucheKartenVervollstaendigung(text: string): string | null {
+  const kern = text.replace(/[.!?…,;:\s]+$/u, '').trim()
+  if (!kern) return null
+  const last = letztesWort(kern)
+  const noun: Record<string, string> = {
+    without: 'middlemen',
+    wholesale: 'pricing',
+    retail: 'pricing',
+    local: 'markets',
+    regional: 'markets',
+    recurring: 'revenue',
+    exclusive: 'access',
+    massive: 'scale',
+    operational: 'friction',
+    legal: 'friction',
+    competitive: 'edge',
+  }
+  const anhang = noun[last]
+  if (!anhang) return null
+  const fertig = satzEnde(`${kern} ${anhang}`, false, false)
+  // „entering local markets.“ hat nur 3 Wörter — reicht, wenn das Ende sauber ist.
+  if (woerter(fertig).length < 3 || endetAufAbbruch(fertig) || endetOhneObjekt(fertig) || haengtPartizip(fertig)) {
+    return null
+  }
+  return fertig
+}
+
+/**
+ * Moat-Karten und Crack: kein hartes Abschneiden.
+ * Unvollständige Enden (without / local / wholesale) werden vervollständigt oder ersetzt.
+ */
+export function sichereKartenZeile(
+  roh: string,
+  opts?: { label?: string; score?: number; behalten?: string },
+): string {
+  const label = (opts?.label || 'This edge').trim()
+  const score = opts?.score
+  const fallback =
+    score != null && Number.isFinite(score)
+      ? `${label} still holds at ${Math.round(score)} out of ten.`
+      : `${label} still holds against rivals.`
+  let t = ohneKiBindestrich(roh).replace(/\s+/g, ' ').trim()
+  if (!t) return fallback
+  t = sprichNatuerlich(t)
+  t = satzEnde(t, false, false)
+  // Kurze, vollständige Sätze (≤12 Wörter) behalten — kein ≥6-Wort-Zwang.
+  if (!istUnvollstaendigerSprechsatz(t) && woerter(t).length >= 4) return t
+  const ergaenzt = versucheKartenVervollstaendigung(t)
+  if (ergaenzt && !istUnvollstaendigerSprechsatz(ergaenzt)) return ergaenzt
+  // Modell lieferte schon einen Stummel — nicht weiter kürzen, sondern ersetzen.
+  return fallback
 }
 
 export function scriptTonWarnungen(texte: string[]): string[] {
