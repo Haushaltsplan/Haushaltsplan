@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { EarningsShortsClient } from '@/components/youtube/earnings-shorts.client'
+import { MoatScriptStudio } from '@/components/youtube/moat-script-studio.client'
 import { VidiqClient } from '@/components/youtube/vidiq.client'
 import { YoutubeEigeneTags } from '@/components/youtube/youtube-eigene-tags'
 import { PageChrome, PageHero } from '@/components/page-shell'
@@ -18,13 +19,12 @@ import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { ziffernImText } from '@/lib/youtube/moat-caption'
 import { heroMetricAus } from '@/lib/youtube/moat-hero-metric'
-import { doppelteWendung, fremderKlassenSatz, hookKarteFuerUnternehmen, hookPaar, istBeweisUebergabe, istOffeneBruecke, kickerZurZahl, kuerzeGesprocheneZeile, oeffneSprechende, ohneKennzahlId, sanitiereMoatFuerStimme, schaetzeSprechsekunden, schliesseBeweis, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
+import { fremderKlassenSatz, hookPaar, istBeweisUebergabe, istOffeneBruecke, kickerZurZahl, korrigiereCrackWortwahl, kuerzeGesprocheneZeile, oeffneSprechende, ohneKennzahlId, sanitiereMoatFuerStimme, schliesseBeweis } from '@/lib/youtube/moat-short-script'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
 import { gespeicherteStimmeRegler, moatShortSprechFingerprint, speichereStimmeRegler } from '@/lib/youtube/moat-short-voice'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
 import { branchenAnker, subLabelAusBeweis } from '@/lib/youtube/moat-branchen-anker'
-import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortVoiceWort } from '@/remotion/moat-short-types'
 import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
 
@@ -52,12 +52,6 @@ function tagsFuerUpload(
     .map((s) => s.replace(/[^A-Za-z0-9 ]/g, '').trim())
     .filter(Boolean)
   return tagsSichtbar([ticker, ...hashes, ...extra], eigene, [])
-}
-
-const WINKEL_LABEL: Record<string, string> = {
-  number_shock: 'Zahl schockt',
-  contrast: 'Kontrast',
-  stakes: 'Was auf dem Spiel steht',
 }
 
 const HOOK_WINKEL = ['number_shock', 'contrast', 'stakes'] as const
@@ -299,7 +293,7 @@ function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
     proof,
     hookLoop: '',
     business: ohneKennzahlId(p.business),
-    crack: ziffernImText(zeileWennNoetig(p.crack)),
+    crack: ziffernImText(zeileWennNoetig(korrigiereCrackWortwahl(p.crack))),
     closing: istOffeneBruecke(closingRoh, p.metricValue) ? oeffneSprechende(closingRoh) : closingRoh,
     pillars: p.pillars.map((x) => ({ ...x, line: ziffernImText(zeileWennNoetig(x.line, { behalten: x.stat?.value })) })),
   }
@@ -307,9 +301,6 @@ function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
 
 const feldKlasse =
   'w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm text-[var(--app-text)] focus:outline-none focus:ring-2 focus:ring-red-500/40'
-
-const studioFeld =
-  'w-full rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-[13px] text-neutral-100 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] focus:border-emerald-400/40 focus:outline-none focus:ring-2 focus:ring-emerald-400/25'
 
 function Wellenform({ aktiv, peaks }: { aktiv: boolean; peaks: number[] | null }) {
   const balken = peaks ?? Array.from({ length: 28 }, () => 0.28)
@@ -492,25 +483,6 @@ export function YoutubeShortsClient() {
       }
     : null
   const beschreibung = uploadBeschreibung
-  const fremd =
-    props && ergebnis
-      ? fremdeZahlen(
-          [props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing].join(' '),
-          ergebnis.metriken,
-          [ergebnis.moat.score, ...props.pillars.map((p) => p.score)],
-        )
-      : []
-  const zahlenWarnung = fremd.length ? `Zahlen ohne Quelle im Export: ${fremd.join(', ')}` : null
-  const loopWarnung = props
-    ? [...scriptLoopWarnungen(props.hook, props.closing, props.metricValue, props.proof, props.metricLabel), ...scriptStoryWarnungen(props.hookLoop, props.crack)]
-    : []
-  const doppelHinweis = props ? doppelteWendung(props) : null
-  const stoppVorZahl = props ? /[.!?…,:;—–-]\s+(?:an?\s+)?\d/.test([props.proof, props.hook, props.crack, props.closing].join(' ')) : false
-  const flussOk = !doppelHinweis && !stoppVorZahl
-  const sprechSekunden = props
-    ? schaetzeSprechsekunden([props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing], tempo)
-    : 0
-  const dauerImFenster = sprechSekunden >= 27 && sprechSekunden <= 30
 
   useEffect(() => {
     if (!ergebnis) return
@@ -1202,174 +1174,24 @@ export function YoutubeShortsClient() {
                 </ul>
               ) : null}
 
-              <div className="space-y-3 rounded-2xl border border-neutral-800 bg-neutral-950/90 p-3 shadow-[0_0_0_1px_rgba(255,255,255,0.04),0_16px_40px_rgba(0,0,0,0.35)] backdrop-blur-md">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-neutral-400">Script studio</p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void navigator.clipboard.writeText(scriptZumKopieren(props)).then(
-                          () => toast.success('Script kopiert'),
-                          () => toast.error('Kopieren fehlgeschlagen.'),
-                        )
-                      }
-                      className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-200 hover:border-neutral-600"
-                    >
-                      Script kopieren
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${dauerImFenster ? 'border-emerald-500/40 text-emerald-200' : 'border-amber-500/40 text-amber-200'}`}>
-                      ~{sprechSekunden.toFixed(0)}s · Ziel 27–30s
-                    </span>
-                    <span className={`rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${flussOk ? 'border-emerald-400/50 bg-emerald-400/10 text-emerald-100' : 'border-amber-400/60 bg-amber-400/10 text-amber-100'}`}>
-                      {doppelHinweis ? 'Warning: Duplicate Phrase Detected' : stoppVorZahl ? 'Warning: Pause Before Number' : 'Grammar & Pacing OK'}
-                    </span>
-                  </div>
-                </div>
-                {doppelHinweis ? <p className="font-mono text-[11px] text-amber-200/90">{doppelHinweis}</p> : null}
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                {hookKarten(ergebnis.hookVarianten).map((h) => {
-                  const m = ergebnis.metriken.find((x) => x.id === h.metrikId)
-                  const karte = hookKarteFuerUnternehmen({
-                    winkel: h.winkel,
-                    claim: h.claim,
-                    proof: h.proof,
-                    firma: props.firmenname,
-                    wert: m?.value ?? props.metricValue,
-                    label: m?.label ?? props.metricLabel,
-                    id: m?.id ?? h.metrikId,
-                    kontext: geschaeftsKontext(props, ergebnis),
-                  })
-                  const aktiv = props.hook === karte.frage && props.proof === karte.antwort
-                  return (
-                    <button
-                      key={`${h.winkel}-${h.metrikId}`}
-                      type="button"
-                      aria-pressed={aktiv}
-                      onClick={() => waehleHook(karte.frage, karte.antwort, h.metrikId)}
-                      className={`rounded-xl border px-3 py-3 text-left transition ${
-                        aktiv
-                          ? 'border-emerald-400/70 bg-emerald-400/10 shadow-[0_0_24px_rgba(52,211,153,0.16)]'
-                          : 'border-neutral-800 bg-neutral-950 hover:border-neutral-600'
-                      }`}
-                    >
-                      <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-300/80">
-                        {WINKEL_LABEL[h.winkel]}
-                      </span>
-                      <span className="mt-2 block text-sm font-medium text-neutral-100">{karte.frage}</span>
-                      <span className="mt-1 block font-mono text-[11px] leading-relaxed text-neutral-400">{karte.antwort}</span>
-                    </button>
+              <MoatScriptStudio
+                props={props}
+                ergebnis={ergebnis}
+                tempo={tempo}
+                geschaeft={geschaeftsKontext(props, ergebnis)}
+                hookKarten={hookKarten(ergebnis.hookVarianten)}
+                onProps={(next) => {
+                  if (typeof next === 'function') setProps((p) => (p ? next(p) : p))
+                  else setProps(next)
+                }}
+                onHookWahl={waehleHook}
+                onScriptKopieren={() =>
+                  void navigator.clipboard.writeText(scriptZumKopieren(props)).then(
+                    () => toast.success('Script kopiert'),
+                    () => toast.error('Kopieren fehlgeschlagen.'),
                   )
-                })}
-                </div>
-
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
-                  Blickfang, nur im Bild. 2–5 Wörter.
-                  <input value={props.kicker} onChange={(e) => setze('kicker', e.target.value)} className={`${studioFeld} mt-1`} />
-                </label>
-                <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
-                  Große Zahl, ab Frame 0 im Bild.
-                <select
-                  value={ergebnis.metriken.find((m) => m.value === props.metricValue && m.label === props.metricLabel)?.id ?? ''}
-                  onChange={(e) => {
-                    const m = ergebnis.metriken.find((x) => x.id === e.target.value)
-                    if (m) {
-                      setProps((p) =>
-                        p
-                          ? {
-                              ...p,
-                              metricValue: m.value,
-                              metricLabel: m.label,
-                              proof: heroMetricAus(m.value, m.label, p.proof).spoken_reference,
-                              heroMetric: heroMetricAus(m.value, m.label, p.proof),
-                            }
-                          : p,
-                      )
-                    }
-                  }}
-                  className={`${studioFeld} mt-1`}
-                >
-                  {ergebnis.metriken
-                    .filter((m) => m.hook)
-                    .map((m) => (
-                      <option key={m.id} value={m.id}>
-                        Große Zahl: {m.label} · {m.value}
-                      </option>
-                    ))}
-                </select>
-                </label>
-                <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500 md:col-span-2">
-                  Frage, gesprochen ab Sekunde 0. Ohne die Zahl.
-                  <textarea value={props.hook} onChange={(e) => setze('hook', e.target.value)} rows={2} className={`${studioFeld} mt-1`} />
-                </label>
-                <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500 md:col-span-2">
-                  Antwort: Treiber, Zahl, Folge. Ein Atemzug.
-                  <textarea value={props.proof} onChange={(e) => setze('proof', e.target.value)} rows={2} className={`${studioFeld} mt-1`} />
-                </label>
-                </div>
-                {loopWarnung.map((w) => (
-                  <p key={w} className="text-xs text-amber-300">
-                    {w}
-                  </p>
-                ))}
-                {zahlenWarnung ? <p className="font-mono text-[11px] text-amber-200">{zahlenWarnung}</p> : null}
-
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              {props.pillars.map((p, i) => (
-                <div key={p.id} className="rounded-xl border border-neutral-800 bg-neutral-950 p-2">
-                  <label className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">
-                    {p.label} · {p.score}/10
-                  </label>
-                  <input
-                    value={p.line}
-                    onChange={(e) =>
-                      setze(
-                        'pillars',
-                        props.pillars.map((x, j) => (j === i ? { ...x, line: e.target.value } : x)),
-                      )
-                    }
-                    className={`${studioFeld} mt-1`}
-                  />
-                  <select
-                    value={ergebnis.metriken.find((m) => m.value === p.stat?.value && m.label === p.stat?.label)?.id ?? ''}
-                    onChange={(e) => {
-                      const m = ergebnis.metriken.find((x) => x.id === e.target.value)
-                      setze(
-                        'pillars',
-                        props.pillars.map((x, j) => (j === i ? { ...x, stat: m ? { value: m.value, label: m.label } : null } : x)),
-                      )
-                    }}
-                    className={`${studioFeld} mt-1 text-xs`}
-                  >
-                    <option value="">Kein Zahlen-Schild</option>
-                    {ergebnis.metriken.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        Schild: {m.label} · {m.value}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-              </div>
-
-              <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
-                The crack — löst den Spannungssatz
-                <textarea value={props.crack} onChange={(e) => setze('crack', e.target.value)} rows={2} className={`${studioFeld} mt-1`} />
-              </label>
-
-              <label className="block font-mono text-[10px] uppercase tracking-wider text-neutral-500">
-                Landung — offene Brücke, kein Schlusssatz.
-                <textarea value={props.closing} onChange={(e) => setze('closing', e.target.value)} rows={2} className={`${studioFeld} mt-1`} />
-              </label>
-              <p className="rounded-lg border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-[11px] leading-relaxed text-neutral-400">
-                <span className="text-neutral-100">{props.closing}</span>
-                {' → '}
-                {props.hook}
-              </p>
-              </div>
+                }
+              />
 
               <div className="rounded-xl border border-[var(--app-border)] p-3 text-sm">
                 <p className="text-xs font-medium text-[var(--app-text-muted)]">Upload — Titel, Beschreibung, Kommentar</p>

@@ -770,7 +770,7 @@ function LiveScore({
           {name} LIVE SCORE: {stand.wert.toFixed(1)} / 10
         </span>
         {stand.delta ? (
-          <span style={{ color: VERDICT_FARBE.none, fontWeight: 700 }}>-{plan.crackPenalty.toFixed(1)}</span>
+          <span style={{ marginLeft: 6, color: VERDICT_FARBE.none, fontWeight: 700 }}>-{plan.crackPenalty.toFixed(1)}</span>
         ) : null}
       </div>
     </div>

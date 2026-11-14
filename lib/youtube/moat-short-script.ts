@@ -671,6 +671,8 @@ export function ohneNackteKennzahl(vorher: string, zeile: string, wert: string, 
 function kennzahlVorDerZahl(text: string, wert: string, label: string, id = ''): boolean {
   const idx = text.toLowerCase().indexOf(wert.toLowerCase())
   if (idx < 0) return false
+  // „Costco's return on capital hits 22.6%“ nennt die Kennzahl, sie ist nicht die Ursache.
+  if (/\b(?:hits|sits at|is|at)\s+\d/i.test(text.slice(Math.max(0, idx - 48), idx + wert.length + 2))) return false
   const kopf = text.slice(0, idx).toLowerCase()
   const namen = kennzahlGesprochen(label, id)
     .toLowerCase()
@@ -899,9 +901,12 @@ function endetOhneObjekt(text: string): boolean {
   )
 }
 
-/** Adjektive, die keinen Satz beenden dürfen. „pay endless“ fehlt das Substantiv. */
+/**
+ * Adjektive und Satzfetzen, die keinen gesprochenen Satz beenden dürfen.
+ * „brings massive recurring.“ fehlt das Substantiv (revenue / fees / income).
+ */
 const ABGEBROCHENES_ENDE = new Set(
-  'endless legal operational massive global institutional financial regulatory competitive significant extreme absolute huge tiny major severe heavy pure gross operating pricing dominant several various ongoing remaining potential existing'.split(
+  'endless legal operational massive global institutional financial regulatory competitive significant extreme absolute huge tiny major severe heavy pure gross operating pricing dominant several various ongoing remaining potential existing recurring annual quarterly monthly total net free high low strong weak sticky stable rising falling growing shrinking durable structural recurring'.split(
     ' ',
   ),
 )
@@ -909,12 +914,8 @@ const ABGEBROCHENES_ENDE = new Set(
 function endetAufAbbruch(text: string): boolean {
   const last = letztesWort(text)
   if (!last || SCHLECHTES_ENDE.has(last)) return true
-  if (/^(operating|gross|legal|operational|institutional|regulatory|competitive|financial)$/.test(last)) return true
-  const w = woerter(text)
-  const prev = (w[w.length - 2] ?? '').replace(/[^A-Za-z]/g, '').toLowerCase()
-  if (ABGEBROCHENES_ENDE.has(last) && /^(pay|pays|paying|charge|charges|charging|cause|causes|causing|face|faces|facing|and|or)$/.test(prev)) {
-    return true
-  }
+  if (ABGEBROCHENES_ENDE.has(last)) return true
+  if (/^(operating|gross|legal|operational|institutional|regulatory|competitive|financial|recurring)$/.test(last)) return true
   return false
 }
 
@@ -928,12 +929,40 @@ function satzUnbrauchbar(text: string): boolean {
   return endetAufAbbruch(text) || unvollstaendigeAufzaehlung(text) || haengtPartizip(text) || endetOhneObjekt(text)
 }
 
+/** Öffentlich für Studio-Überwacher und Optimierer. */
+export function istUnvollstaendigerSprechsatz(text: string): boolean {
+  const t = text.replace(/\s+/g, ' ').trim()
+  if (!t) return true
+  if (istBeweisUebergabe(t) || BRUECKE_ENDE.test(oeffneSprechende(t))) return false
+  return satzUnbrauchbar(t) || !endetSauber(t)
+}
+
 function klingtNachMensch(text: string): boolean {
-  if (haengtPartizip(text) || endetAufAbbruch(text) || endetOhneObjekt(text)) return false
+  if (haengtPartizip(text) || endetAufAbbruch(text) || endetOhneObjekt(text) || unvollstaendigeAufzaehlung(text)) return false
   if (/\bselling\s+\w+\.?$/i.test(text.trim())) return false
   if (/\bno\s+\w+\s+can\s+avoid\b/i.test(text)) return false
   if (/\b(operational complexity|ecosystem)\b/i.test(text)) return false
   return endetSauber(text)
+}
+
+/**
+ * Verwechslungen im Crack: „stigmatized“ klingt nach Schande, gemeint ist oft „stagnant“.
+ * Nur klare Wortfallen, keine inhaltliche Umschreibung des Risikos.
+ */
+const CRACK_WORTFALLEN: [RegExp, string][] = [
+  [/\bstigmatized\b/gi, 'stagnant'],
+  [/\bstigmatised\b/gi, 'stagnant'],
+  [/\bstigmatizing\b/gi, 'stagnating'],
+  [/\bstigmatising\b/gi, 'stagnating'],
+  [/\bstigma\b/gi, 'stall'],
+]
+
+export function korrigiereCrackWortwahl(text: string): string {
+  let t = text.replace(/\s+/g, ' ').trim()
+  for (const [re, zu] of CRACK_WORTFALLEN) t = t.replace(re, zu)
+  t = t.replace(/\s+/g, ' ').trim()
+  if (!t) return t
+  return t.charAt(0).toUpperCase() + t.slice(1)
 }
 
 /** Gestapelte KI-Schlüsse werden zu einem Satz, den man laut sagen kann. */

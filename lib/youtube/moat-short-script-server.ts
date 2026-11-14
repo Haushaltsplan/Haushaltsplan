@@ -27,6 +27,7 @@ import {
   ohneNackteKennzahl,
   kickerFuerBild,
   antwortFuerKennzahl,
+  korrigiereCrackWortwahl,
   oeffneSprechende,
   schliesseBeweis,
   kuerzeGesprocheneZeile,
@@ -226,11 +227,20 @@ Length is part of the voice. One verb, then stop. A third clause is what forces 
 
 Crack, the one threat
 Good: "Government fee caps and instant payments threaten margins."
+Good: "Stagnant renewal rates would shrink the cash engine."
 Bad: "Stricter government fee caps and direct account to account payment rails could compress margins."
-Same move for every company: name the threat and stop. Do not explain the mechanism in the same sentence.
+Bad: "Stigmatized renewal rates hurt the brand." — wrong word. Use the finance term: stagnant, falling, compressed, capped. Never social-adjective near-misses.
+Same move for every company: name the measurable threat and stop. Do not explain the mechanism in the same sentence. Prefer precise finance nouns: renewal rates, fee caps, churn, regulation, export controls, margin compression.
+
+Pillar cards, every spoken line
+- A complete English sentence with subject, verb, and a concrete noun object. End with a period.
+- Bad: "Membership brings massive recurring." The adjective has no noun.
+- Good: "Membership brings massive recurring revenue."
+- Bad: "High barriers drive durable." Good: "High barriers drive durable pricing power."
+- Never end a pillar on an adjective alone: recurring, massive, endless, durable, sticky, structural, financial.
 
 - pillarLines: one per pillar, 8-9 words, under 70 characters, one complete spoken sentence in the pillar voice above, match the score. Nouns from THIS company only. At most TWO pillars get a metricId, and then the exact value is in the line. Otherwise metricId "none". No pillar may repeat a phrase from the sentence before it. The first pillar must not say the hook metric, the driver, or "pricing power" again. A later pillar may use a different metric.
-- crack: 8-9 words, under 70 characters, ONE concrete threat. This is the first time the threat is named. No sign-off.
+- crack: 8-9 words, under 70 characters, ONE concrete finance threat with the right noun. This is the first time the threat is named. No sign-off.
 
 ## Hard rules
 - Use ONLY facts and numbers from the data provided. Never invent numbers, customers, market shares, years or events.
@@ -421,7 +431,7 @@ export async function generiereMoatShort(opts: {
   ]
     .filter(Boolean)
     .join('\n')
-  const crack = kuerzeGesprocheneZeile(sprechtext(roh.crack), { maxWoerter: 12, maxZeichen: 78 })
+  const crack = kuerzeGesprocheneZeile(korrigiereCrackWortwahl(sprechtext(roh.crack)), { maxWoerter: 12, maxZeichen: 78 })
   const hookVarianten: MoatShortHookVariante[] = objekte(roh.hooks)
     .map((h) => {
       const metrikId = hookMetriken.some((m) => m.id === h.metricId) ? text(h.metricId) : hookMetriken[0]!.id
@@ -517,9 +527,12 @@ export async function generiereMoatShort(opts: {
   }
   props.hook = ziffernImText(props.hook)
   props.proof = ziffernImText(props.proof)
-  props.crack = ziffernImText(props.crack)
+  props.crack = ziffernImText(korrigiereCrackWortwahl(props.crack))
   props.closing = ziffernImText(props.closing)
-  props.pillars = props.pillars.map((p) => ({ ...p, line: ziffernImText(p.line) }))
+  props.pillars = props.pillars.map((p) => ({
+    ...p,
+    line: ziffernImText(kuerzeGesprocheneZeile(p.line, { maxWoerter: 12, maxZeichen: 78, behalten: p.stat?.value })),
+  }))
 
   const fest = new Set<string>()
   for (let runde = 0; runde < 16; runde++) {
@@ -547,13 +560,18 @@ export async function generiereMoatShort(opts: {
     }
     if (ziel.key === 'hook') props.hook = neu
     else if (ziel.key === 'proof') props.proof = neu
-    else if (ziel.key === 'crack') props.crack = neu
+    else if (ziel.key === 'crack') props.crack = korrigiereCrackWortwahl(neu)
     else {
       const idx = Number(ziel.key.slice(1))
       const pfeiler = props.pillars[idx]
-      if (pfeiler) props.pillars[idx] = { ...pfeiler, line: neu }
+      if (pfeiler) {
+        // Abgeschnittene Adjektiv-Enden („massive recurring.“) verwerfen, Original behalten.
+        const probe = kuerzeGesprocheneZeile(neu, { maxWoerter: woerter(neu), maxZeichen: 78, behalten: ziel.behalten })
+        props.pillars[idx] = { ...pfeiler, line: probe }
+      }
     }
   }
+  props.crack = korrigiereCrackWortwahl(props.crack)
   const repariert = hookPaar(
     props.hook,
     props.proof,
