@@ -18,7 +18,7 @@ import { rendereMoatShortImBrowser } from '@/lib/youtube/moat-short-render-web'
 import { PUBLISH_ZIELE } from '@/lib/youtube/publish-ziele'
 import { ziffernImText } from '@/lib/youtube/moat-caption'
 import { heroMetricAus } from '@/lib/youtube/moat-hero-metric'
-import { doppelteWendung, fremderKlassenSatz, hookKarteFuerUnternehmen, hookPaar, istOffeneBruecke, kickerZurZahl, kuerzeGesprocheneZeile, oeffneSprechende, ohneKennzahlId, sanitiereMoatFuerStimme, schaetzeSprechsekunden, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
+import { doppelteWendung, fremderKlassenSatz, hookKarteFuerUnternehmen, hookPaar, istBeweisUebergabe, istOffeneBruecke, kickerZurZahl, kuerzeGesprocheneZeile, oeffneSprechende, ohneKennzahlId, sanitiereMoatFuerStimme, schaetzeSprechsekunden, schliesseBeweis, scriptLoopWarnungen, scriptStoryWarnungen } from '@/lib/youtube/moat-short-script'
 import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
 import { gespeicherteStimmeRegler, moatShortSprechFingerprint, speichereStimmeRegler } from '@/lib/youtube/moat-short-voice'
@@ -237,12 +237,15 @@ function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
       frage: alsFrage,
     }),
   )
+  const proofRoh = p.proof.replace(/\s+/g, ' ').trim()
   const proof = ziffernImText(
-    p.proof.trim()
-      ? /\b(?:lets|let) them print\b|\b(?:drives|drive)\b/i.test(p.proof)
-        ? p.proof.replace(/\s+/g, ' ').trim()
-        : zeileWennNoetig(p.proof, { behalten: p.metricValue, maxWoerter: 14 })
-      : p.proof,
+    istBeweisUebergabe(proofRoh)
+      ? schliesseBeweis(proofRoh)
+      : proofRoh && /\b(?:lets|let) them print\b|\b(?:drives|drive)\b/i.test(proofRoh)
+        ? proofRoh
+        : proofRoh
+          ? zeileWennNoetig(proofRoh, { behalten: p.metricValue, maxWoerter: 14 })
+          : p.proof,
   )
   const closingRoh = ziffernImText(istOffeneBruecke(p.closing, p.metricValue) ? ohneKennzahlId(p.closing) : p.closing)
   return {

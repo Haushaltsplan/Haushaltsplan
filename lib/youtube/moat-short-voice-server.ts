@@ -28,20 +28,22 @@ async function elevenLabsSprechen(
     Accept: 'application/json',
   }
   const basis = { text, model_id: modell, voice_settings }
-  const mitSprache = await fetch(`${TTS_URL}/${encodeURIComponent(voice)}/with-timestamps`, {
-    method: 'POST',
-    headers: kopf,
-    body: JSON.stringify({ ...basis, language_code: STIMME_SPRACHE }),
-    signal: AbortSignal.timeout(45_000),
-  })
-  if (mitSprache.ok || mitSprache.status !== 400) return mitSprache
-  await mitSprache.text().catch(() => '')
-  return fetch(`${TTS_URL}/${encodeURIComponent(voice)}/with-timestamps`, {
-    method: 'POST',
-    headers: kopf,
-    body: JSON.stringify(basis),
-    signal: AbortSignal.timeout(45_000),
-  })
+  const url = `${TTS_URL}/${encodeURIComponent(voice)}/with-timestamps`
+  const post = (body: Record<string, unknown>) =>
+    fetch(url, {
+      method: 'POST',
+      headers: kopf,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(45_000),
+    })
+  try {
+    const mitSprache = await post({ ...basis, language_code: STIMME_SPRACHE })
+    if (mitSprache.ok) return mitSprache
+    await mitSprache.text().catch(() => '')
+  } catch {
+    /* Sprachzwang abgelehnt — der Aufruf ohne language_code spricht trotzdem. */
+  }
+  return post(basis)
 }
 /** ElevenLabs speed: 0,7–1,2. 1,15 zieht Moat-Shorts in das 30–35-Sekunden-Fenster. */
 export const MOAT_STIMME_SPEED = 1.15

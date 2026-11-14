@@ -637,14 +637,18 @@ const GETEILTE_PHRASEN = [
 /** Dieselbe Inhaltsphrase nicht im nächsten Satz wiederholen. */
 export function ohneGeteiltePhrase(vorher: string, zeile: string): string {
   let t = zeile
+  let ersetzt = false
   const vorherL = vorher.toLowerCase()
   for (const phrase of GETEILTE_PHRASEN) {
     if (!vorherL.includes(phrase)) continue
     const re = new RegExp(`\\b${phrase}\\b`, 'ig')
     if (!re.test(t)) continue
     t = t.replace(new RegExp(`\\b${phrase}\\b`, 'ig'), phrase === 'pricing power' ? 'that edge' : 'that advantage')
+    ersetzt = true
   }
+  if (!ersetzt) return zeile
   t = t.replace(/\s+/g, ' ').replace(/\bthat that\b/gi, 'that').replace(/\s+([,.;!?])/g, '$1').trim()
+  if (istBeweisUebergabe(zeile) || BRUECKE_ENDE.test(oeffneSprechende(zeile))) return oeffneSprechende(t)
   if (!/[.!?]$/.test(t)) t = `${t}.`
   if (t.split(/\s+/).filter(Boolean).length < 4) return zeile
   return t.charAt(0).toUpperCase() + t.slice(1)
@@ -689,7 +693,7 @@ export function antwortFuerKennzahl(
 function proofIstDruck(text: string, wert: string, label: string, id: string, anker: BranchenAnker): boolean {
   if (!wert || !text.includes(wert) || /\?\s*$/.test(text.trim())) return false
   if (/^\s*because\b/i.test(text)) return false
-  if (kennzahlVorDerZahl(text, wert, label, id)) return false
+  if (kennzahlVorDerZahl(text, wert, label, id) && !/\b(?:hits|sits at)\s+\d/i.test(text)) return false
   if (ABSTRACT_BEWEIS.test(text) || /\bproving\b|\bmarket lock\b/i.test(text)) return false
   if (!istBeweisUebergabe(text)) return false
   if (!text.includes(anker.value)) return false
@@ -743,7 +747,13 @@ export function sanitiereMoatFuerStimme<T extends MoatSprechProps>(props: T): T 
   const wert = props.metricValue
   const label = props.metricLabel
   let proof = flussZurZahl(satzOhneDoppelteZahl(props.proof, wert, label))
-  if (wert && proof.includes(wert) && kennzahlVorDerZahl(proof, wert, label)) {
+  if (istBeweisUebergabe(proof)) proof = schliesseBeweis(proof)
+  if (
+    wert &&
+    proof.includes(wert) &&
+    kennzahlVorDerZahl(proof, wert, label) &&
+    !/\b(?:hits|sits at)\s+\d/i.test(proof)
+  ) {
     proof = antwortFuerKennzahl(wert, label, '', props.business)
   }
   const zeilen = [
@@ -764,16 +774,19 @@ export function sanitiereMoatFuerStimme<T extends MoatSprechProps>(props: T): T 
     return { key: z.key, text }
   })
   const nachKey = new Map(rein.map((z) => [z.key, z.text]))
+  let proofRaus = nachKey.get('proof') ?? proof
+  if (istBeweisUebergabe(proofRaus)) proofRaus = schliesseBeweis(proofRaus)
+  const closingRoh = nachKey.get('closing') ?? props.closing
   return {
     ...props,
     hook: nachKey.get('hook') ?? props.hook,
-    proof: nachKey.get('proof') ?? proof,
+    proof: proofRaus,
     pillars: props.pillars.map((p, i) => {
       const line = nachKey.get(`p${i}`) ?? p.line
       return line === p.line ? p : { ...p, line }
     }),
     crack: nachKey.get('crack') ?? props.crack,
-    closing: nachKey.get('closing') ?? props.closing,
+    closing: istOffeneBruecke(closingRoh, wert) ? oeffneSprechende(closingRoh) : closingRoh,
   }
 }
 
@@ -860,7 +873,7 @@ const SCHLECHTES_ENDE = new Set(
 function satzEnde(text: string, bruecke: boolean, frage = false): string {
   const kern = text.replace(/[.!?…,;:\s]+$/u, '').trim()
   if (!kern) return kern
-  if (bruecke || BRUECKE_ENDE.test(kern)) return kern
+  if (bruecke || BRUECKE_ENDE.test(kern) || istBeweisUebergabe(kern)) return kern
   if (frage || /\?\s*$/.test(text.trim())) return `${kern}?`
   return `${kern}.`
 }
