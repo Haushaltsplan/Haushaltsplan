@@ -12,6 +12,37 @@ import {
 import type { MoatShortVoiceWort } from '@/remotion/moat-short-types'
 
 const TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech'
+/** Englisch erzwingen, damit der Aligner „Sheer“ nicht als „Schiere“ zurückgibt. */
+const STIMME_SPRACHE = 'en'
+
+async function elevenLabsSprechen(
+  key: string,
+  voice: string,
+  text: string,
+  modell: string,
+  voice_settings: { stability: number; similarity_boost: number; style?: number; speed: number },
+): Promise<Response> {
+  const kopf = {
+    'xi-api-key': key,
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  }
+  const basis = { text, model_id: modell, voice_settings }
+  const mitSprache = await fetch(`${TTS_URL}/${encodeURIComponent(voice)}/with-timestamps`, {
+    method: 'POST',
+    headers: kopf,
+    body: JSON.stringify({ ...basis, language_code: STIMME_SPRACHE }),
+    signal: AbortSignal.timeout(45_000),
+  })
+  if (mitSprache.ok || mitSprache.status !== 400) return mitSprache
+  await mitSprache.text().catch(() => '')
+  return fetch(`${TTS_URL}/${encodeURIComponent(voice)}/with-timestamps`, {
+    method: 'POST',
+    headers: kopf,
+    body: JSON.stringify(basis),
+    signal: AbortSignal.timeout(45_000),
+  })
+}
 /** ElevenLabs speed: 0,7–1,2. 1,15 zieht Moat-Shorts in das 30–35-Sekunden-Fenster. */
 export const MOAT_STIMME_SPEED = 1.15
 
@@ -52,20 +83,8 @@ export async function erzeugeMoatShortStimme(
       }
     : { stability: 0.42, similarity_boost: 0.78, speed: tempo }
 
-  const res = await fetch(`${TTS_URL}/${encodeURIComponent(voice)}/with-timestamps`, {
-    method: 'POST',
-    headers: {
-      'xi-api-key': key,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({
-      text,
-      model_id: process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2',
-      voice_settings,
-    }),
-    signal: AbortSignal.timeout(45_000),
-  })
+  const modell = process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2'
+  const res = await elevenLabsSprechen(key, voice, text, modell, voice_settings)
   if (!res.ok) {
     const roh = await res.text()
     throw new Error(`ElevenLabs ${res.status}: ${roh.slice(0, 220)}`)

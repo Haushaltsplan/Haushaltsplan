@@ -17,6 +17,7 @@ import {
   useVideoConfig,
 } from 'remotion'
 import { gesamtScoreAusPfeilern } from '../lib/portfolio-analyse/moat-ki-types'
+import { subLabelAusBeweis } from '../lib/youtube/moat-branchen-anker'
 import { istOffeneBruecke, kickerZurZahl, oeffneSprechende, ohneKennzahlId, ohneKiBindestrich } from '../lib/youtube/moat-short-script'
 import { logoPlaySrc } from '../lib/youtube/moat-short-media-src'
 import { berechneMoatShortTimeline } from './moat-short-timeline'
@@ -56,7 +57,9 @@ function saubereProps(p: MoatShortProps): MoatShortProps {
   const closing = ohneKennzahlId(ohneKiBindestrich(p.closing))
   return {
     ...p,
-    kicker: kickerZurZahl(ohneKennzahlId(ohneKiBindestrich(p.kicker)), p.metricLabel, `${hook} ${proof}`),
+    kicker:
+      subLabelAusBeweis(proof, p.metricValue) ??
+      kickerZurZahl(ohneKennzahlId(ohneKiBindestrich(p.kicker)), p.metricLabel, `${hook} ${proof}`),
     hook,
     proof,
     hookLoop: ohneKennzahlId(ohneKiBindestrich(p.hookLoop)),
@@ -514,7 +517,9 @@ function HookSzene({
             {heroAnzeige(value, zahlGang)}
           </div>
           <div style={{ marginTop: 14, fontFamily: MONO, fontSize: 26, letterSpacing: 6, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
-          {kicker ? (
+          {kicker && /^vs\.?\s+\d/i.test(kicker) ? (
+            <div style={{ marginTop: 16, fontFamily: MONO, fontSize: 28, letterSpacing: 1.2, color: MUTED }}>{kicker}</div>
+          ) : kicker ? (
             <div style={{ marginTop: 28, maxWidth: 820, fontSize: kickerGroesse, fontWeight: 900, letterSpacing: -1.5, lineHeight: 0.98 }}>
               {kicker}
             </div>

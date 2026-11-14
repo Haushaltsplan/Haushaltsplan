@@ -77,9 +77,10 @@ export function kontrastMetrik(heroId: string, metriken: MoatShortMetrik[]): Moa
 }
 
 /** Zahlen im Script, die weder aus den Kennzahlen noch aus den Scores stammen. */
-export function fremdeZahlen(text: string, metriken: MoatShortMetrik[], scores: number[]): string[] {
+export function fremdeZahlen(text: string, metriken: MoatShortMetrik[], scores: number[], extra: string[] = []): string[] {
   const erlaubt = new Set<string>(['10'])
   for (const m of metriken) for (const z of zahlenIn(m.value)) erlaubt.add(z)
   for (const s of scores) erlaubt.add(String(s))
+  for (const e of extra) for (const z of zahlenIn(e)) erlaubt.add(z)
   return [...new Set(zahlenIn(text).filter((z) => !erlaubt.has(z)))]
 }

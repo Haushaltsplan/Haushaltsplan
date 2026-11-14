@@ -143,13 +143,12 @@ function captionsFuerBeat(
   if (!text.trim()) return []
   const roh = woerterDerZeile?.length ? woerterDerZeile : schaetzeWoerter(text, beatFrom)
   const caps = captionsAusWoertern(ziffernInZeitworten(roh))
-  if (!caps.length || !/\bso the question is\b/i.test(text)) return caps
+  if (!caps.length) return caps
   const last = caps[caps.length - 1]!
   const anzeige = captionBruecke(last.text, text)
   if (anzeige === last.text) return caps
-  const woerterAnzeige = last.woerter.map((w, i) =>
-    i === last.woerter.length - 1 && /^is[.!?…:]*$/i.test(w.text) ? { ...w, text: 'is:' } : w,
-  )
+  const ende = anzeige.trim().match(/(\S+)$/)?.[1] ?? last.woerter[last.woerter.length - 1]?.text
+  const woerterAnzeige = last.woerter.map((w, i) => (i === last.woerter.length - 1 && ende ? { ...w, text: ende } : w))
   return [...caps.slice(0, -1), { ...last, text: anzeige, woerter: woerterAnzeige }]
 }
 

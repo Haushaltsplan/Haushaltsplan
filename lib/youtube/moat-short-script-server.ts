@@ -27,7 +27,6 @@ import {
   ohneNackteKennzahl,
   kickerFuerBild,
   antwortFuerKennzahl,
-  kickerZurZahl,
   oeffneSprechende,
   schliesseBeweis,
   kuerzeGesprocheneZeile,
@@ -39,7 +38,8 @@ import {
 } from '@/lib/youtube/moat-short-script'
 import { ziffernImText } from '@/lib/youtube/moat-caption'
 import { heroMetricAus, heroMetricPasst, korrigiereHeroSatz } from '@/lib/youtube/moat-hero-metric'
-import { fremdeZahlen, kontrastMetrik, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
+import { branchenAnker, subLabelAusBeweis } from '@/lib/youtube/moat-branchen-anker'
+import { fremdeZahlen, metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
 
 const PFEILER_LABEL: Record<MoatPfeilerId, string> = {
@@ -117,7 +117,7 @@ Talk like a person at a table. Same move for ASML, Hermès, a railroad, a card n
 
 Every spoken line is a normal human sentence: subject, verb, one thought. 8 to 10 words, and under 70 characters. Count the words. A comma is fine. One breath. The subtitle sits on 2 lines. If it would wrap to a third, the line is too long.
 
-Good proof: "While its 5-year average is 31%, operating margin is 47.1%, and it starts with"
+Good proof: "While typical retailers struggle at 8%, Costco's return on capital hits 22.6%, and it starts with"
 The engine comes from the business model in the user message. A landlord may say land. A franchisor may say fees. A specialty-ingredient company says the formula, never the land under a shop.
 Good: "Ripping that stack out is a nightmare."
 Bad: "Because they print a 47.1% operating margin."
@@ -151,7 +151,7 @@ Draft the pair as one spoken sentence, then split it.
 Good pair (read land, then the question, no pause):
 - kicker: "No way out"
 - claim: "Why can Microsoft raise prices every year and nobody leaves?"
-- proof: "While its 5-year average is 31%, operating margin is 47.1%, and it starts with"
+- proof: "While typical retailers struggle at 8%, Costco's return on capital hits 22.6%, and it starts with"
 - land: "Nobody else has a lock like this, so the question is"
 - Heard loop: "...so the question is why can Microsoft raise prices every year and nobody leaves?"
 
@@ -179,20 +179,22 @@ Grammar
 
 Causality
 - The question names the economic engine of THIS company, not the product the customer thinks they buy, and not another company's engine. A landlord is about the land. A franchisor is about the fees. A specialty-ingredient company is about the formula. Never write land, shop, landlord, or franchise unless the business model is that.
-- proof is sentence 2, seconds 3 to 7, the line that starts as the number hits the screen. It is a concrete contrast, not a summary.
-- Use a second number from the metric list for THIS company, its own other reported figure or its own average. Say both labels. A gross margin is not an operating margin, and neither is a share of revenue.
-- Never invent a peer average, a sector median, an index, or any benchmark you were not given. Do not say "peers", "ETF", or "benchmark" unless that figure is in the metric list.
-- Shape: "While its [other metric] is [other value], [hero metric] is [hero value], and it starts with". The example is the move. Use this company's two real figures.
-- End exactly on "and it starts with". No period, no dash. The first moat card finishes the thought.
+- proof is sentence 2, seconds 3 to 6, the line that starts as the number hits the screen. Never state the hero metric alone.
+- Always compare it with the industry anchor from the user message, the typical figure for this business class. The example is the move. Retailers use retailers and 8% only when the anchor says retailers and 8%. A chip-tool company does not say retailers.
+- If the company figure is higher: "While typical [peer group] struggle at [anchor], [Company]'s [metric] hits [hero value], and it starts with".
+- If it is not higher: "While typical [peer group] clear [anchor], [Company]'s [metric] sits at [hero value], and it starts with".
+- Use the anchor percent exactly. Do not invent a second peer number, a sector median, or an index.
+- A gross margin is not an operating margin, and neither is a share of revenue. The anchor is for the same metric as the hero number.
+- End exactly on "and it starts with". No period. The first moat card finishes the thought. The caption draws the colon.
 - Forbidden in this sentence: "proving the market lock", "creating high barriers", "demonstrating strong fundamentals", "proving unmatched pricing power", and any clause that starts with "proving".
 - The metric name is not the cause. Forbidden: "Operating margin lets them print a 46.2% operating margin."
 - Never open the answer with Because. No period, comma, dash, or ellipsis immediately before the hero number.
 - Do not repeat the hero metric or the comparison in the next sentence.
 - A verb such as losing, charging, or paying needs its object. "losing market share", never "losing".
-- kicker: 2 to 5 words, under 28 characters, the engine of THIS company, not the product the customer sees. "The formula" for a specialty-ingredient business. "Owns the land" only for a landlord. On screen only. Never spoken. No invented number. It sits directly under the metric, so it must not name a fee, a margin, membership, or any metric other than the one on screen. If that phrase is not in the proof, leave the kicker empty.
+- kicker: leave it empty. The picture writes the sub-label itself, "vs. [anchor] industry avg.", from the same peer percent as the sentence.
 - Every percentage is digits with a percent sign: "90%", never "ninety percent". The hook metric value is copied exactly from the metric list.
 - claim: the first spoken line, seconds 0 to 3. 6 to 10 words. A complete question about that engine. Start with Why, How, What, Who, Is, or Can. No metric value. No "Did you know". The number is not on screen yet.
-- proof: the second spoken line, from about second 3. The number appears as this line starts. Name the hero metric once, set it against the other real figure once, then "and it starts with". Never the metricId. Never "an ltm_ebit of 47.1%".
+- proof: the second spoken line, from about second 3. The number appears as this line starts. Name the hero metric once, set it against the industry anchor once, then "and it starts with". Never the metricId. Never "an ltm_ebit of 47.1%".
 
 ## Story order, do not skip ahead
 There is no "what they sell" line. Do not describe the business model as its own beat. There is no teaser between the number and the pillars. Do not say "one thing could break that lock" or hint at the threat before the crack.
@@ -202,8 +204,8 @@ There is no "what they sell" line. Do not describe the business model as its own
 4. crack (the FIRST and only time the threat is named)
 5. land (bridge into the question, then stop)
 
-The hero number is spoken once, in proof, as that line starts around second 3. The comparison figure is the other real metric, spoken once, with its own name. The next sentence must not repeat either figure. The crack comes after all four pillars.
-In the first ten seconds the spoken proof must explain the on-screen metric by setting it against that second figure. A gross margin is not an operating margin, and neither number is a share of revenue. Use the English names from the metric list and the exact values.
+The hero number is spoken once, in proof, as that line starts around second 3. The industry anchor is spoken once, with the peer group from the user message. The next sentence must not repeat either figure. The crack comes after all four pillars.
+In the first ten seconds the spoken proof must set the on-screen metric against that anchor. A gross margin is not an operating margin, and neither number is a share of revenue. Use the English name from the metric list, the exact hero value, and the exact anchor.
 
 ## Each hook
 Write THREE hooks. Each has these fields:
@@ -251,6 +253,10 @@ function richtungAnweisung(richtung: 'groesser' | 'kleiner'): string {
   return 'Editor override: one step LOWER than the model. The pillar scores below are final. Write a thinner moat, with a lead that is easier to challenge and a crack that weighs more. If a German reason sounds stronger than its score, follow the score. Do not insult the company.'
 }
 
+function industrieText(paket: FundamentaldatenPaket, moat: MoatKiBewertung): string {
+  return [paket.sektor, paket.branche, paket.beschreibung, moat.geschaeftsmodell].filter(Boolean).join('\n')
+}
+
 function baueUserPrompt(
   paket: FundamentaldatenPaket,
   moat: MoatKiBewertung,
@@ -277,6 +283,13 @@ function baueUserPrompt(
     '',
     'Metrics. metricId is a machine key and must never be spoken. Say the English name, number first:',
     ...metriken.map((m) => `- ${m.label} = ${m.value} (metricId: ${m.id})${m.hook ? ' [hook]' : ''}`),
+    'Industry anchors for sentence 2. Use the peer group and the percent for the metric you pick. Do not invent another:',
+    ...metriken
+      .filter((m) => m.hook)
+      .map((m) => {
+        const anker = branchenAnker(industrieText(paket, moat), m.id)
+        return `- ${m.label}: typical ${anker.peers} at ${anker.value}`
+      }),
     suchphrasen.length
       ? `\nYouTube search suggestions (prefer one in the title if it fits): ${suchphrasen.join(' · ')}`
       : null,
@@ -288,7 +301,7 @@ function baueUserPrompt(
 const HERO_CHECK = `You repair one spoken sentence so it matches the on-screen metric.
 The sentence must explain that exact metric. A gross margin is not an operating margin. A margin is not a share of revenue.
 Return JSON {"proof":"...","context_note":""}.
-proof is one English sentence, contains the exact value and the metric name, keeps a second real figure if the spoken line already has one, and ends with ", and it starts with". Do not write "proving", "market lock", "high barriers", or "strong fundamentals". Invent no new number.
+proof is one English sentence, contains the exact hero value, the metric name, and the same industry-anchor percent already in the sentence. It ends with ", and it starts with". Do not write "proving", "market lock", "high barriers", or "strong fundamentals". Invent no new number.
 context_note is empty, unless the metric name already carries a short qualifier.`
 
 async function heroPruefen(
@@ -397,6 +410,7 @@ export async function generiereMoatShort(opts: {
   if (!roh) throw new Error('Script-KI lieferte kein gültiges JSON — bitte erneut versuchen.')
 
   const verdict = verdictAusUrteil(moat.urteil)
+  const industrie = industrieText(paket, moat)
   const kontext = [
     paket.sektor,
     paket.branche,
@@ -421,7 +435,7 @@ export async function generiereMoatShort(opts: {
         label,
         metrikId,
         kontext,
-        kontrastMetrik(metrikId, metriken),
+        branchenAnker(industrie, metrikId),
       )
       return {
         winkel: text(h.angle),
@@ -450,7 +464,7 @@ export async function generiereMoatShort(opts: {
         /\?\s*$/.test(h.claim) &&
         !h.claim.includes(m.value) &&
         istOffeneBruecke(h.land, m.value) &&
-        !fremdeZahlen(gesprochen, metriken, scores).length
+        !fremdeZahlen(gesprochen, metriken, scores, hookMetriken.map((m) => branchenAnker(industrie, m.id).value)).length
       )
     }) ?? hookVarianten[0]!
   const startMetrik = metriken.find((m) => m.id === start.metrikId) ?? hookMetriken[0]!
@@ -546,7 +560,7 @@ export async function generiereMoatShort(opts: {
     props.metricLabel,
     start.metrikId,
     kontext,
-    kontrastMetrik(start.metrikId, metriken),
+    branchenAnker(industrie, start.metrikId),
   )
   props.hook = repariert.claim
   props.proof = repariert.proof
@@ -587,13 +601,13 @@ export async function generiereMoatShort(opts: {
   props.proof = hero.spoken_reference
   props.metricValue = hero.value
   props.metricLabel = hero.label
-  const kontrast = kontrastMetrik(start.metrikId, metriken)
+  const anker = branchenAnker(industrie, start.metrikId)
   props.proof = schliesseBeweis(ziffernImText(props.proof))
-  if ((kontrast && !props.proof.includes(kontrast.value)) || /\bproving\b/i.test(props.proof)) {
-    props.proof = antwortFuerKennzahl(props.metricValue, props.metricLabel, start.metrikId, kontext, kontrast)
+  if (!props.proof.includes(anker.value) || /\bproving\b/i.test(props.proof)) {
+    props.proof = antwortFuerKennzahl(props.metricValue, props.metricLabel, start.metrikId, kontext, anker, props.firmenname)
   }
   props.heroMetric = { ...hero, spoken_reference: props.proof }
-  props.kicker = kickerZurZahl(props.kicker, props.metricLabel, `${props.hook} ${props.proof}`)
+  props.kicker = subLabelAusBeweis(props.proof, props.metricValue) ?? anker.subLabel
   if (istOffeneBruecke(props.closing, props.metricValue)) props.closing = oeffneSprechende(props.closing)
   start.kicker = props.kicker
   start.proof = props.proof
@@ -604,7 +618,7 @@ export async function generiereMoatShort(opts: {
   warnungen.push(...scriptStoryWarnungen(props.hookLoop, props.crack))
   const gesprochen = [props.hook, props.proof, ...props.pillars.map((p) => p.line), props.crack, props.closing]
   warnungen.push(...scriptTonWarnungen(gesprochen))
-  const fremd = fremdeZahlen(gesprochen.join(' '), metriken, scores)
+  const fremd = fremdeZahlen(gesprochen.join(' '), metriken, scores, [anker.value])
   if (fremd.length) warnungen.push(`Zahlen ohne Quelle im Export: ${fremd.join(', ')} — bitte prüfen oder streichen.`)
   const gesamt = gesprochen.map(woerter).reduce((a, b) => a + b, 0)
   if (gesamt > MAX_WOERTER_GESAMT) warnungen.push(`${gesamt} Wörter — zu lang für 30–35 Sekunden.`)

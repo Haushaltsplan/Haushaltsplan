@@ -203,9 +203,17 @@ export function ziffernInZeitworten<T extends Zeitwort>(worte: T[]): T[] {
   return i === worte.length && out.length ? out : worte
 }
 
-/** Die gesprochene Brücke bleibt ohne Punkt. Die Caption zeigt den Doppelpunkt. */
+const OFFENE_ENDEN: { satz: RegExp; wort: RegExp; zu: string }[] = [
+  { satz: /\bso the question is\b/i, wort: /\bis[.!?…:]*$/i, zu: 'is:' },
+  { satz: /\band it starts with\b/i, wort: /\bwith[.!?…:]*$/i, zu: 'with:' },
+  { satz: /\bhere is how\b/i, wort: /\bhow[.!?…:]*$/i, zu: 'how:' },
+  { satz: /\bhere is why\b/i, wort: /\bwhy[.!?…:]*$/i, zu: 'why:' },
+]
+
+/** Offene Überleitung: die Caption endet mit einem Doppelpunkt, nicht mit einem Punkt. */
 export function captionBruecke(text: string, beat: string): string {
-  if (!/\bso the question is\b/i.test(beat)) return text
-  if (!/\bis[.!?…:]*$/i.test(text.trim())) return text
-  return text.replace(/\bis[.!?…:]*$/i, 'is:')
+  const quelle = `${beat}\n${text}`
+  const ende = OFFENE_ENDEN.find((o) => o.satz.test(quelle) && o.wort.test(text.trim()))
+  if (!ende) return text
+  return text.replace(ende.wort, ende.zu)
 }

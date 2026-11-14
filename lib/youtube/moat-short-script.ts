@@ -1,4 +1,5 @@
 import type { MoatShortProps, MoatShortVerdict } from '@/remotion/moat-short-types'
+import { branchenAnker, type BranchenAnker } from '@/lib/youtube/moat-branchen-anker'
 import { firmenKurzname, phrasePasst } from '@/lib/youtube/youtube-keywords'
 
 const ABSCHIED =
@@ -19,7 +20,7 @@ export function istBeweisUebergabe(text: string): boolean {
 
 /** Streicht die BWL-Floskel und hängt die offene Überleitung an. */
 export function schliesseBeweis(satz: string): string {
-  let t = satz.replace(/\s+/g, ' ').trim()
+  let t = satz.replace(/[—–]/g, ',').replace(/\s+-\s+/g, ', ').replace(/\s+/g, ' ').trim()
   t = t.replace(/,?\s*\bproving\b[^.]*/i, '')
   t = t.replace(ABSTRACT_BEWEIS, '')
   t = t.replace(/[.!?…]+$/g, '').replace(/[,:\s]+$/g, '').replace(/\s+/g, ' ').trim()
@@ -241,7 +242,9 @@ function treiberZeile(gesprochen: string): string {
  * solange der Voiceover sie nicht sagt. Dann der gesprochene Treiber, sonst nichts.
  */
 export function kickerZurZahl(kicker: string, label: string, gesprochen: string): string {
-  const t = ohneKiBindestrich(kicker).replace(/[.!?…]/g, '').replace(/\s+/g, ' ').trim()
+  const roh = ohneKiBindestrich(kicker).replace(/\s+/g, ' ').trim()
+  if (/^vs\.?\s+\d/i.test(roh)) return roh
+  const t = roh.replace(/[.!?…]/g, '').replace(/\s+/g, ' ').trim()
   if (!t) return ''
   if (gleicheKennzahl(t, label)) return ''
   const gesagt = gesprochen.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').includes(t.toLowerCase())
@@ -550,20 +553,17 @@ function fragePasstZumTreiber(frage: string, id: TreiberId): boolean {
   return /\brebuild|\brival\b|\bcopy\b|\bowns\b/.test(t) || fragtNachMachtOderDominanz(frage)
 }
 
-type BeweisKontrast = { value: string; label: string; id: string }
-
-function kontrastName(id: string, label: string, heroId: string): string {
-  if (id === 'roic_5y_avg' && /roic|return on capital/.test(heroId)) return '5-year average'
-  return kennzahlGesprochen(label, id).toLowerCase()
-}
-
-/** Zweite echte Zahl gegen die Hero-Kennzahl, dann die offene Karte. */
-function kontrastSatz(wert: string, label: string, id: string, kontrast: BeweisKontrast | null): string {
+function peerSatz(firma: string, wert: string, label: string, id: string, anker: BranchenAnker): string {
   const hero = kennzahlGesprochen(label, id)
   const heroName = /[a-z]/.test(hero) ? hero.toLowerCase() : hero
-  const kern = kontrast
-    ? `While its ${kontrastName(kontrast.id, kontrast.label, id)} is ${kontrast.value}, ${heroName} is ${wert}`
-    : `${hero.charAt(0).toUpperCase()}${hero.slice(1)} is ${wert}`
+  const wort = firmenwort(firma)
+  const besitz = wort === 'They' ? 'its' : `${wort}'s`
+  const heroN = Number.parseFloat(wert)
+  const peerN = Number.parseFloat(anker.value)
+  const hoeher = !Number.isFinite(heroN) || !Number.isFinite(peerN) || heroN > peerN
+  const kern = hoeher
+    ? `While typical ${anker.peers} struggle at ${anker.value}, ${besitz} ${heroName} hits ${wert}`
+    : `While typical ${anker.peers} clear ${anker.value}, ${besitz} ${heroName} sits at ${wert}`
   return schliesseBeweis(flussZurZahl(kern))
 }
 
@@ -679,20 +679,22 @@ export function antwortFuerKennzahl(
   wert: string,
   label: string,
   id = '',
-  _kontext = '',
-  kontrast: BeweisKontrast | null = null,
+  kontext = '',
+  anker: BranchenAnker | null = null,
+  firma = '',
 ): string {
-  return kontrastSatz(wert, label, id, kontrast)
+  return peerSatz(firma, wert, label, id, anker ?? branchenAnker(kontext, id))
 }
 
-function proofIstDruck(text: string, wert: string, label: string, id: string, kontrast: BeweisKontrast | null): boolean {
+function proofIstDruck(text: string, wert: string, label: string, id: string, anker: BranchenAnker): boolean {
   if (!wert || !text.includes(wert) || /\?\s*$/.test(text.trim())) return false
   if (/^\s*because\b/i.test(text)) return false
   if (kennzahlVorDerZahl(text, wert, label, id)) return false
   if (ABSTRACT_BEWEIS.test(text) || /\bproving\b|\bmarket lock\b/i.test(text)) return false
   if (!istBeweisUebergabe(text)) return false
-  if (kontrast && !text.includes(kontrast.value)) return false
-  if (woerter(text).length > 22) return false
+  if (!text.includes(anker.value)) return false
+  if (!/\btypical\b/i.test(text)) return false
+  if (woerter(text).length > 24) return false
   return nenntKennzahl(text, label, id)
 }
 
@@ -708,14 +710,15 @@ export function hookPaar(
   label: string,
   id = '',
   kontext = '',
-  kontrast: BeweisKontrast | null = null,
+  anker: BranchenAnker | null = null,
 ): { claim: string; proof: string } {
+  const peer = anker ?? branchenAnker(kontext, id)
   const art = hookKennzahlArt(label, id)
   let frage = frageFuerHook(claim, firma, wert)
   const rohAntwort = schliesseBeweis(proof.replace(/\s+/g, ' ').trim())
-  let antwort = proofIstDruck(rohAntwort, wert, label, id, kontrast)
+  let antwort = proofIstDruck(rohAntwort, wert, label, id, peer)
     ? rohAntwort
-    : antwortFuerKennzahl(wert, label, id, kontext, kontrast)
+    : antwortFuerKennzahl(wert, label, id, kontext, peer, firma)
   const frageKaputt = !/\?\s*$/.test(frage) || satzUnbrauchbar(frage) || Boolean(wert && frage.includes(wert))
   const treiber = treiberAusText(kontext)
   const name = firmenwort(firma)
@@ -726,8 +729,8 @@ export function hookPaar(
     frage = treiber.frage(name)
   }
   if (satzUnbrauchbar(frage)) frage = treiber.frage(name)
-  if (fremd(antwort) || !proofIstDruck(antwort, wert, label, id, kontrast)) {
-    antwort = antwortFuerKennzahl(wert, label, id, kontext, kontrast)
+  if (fremd(antwort) || !proofIstDruck(antwort, wert, label, id, peer)) {
+    antwort = antwortFuerKennzahl(wert, label, id, kontext, peer, firma)
   }
   antwort = schliesseBeweis(flussZurZahl(satzOhneDoppelteZahl(antwort, wert, label, id)))
   return { claim: frage, proof: antwort }

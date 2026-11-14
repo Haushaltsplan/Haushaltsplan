@@ -23,7 +23,8 @@ import type { MoatRichtung } from '@/lib/youtube/moat-short-urteil'
 import { fuehrendeStilleMs } from '@/lib/youtube/moat-short-silence'
 import { gespeicherteStimmeRegler, moatShortSprechFingerprint, speichereStimmeRegler } from '@/lib/youtube/moat-short-voice'
 import { ladeMp4ZuYoutube, youtubeShortsUrl } from '@/lib/youtube/youtube-upload-client'
-import { fremdeZahlen, kontrastMetrik } from '@/lib/youtube/moat-short-zahlen'
+import { branchenAnker, subLabelAusBeweis } from '@/lib/youtube/moat-branchen-anker'
+import { fremdeZahlen } from '@/lib/youtube/moat-short-zahlen'
 import type { MoatShortVoiceWort } from '@/remotion/moat-short-types'
 import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@/remotion/moat-short-types'
 
@@ -246,7 +247,7 @@ function gesprocheneZeilen(p: MoatShortProps): MoatShortProps {
   const closingRoh = ziffernImText(istOffeneBruecke(p.closing, p.metricValue) ? ohneKennzahlId(p.closing) : p.closing)
   return {
     ...p,
-    kicker: kickerZurZahl(kickerWennNoetig(p.kicker), p.metricLabel, `${hook} ${proof}`),
+    kicker: subLabelAusBeweis(proof, p.metricValue) ?? kickerZurZahl(kickerWennNoetig(p.kicker), p.metricLabel, `${hook} ${proof}`),
     hook,
     proof,
     hookLoop: '',
@@ -480,10 +481,19 @@ export function YoutubeShortsClient() {
       props.metricLabel,
       metrik?.id ?? '',
       kontext,
-      metrik ? kontrastMetrik(metrik.id, ergebnis.metriken) : null,
+      branchenAnker(kontext, metrik?.id ?? ''),
     )
     if (paar.claim === props.hook && paar.proof === props.proof) return
-    setProps((p) => (p ? { ...p, hook: paar.claim, proof: paar.proof } : p))
+    setProps((p) =>
+      p
+        ? {
+            ...p,
+            hook: paar.claim,
+            proof: paar.proof,
+            kicker: subLabelAusBeweis(paar.proof, p.metricValue) ?? p.kicker,
+          }
+        : p,
+    )
   }, [props, ergebnis])
 
   function leereStimme() {
