@@ -5,15 +5,12 @@
 import 'server-only'
 
 import { createHash, randomUUID } from 'node:crypto'
+import { elevenLabsModell, elevenLabsVoiceSettings } from '@/lib/youtube/elevenlabs-modell'
 import { woerterAusZeichen } from '@/lib/youtube/moat-short-voice'
 import { ladeHoch, projektPfad } from '@/lib/youtube/longform/longform-db-server'
 import type { LongformStimmeEinstellungen, LongformTake } from '@/lib/youtube/longform/longform-types'
 
 const TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech'
-
-function modell(): string {
-  return process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2'
-}
 
 function klemme(v: number, min: number, max: number, fallback: number): number {
   return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback
@@ -30,7 +27,7 @@ export function normiereEinstellungen(e: Partial<LongformStimmeEinstellungen> | 
 
 export function stimmeFingerprint(text: string, e: LongformStimmeEinstellungen, kontext: { vorher: string; nachher: string }): string {
   return createHash('sha1')
-    .update(JSON.stringify([text.trim(), e, kontext.vorher.slice(-200), kontext.nachher.slice(0, 200), modell(), process.env.ELEVENLABS_VOICE_ID ?? '']))
+    .update(JSON.stringify([text.trim(), e, kontext.vorher.slice(-200), kontext.nachher.slice(0, 200), elevenLabsModell(), process.env.ELEVENLABS_VOICE_ID ?? '']))
     .digest('hex')
     .slice(0, 16)
 }
@@ -51,14 +48,13 @@ export async function sprichSatz(opts: {
 
   const body: Record<string, unknown> = {
     text,
-    model_id: modell(),
-    voice_settings: {
+    model_id: elevenLabsModell(),
+    voice_settings: elevenLabsVoiceSettings({
       stability: opts.einstellungen.stability,
-      similarity_boost: opts.einstellungen.similarity,
+      similarity: opts.einstellungen.similarity,
       style: opts.einstellungen.style,
       speed: opts.einstellungen.speed,
-      use_speaker_boost: true,
-    },
+    }),
     language_code: 'en',
   }
   if (opts.vorher.trim()) body.previous_text = opts.vorher.trim().slice(-600)
@@ -68,7 +64,7 @@ export async function sprichSatz(opts: {
   const kopf = { 'xi-api-key': key, 'Content-Type': 'application/json', Accept: 'application/json' }
   let res = await fetch(url, { method: 'POST', headers: kopf, body: JSON.stringify(body), signal: AbortSignal.timeout(60_000) })
   if (!res.ok && res.status === 400) {
-    // Ältere Modelle lehnen language_code oder 192 kbps ab — dann mit Standardformat.
+    // Fallback: ohne language_code / mit 128 kbps (manche Modelle/Plan-Kombi).
     delete body.language_code
     res = await fetch(url.replace('mp3_44100_192', 'mp3_44100_128'), { method: 'POST', headers: kopf, body: JSON.stringify(body), signal: AbortSignal.timeout(60_000) })
   }

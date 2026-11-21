@@ -36,30 +36,32 @@ const HINWEIS_FARBE: Record<string, string> = {
   wiederholung: 'border-sky-500/40 bg-sky-500/10 text-sky-200',
 }
 
+/** Eleven v4: nur Stabilität + Ähnlichkeit (Style/Speed gibt es dort nicht). */
 const REGLER: { key: keyof LongformStimmeEinstellungen; label: string; min: number; max: number; step: number }[] = [
   { key: 'stability', label: 'Stabilität', min: 0, max: 1, step: 0.05 },
   { key: 'similarity', label: 'Ähnlichkeit', min: 0, max: 1, step: 0.05 },
-  { key: 'style', label: 'Ausdruck', min: 0, max: 1, step: 0.05 },
-  { key: 'speed', label: 'Tempo', min: 0.7, max: 1.2, step: 0.01 },
 ]
 
 export function StimmRegler({ wert, onChange }: { wert: LongformStimmeEinstellungen; onChange: (w: LongformStimmeEinstellungen) => void }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-4">
-      {REGLER.map((r) => (
-        <label key={r.key} className="text-xs text-[var(--app-text-muted)]">
-          {r.label} <span className="font-mono">{wert[r.key].toFixed(2)}</span>
-          <input
-            type="range"
-            min={r.min}
-            max={r.max}
-            step={r.step}
-            value={wert[r.key]}
-            onChange={(e) => onChange({ ...wert, [r.key]: Number(e.target.value) })}
-            className="w-full accent-red-500"
-          />
-        </label>
-      ))}
+    <div className="space-y-2">
+      <p className="text-[11px] text-[var(--app-text-muted)]">Eleven v4 · niedrigere Stabilität = expressiver</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {REGLER.map((r) => (
+          <label key={r.key} className="text-xs text-[var(--app-text-muted)]">
+            {r.label} <span className="font-mono">{wert[r.key].toFixed(2)}</span>
+            <input
+              type="range"
+              min={r.min}
+              max={r.max}
+              step={r.step}
+              value={wert[r.key]}
+              onChange={(e) => onChange({ ...wert, [r.key]: Number(e.target.value) })}
+              className="w-full accent-red-500"
+            />
+          </label>
+        ))}
+      </div>
     </div>
   )
 }

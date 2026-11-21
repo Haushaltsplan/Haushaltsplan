@@ -1,6 +1,7 @@
 /** ElevenLabs TTS mit Zeichen-Zeiten — eigener Key, nicht Gemini. */
 import 'server-only'
 
+import { elevenLabsModell, elevenLabsVoiceSettings } from '@/lib/youtube/elevenlabs-modell'
 import {
   moatShortSprechtext,
   regieFuerElevenLabs,
@@ -20,7 +21,7 @@ async function elevenLabsSprechen(
   voice: string,
   text: string,
   modell: string,
-  voice_settings: { stability: number; similarity_boost: number; style?: number; speed: number },
+  voice_settings: Record<string, number | boolean>,
 ): Promise<Response> {
   const kopf = {
     'xi-api-key': key,
@@ -76,17 +77,18 @@ export async function erzeugeMoatShortStimme(
     return Math.min(1, Math.max(0, v))
   }
   const gewaehlt = opts?.stimme
-  const voice_settings = opts?.regie
-    ? {
-        stability: klemme(gewaehlt?.stability, 0.4),
-        similarity_boost: klemme(gewaehlt?.similarity, 0.8),
-        style: klemme(gewaehlt?.style, 0.2),
-        speed: tempo,
-      }
-    : { stability: 0.42, similarity_boost: 0.78, speed: tempo }
+  const voice_settings = elevenLabsVoiceSettings(
+    opts?.regie
+      ? {
+          stability: klemme(gewaehlt?.stability, 0.4),
+          similarity: klemme(gewaehlt?.similarity, 0.8),
+          style: klemme(gewaehlt?.style, 0.2),
+          speed: tempo,
+        }
+      : { stability: 0.42, similarity: 0.78, speed: tempo },
+  )
 
-  const modell = process.env.ELEVENLABS_MODEL_ID?.trim() || 'eleven_multilingual_v2'
-  const res = await elevenLabsSprechen(key, voice, text, modell, voice_settings)
+  const res = await elevenLabsSprechen(key, voice, text, elevenLabsModell(), voice_settings)
   if (!res.ok) {
     const roh = await res.text()
     throw new Error(`ElevenLabs ${res.status}: ${roh.slice(0, 220)}`)

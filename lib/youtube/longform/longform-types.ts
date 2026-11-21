@@ -195,12 +195,15 @@ export type LongformStimmeEinstellungen = {
   speed: number
 }
 
-/** Expressiver Long-Form-Ton: etwas weniger Stabilität, mehr Style, leicht langsamer. */
+/**
+ * Long-Form-Defaults für Eleven v4 (nur Stability/Similarity wirken).
+ * style/speed bleiben im Typ für ältere Takes, werden an v4 nicht gesendet.
+ */
 export const LONGFORM_STIMME_STANDARD: LongformStimmeEinstellungen = {
-  stability: 0.32,
-  similarity: 0.78,
-  style: 0.42,
-  speed: 0.94,
+  stability: 0.35,
+  similarity: 0.8,
+  style: 0,
+  speed: 1,
 }
 
 export type LongformWort = { text: string; startMs: number; endMs: number }

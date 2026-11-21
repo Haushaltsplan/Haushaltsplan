@@ -41,7 +41,8 @@ Fester Abschnitts-Aufbau, wechselnde Hooks/Varianten/Musik/Abo-Text über `longf
 und Verlauf in `youtube_longform_projekt` (letzte 5 Videos).
 
 ## Stimme & Render
-- ElevenLabs satzweise (`previous_text` / `next_text`), Takes, Fingerprint.
+- ElevenLabs **`eleven_v4`** satzweise (`previous_text` / `next_text`), Takes, Fingerprint.
+- v4: nur Stability + Similarity (kein Style/Speed).
 - MP4-Export: **Browser-Render** (`longform-render-web.ts` / `@remotion/web-renderer`) — funktioniert lokal und auf der Live-Domain (Chrome/Edge).
 - Server-CLI-Render (`/api/youtube/longform/render`) bleibt optional für localhost; auf Vercel 501.
 - Storage-Bucket: `youtube-longform`. Migration: `20261121210000_youtube_longform.sql`.
