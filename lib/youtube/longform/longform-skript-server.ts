@@ -88,12 +88,12 @@ function kontext(fb: LongformFaktenblatt, thema: string): string {
     `VIDEO TOPIC FROM THE CREATOR: ${thema || '(none given, choose the most interesting angle the data supports)'}`,
     fb.beschreibung ? `COMPANY DESCRIPTION (German source, translate meaning only):\n${fb.beschreibung.slice(0, 2500)}` : '',
     m
-      ? `MOAT CHECK (app assessment, German source):\nBusiness model: ${m.geschaeftsmodell}\n${m.pfeiler
+      ? `MOAT CHECK (pillar shape from app assessment, overall score locked to scorecard):\nOverall moat score: ${m.score}/10 (${m.urteil}). Pillar scores average to this overall score — use moat.score and the pillar scores as written, never invent a different total.\nBusiness model: ${m.geschaeftsmodell}\n${m.pfeiler
           .map((p) => `- ${p.label} ${p.score}/10: ${p.begruendung} Risk: ${p.risiko}`)
           .join('\n')}\nWhat could break it: ${m.zerstoerung.join(' | ')}`
       : 'MOAT CHECK: not available.',
     fb.burggraben
-      ? `SCORECARD MOAT COLUMN (quality ${fb.burggraben.score ?? 'n/a'}/10):\n${fb.burggraben.balken.map((b) => `- ${b.label}: ${b.wertText}`).join('\n')}`
+      ? `SCORECARD MOAT COLUMN (quality ${fb.burggraben.score ?? 'n/a'}/10 — same number as moat.score):\n${fb.burggraben.balken.map((b) => `- ${b.label}: ${b.wertText}`).join('\n')}`
       : '',
     fb.segmente ? `REVENUE MIX available (${fb.segmente.art}).` : 'REVENUE MIX: not available, do not use scene moat_segmente.',
     `FACT SHEET (id | label | allowed text | date):\n${faktenFuerPrompt(fb)}`,
@@ -210,7 +210,7 @@ function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): str
     case 'chart10k':
       return `chart10k (about 70 to 110 seconds, 10 to 16 sentences): the long-term chart and what $10,000 invested ${fb.chart ? `in ${fb.chart.startDatum.slice(0, 4)}` : '10 years ago'} became, in dollars and percent, dividends reinvested. Mention how much came from dividends if that fact exists, compare with the S&P 500 if the facts exist, and make the worst drawdown feel real (what the viewer would have had to sit through). Scenes: chart_linie, chart_endwert, chart_drawdown, chart_vergleich, bild (bildWunsch = concrete English photo search, e.g. "semiconductor cleanroom").`
     case 'burggraben':
-      return `burggraben (about 100 to 150 seconds, 14 to 22 sentences): the moat check. Start from how the business earns money (moat_geschaeft${fb.segmente ? ', moat_segmente for the revenue mix' : ''}), then walk through the four moat pillars with their scores and one concrete reason each (scene moat_pfeiler, fokus = pillar id: preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte), then the scorecard moat column (moat_scorecard), and end on the biggest threat to the moat as a bridge to the rest of the video. Spend more time on the strongest and the weakest pillar, less on average ones.`
+      return `burggraben (about 100 to 150 seconds, 14 to 22 sentences): the moat check. The overall score is moat.score (identical to the scorecard Burggraben score) — say that number once as the verdict, never a conflicting total. Start from how the business earns money (moat_geschaeft${fb.segmente ? ', moat_segmente for the revenue mix' : ''}), then walk through the four moat pillars with their scores and one concrete reason each (scene moat_pfeiler, fokus = pillar id: preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte), then the scorecard moat column (moat_scorecard), and end on the biggest threat to the moat as a bridge to the rest of the video. Spend more time on the strongest and the weakest pillar, less on average ones.`
     default:
       return `${id}: ${LONGFORM_ABSCHNITT_TITEL[id]}`
   }

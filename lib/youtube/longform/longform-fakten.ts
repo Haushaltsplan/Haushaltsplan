@@ -4,8 +4,9 @@
  */
 import { baueScorecard } from '@/lib/portfolio-analyse/fundamentaldaten-scorecard'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import type { MoatKiBewertung } from '@/lib/portfolio-analyse/moat-ki-types'
+import { gesamtScoreAusPfeilern, type MoatKiBewertung } from '@/lib/portfolio-analyse/moat-ki-types'
 import { metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
+import { pfeilerAufZielScore, urteilAusMoatScore } from '@/lib/youtube/moat-short-urteil'
 import { monatJahr, pct, scorecardTextEnglisch, usd } from '@/lib/youtube/longform/longform-format'
 import {
   LONGFORM_INVEST_USD,
@@ -122,33 +123,6 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
     add({ id: `km.${m.id}`, label: m.label, wert: roh, text: m.value, einheit: m.value.endsWith('%') ? 'pct' : m.value.endsWith('pts') ? 'pp' : 'x' }, exp)
   }
 
-  let moat: LongformMoat | null = null
-  if (e.moatKi) {
-    const s = { stichtag: (e.moatKi.stand || exportTag).slice(0, 10), quelle: 'Moat-Check (KI-Bewertung der App)' }
-    const pfeiler = e.moatKi.pfeiler.map((p) => ({
-      id: p.id,
-      label: PFEILER_LABEL[p.id] ?? p.id,
-      score: Math.round(p.score),
-      begruendung: p.begruendung,
-      risiko: p.risiko,
-    }))
-    const score = pfeiler.length ? Math.round((pfeiler.reduce((a, p) => a + p.score, 0) / pfeiler.length) * 10) / 10 : e.moatKi.score
-    moat = {
-      pfeiler,
-      score,
-      urteil: URTEIL_EN[e.moatKi.urteil] ?? e.moatKi.urteil,
-      geschaeftsmodell: e.moatKi.geschaeftsmodell,
-      zerstoerung: e.moatKi.zerstoerungsszenarien ?? [],
-    }
-    add({ id: 'moat.score', label: 'Moat score (out of 10)', wert: score, text: `${score} out of 10`, einheit: 'score' }, s)
-    add({ id: 'moat.urteil', label: 'Moat verdict', wert: null, text: moat.urteil, einheit: 'text' }, s)
-    for (const p of pfeiler) {
-      add({ id: `moat.${p.id}`, label: `${p.label} (out of 10)`, wert: p.score, text: `${p.score} out of 10`, einheit: 'score' }, s)
-    }
-  } else {
-    hinweise.push('Kein Moat-Check vorhanden — die Pfeiler-Szene entfällt.')
-  }
-
   let burggraben: LongformScorecardSpalte | null = null
   try {
     const sc = baueScorecard(paket, e.isin)
@@ -169,6 +143,48 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
     }
   } catch {
     hinweise.push('Scorecard konnte nicht berechnet werden.')
+  }
+
+  let moat: LongformMoat | null = null
+  if (e.moatKi) {
+    const zielScore = burggraben?.score != null && Number.isFinite(burggraben.score) ? burggraben.score : null
+    const rohScores = e.moatKi.pfeiler.map((p) => Math.round(p.score))
+    const kalibriert = zielScore != null ? pfeilerAufZielScore(rohScores, zielScore) : rohScores
+    const s = {
+      stichtag: (e.moatKi.stand || exportTag).slice(0, 10),
+      quelle:
+        zielScore != null
+          ? 'Moat-Check, Gesamtscore = Scorecard-Burggraben; Pfeiler relativ kalibriert'
+          : 'Moat-Check (KI-Bewertung der App)',
+    }
+    const pfeiler = e.moatKi.pfeiler.map((p, i) => ({
+      id: p.id,
+      label: PFEILER_LABEL[p.id] ?? p.id,
+      score: kalibriert[i] ?? Math.round(p.score),
+      begruendung: p.begruendung,
+      risiko: p.risiko,
+    }))
+    const score =
+      zielScore != null
+        ? Math.round(zielScore * 10) / 10
+        : pfeiler.length
+          ? gesamtScoreAusPfeilern(pfeiler.map((p) => p.score))
+          : e.moatKi.score
+    const urteilKey = zielScore != null ? urteilAusMoatScore(score) : e.moatKi.urteil
+    moat = {
+      pfeiler,
+      score,
+      urteil: URTEIL_EN[urteilKey] ?? urteilKey,
+      geschaeftsmodell: e.moatKi.geschaeftsmodell,
+      zerstoerung: e.moatKi.zerstoerungsszenarien ?? [],
+    }
+    add({ id: 'moat.score', label: 'Moat score (out of 10)', wert: score, text: `${score} out of 10`, einheit: 'score' }, s)
+    add({ id: 'moat.urteil', label: 'Moat verdict', wert: null, text: moat.urteil, einheit: 'text' }, s)
+    for (const p of pfeiler) {
+      add({ id: `moat.${p.id}`, label: `${p.label} (out of 10)`, wert: p.score, text: `${p.score} out of 10`, einheit: 'score' }, s)
+    }
+  } else {
+    hinweise.push('Kein Moat-Check vorhanden — die Pfeiler-Szene entfällt.')
   }
 
   const segmente = segmenteAus(paket)

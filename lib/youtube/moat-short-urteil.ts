@@ -57,6 +57,55 @@ export function pfeilerFuerRichtung(basis: number[], richtung: MoatRichtung): nu
   return scores
 }
 
+/**
+ * Relative Stärken/Schwächen der KI-Pfeiler behalten, Gesamtmittel aber auf Zielscore ziehen
+ * (z. B. Scorecard-Burggraben). Ganzzahlige Säulen 1–10, Mittel ≈ Ziel (Largest-Remainder).
+ */
+export function pfeilerAufZielScore(basis: number[], ziel: number): number[] {
+  const start = basis.map((s) => klemme(s))
+  const n = start.length
+  if (!n) return start
+  const zielScore = Math.max(1, Math.min(10, Math.round(ziel * 10) / 10))
+  const zielSumme = Math.round(zielScore * n)
+  const avg = start.reduce((a, b) => a + b, 0) / n
+  const floats = start.map((s) => s + (zielScore - avg))
+  const floors = floats.map((f) => Math.max(1, Math.min(10, Math.floor(f))))
+  let rest = zielSumme - floors.reduce((a, b) => a + b, 0)
+  const reihenfolge = floats
+    .map((f, i) => ({ i, rem: f - Math.floor(f), orig: start[i]! }))
+    .sort((a, b) => b.rem - a.rem || b.orig - a.orig || a.i - b.i)
+  const scores = [...floors]
+  if (rest > 0) {
+    for (const { i } of reihenfolge) {
+      if (rest <= 0) break
+      if (scores[i]! < 10) {
+        scores[i]! += 1
+        rest -= 1
+      }
+    }
+  } else if (rest < 0) {
+    for (const { i } of [...reihenfolge].reverse()) {
+      if (rest >= 0) break
+      if (scores[i]! > 1) {
+        scores[i]! -= 1
+        rest += 1
+      }
+    }
+  }
+  let score = gesamtScoreAusPfeilern(scores)
+  for (let k = 0; k < 20 && Math.abs(score - zielScore) > 0.05; k++) {
+    const next = schritt(scores, score < zielScore ? 1 : -1)
+    if (!next) break
+    for (let i = 0; i < scores.length; i++) scores[i] = next[i]!
+    score = gesamtScoreAusPfeilern(scores)
+  }
+  return scores
+}
+
+export function urteilAusMoatScore(score: number): MoatKiUrteil {
+  return urteilAusStufe(stufeAusScore(score))
+}
+
 function urteilAusStufe(stufe: MoatShortVerdict): MoatKiUrteil {
   if (stufe === 'wide') return 'tief'
   if (stufe === 'narrow') return 'moderat'
