@@ -163,6 +163,22 @@ export function LongformStudio() {
       setSchritt('hooks')
     })
 
+  const brollLaden = async (projektId: string) => {
+    const r = await lfApi<ZustandAntwort & { gefuellt?: number }>('/api/youtube/longform/bilder', {
+      json: { id: projektId, aktion: 'auto' },
+    })
+    setProjekt((p) => (p ? { ...p, zustand: r.zustand } : p))
+    setDirty(false)
+    return r.gefuellt ?? 0
+  }
+
+  const brollAuto = () =>
+    aktion('broll', async () => {
+      if (!projekt) return
+      const n = await brollLaden(projekt.id)
+      toast.success(n ? `${n} B-Roll-Bilder geladen.` : 'Keine offenen B-Roll-Sätze.')
+    })
+
   const skriptErzeugen = (hookIndex: number) =>
     aktion('skript', async () => {
       await speichereLokal()
@@ -172,7 +188,13 @@ export function LongformStudio() {
       setProjekt({ ...projekt!, zustand: r.zustand })
       setDirty(false)
       setSchritt('skript')
-      toast.success('Skript fertig. Prüfe die Hinweise an den Sätzen.')
+      toast.success('Skript fertig — lade B-Roll…')
+      try {
+        const n = await brollLaden(projekt!.id)
+        toast.success(n ? `${n} B-Roll-Bilder geladen.` : 'Skript ok — optional B-Roll nachladen.')
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'B-Roll fehlgeschlagen — Button „B-Roll automatisch“.')
+      }
     })
 
   const abschnittUmschreiben = (abschnittId: string) =>
@@ -507,6 +529,9 @@ export function LongformStudio() {
             </span>
             <button type="button" className={`${LF_KNOPF} ml-auto`} disabled={laeuft != null} onClick={() => void erneutPruefen()}>
               {laeuft === 'pruefen' ? 'Prüft…' : 'Erneut prüfen'}
+            </button>
+            <button type="button" className={LF_KNOPF} disabled={laeuft != null} onClick={() => void brollAuto()}>
+              {laeuft === 'broll' ? 'B-Roll…' : 'B-Roll automatisch'}
             </button>
             <button type="button" className={LF_KNOPF_PRIMAER} onClick={() => setSchritt('stimme')}>
               Weiter zur Stimme

@@ -38,12 +38,16 @@ function Kamera({ p, t, block, children }: SzeneProps & { children: React.ReactN
     const d = frame - f
     if (d >= -4 && d < 40) punch = Math.max(punch, interpolate(d, [-4, 6, 40], [0, 1, 0.55], { extrapolateRight: 'clamp' }))
   }
-  if (block.familie === 'chart' || block.familie === 'bild') punch *= 0.4
-  const drift = interpolate(frame, [0, Math.max(1, block.dauer)], [1, 1.025], { extrapolateRight: 'clamp' })
+  // Chart/B-Roll: kaum Punch — sonst „zucken“ die Linien und Fotos.
+  if (block.familie === 'chart') punch = 0
+  if (block.familie === 'bild' || block.familie === 'moat') punch *= 0.25
+  const drift = interpolate(frame, [0, Math.max(1, block.dauer)], [1, block.familie === 'chart' ? 1.008 : 1.018], {
+    extrapolateRight: 'clamp',
+  })
   const seed = p.varianten.kameraSeed + block.from
   const ox = 40 + (seed % 3) * 10
   const oy = 42 + ((seed >> 2) % 3) * 8
-  return <AbsoluteFill style={{ transform: `scale(${drift + punch * 0.03})`, transformOrigin: `${ox}% ${oy}%` }}>{children}</AbsoluteFill>
+  return <AbsoluteFill style={{ transform: `scale(${drift + punch * 0.02})`, transformOrigin: `${ox}% ${oy}%` }}>{children}</AbsoluteFill>
 }
 
 function musikVolumen(f: number, t: LongTimeline, basis: number, von: number, bis: number): number {
@@ -55,7 +59,7 @@ function musikVolumen(f: number, t: LongTimeline, basis: number, von: number, bi
     }
     abstand = Math.min(abstand, f < a ? a - f : f - b)
   }
-  const frei = Math.min(1, abstand / 12)
+  const frei = Math.min(1, abstand / 6)
   const pegel = LONG_MUSIK_UNTER_STIMME + (LONG_MUSIK_FREI - LONG_MUSIK_UNTER_STIMME) * frei
   const kante = Math.min(1, (f - von) / 20, (bis - f) / 30)
   return Math.max(0, pegel * basis * Math.max(0, kante))
@@ -135,7 +139,12 @@ export function AktienAnalyse(p: AktienAnalyseProps) {
       ))}
       {t.bumper.map((b) => (
         <Sequence key={b.from} from={b.from} durationInFrames={b.dauer}>
-          <LongBumper nummer={b.nummer} titel={p.abschnittTitel[b.abschnittId] ?? ''} akzent={p.varianten.akzent} />
+          <LongBumper
+            nummer={b.nummer}
+            titel={p.abschnittTitel[b.abschnittId] ?? ''}
+            akzent={p.varianten.akzent}
+            gesamt={Math.max(1, t.bumper.length)}
+          />
         </Sequence>
       ))}
       {t.abo ? (

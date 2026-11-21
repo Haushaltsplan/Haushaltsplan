@@ -34,6 +34,7 @@ export function scorecardTextEnglisch(roh: string): string {
     .replace(/\bJ\./g, 'y')
     .replace(/\bkeine Daten\b/gi, 'no data')
     .replace(/\bintakt\b/gi, 'intact')
+    .replace(/\berodiert\b/gi, 'eroding')
     .replace(/\bklass\.\s*/gi, 'classic ')
     .replace(/\bPerz\.\s*/gi, 'pctl. ')
     .replace(/\bkein COGS\b/gi, 'no COGS')
@@ -41,6 +42,14 @@ export function scorecardTextEnglisch(roh: string): string {
     .replace(/\bgelb\b/gi, 'yellow')
     .replace(/\brot\b/gi, 'red')
     .replace(/\bgesamt\b/gi, 'total')
+    .replace(/\bStabilität\b/gi, 'stability')
+    .replace(/\bStabilitaet\b/gi, 'stability')
+    .replace(/\bWachstum\b/gi, 'growth')
+    .replace(/\bQualität\b/gi, 'quality')
+    .replace(/\bQualitaet\b/gi, 'quality')
+    .replace(/\bTilgung\b/gi, 'paydown')
+    .replace(/\bAusschüttung\b/gi, 'payout')
+    .replace(/\bAusschuettung\b/gi, 'payout')
 }
 
 /** Alle Zahlen eines Textes, normalisiert („58,240“ → 58240, „1.2B“ → 1.2e9). */

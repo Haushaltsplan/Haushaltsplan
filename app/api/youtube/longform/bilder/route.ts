@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import {
   bewerteKandidaten,
+  fuelleBrollAutomatisch,
   pixabayKonfiguriert,
   sucheOpenverse,
   suchePixabay,
@@ -22,7 +23,7 @@ import type { LongformBild, LongformBildKandidat, LongformProjektZustand } from 
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 120
+export const maxDuration = 300
 
 export async function GET() {
   return NextResponse.json({ pixabay: pixabayKonfiguriert() })
@@ -67,10 +68,30 @@ export async function POST(req: Request) {
     const satzId = typeof body.satzId === 'string' ? body.satzId : ''
     const p = id ? await ladeProjekt(id) : null
     if (!p) return { ok: false as const, fehler: 'Projekt nicht gefunden.' }
-    const text = satzText(p.zustand, satzId)
-    if (!text) return { ok: false as const, fehler: 'Satz nicht gefunden.' }
 
     try {
+      if (body.aktion === 'auto') {
+        const skript = p.zustand.skript
+        if (!skript) return { ok: false as const, fehler: 'Kein Skript.' }
+        const auftraege = skript.abschnitte.flatMap((a) =>
+          a.saetze
+            .filter((s) => (s.visual.szene === 'bild' || s.visual.szene === 'hook_bild') && !p.zustand.bilder[s.id])
+            .map((s) => ({
+              satzId: s.id,
+              text: s.text,
+              begriff: (s.visual.bildWunsch ?? `${p.zustand.faktenblatt.firmenname} ${p.zustand.faktenblatt.branche ?? 'industry'}`).trim(),
+            })),
+        )
+        if (!auftraege.length) return { ok: true as const, zustand: await mitUrls(p.zustand), gefuellt: 0 }
+        const neu = await fuelleBrollAutomatisch(id, auftraege.slice(0, 10))
+        const z = { ...p.zustand, bilder: { ...p.zustand.bilder, ...neu } }
+        await speichereProjekt(id, z)
+        return { ok: true as const, zustand: await mitUrls(z), gefuellt: Object.keys(neu).length }
+      }
+
+      const text = satzText(p.zustand, satzId)
+      if (!text) return { ok: false as const, fehler: 'Satz nicht gefunden.' }
+
       if (body.aktion === 'suchen') {
         const begriff = String(body.begriff ?? '').trim().slice(0, 100)
         if (begriff.length < 2) return { ok: false as const, fehler: 'Suchbegriff fehlt.' }

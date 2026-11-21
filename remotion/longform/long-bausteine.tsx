@@ -148,9 +148,18 @@ export function aktiverSatz({ t, block }: SzeneProps, relFrame: number): number 
   return aktiv
 }
 
+/**
+ * Kurzer Soft-Cut statt Fade-to-Black.
+ * Lange Ausblendungen + Satzlücken wirkten wie „hängende“ Pausen und schwarze Frames.
+ */
 export function Blende({ von, bis, children }: { von: number; bis: number; children: React.ReactNode }) {
   const frame = useCurrentFrame()
-  const o = interpolate(frame, [von, von + 10, bis - 8, bis], [0, 1, 1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   if (frame < von || frame > bis) return null
-  return <AbsoluteFill style={{ opacity: von === 0 ? Math.min(1, interpolate(frame, [bis - 8, bis], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })) : o }}>{children}</AbsoluteFill>
+  const span = Math.max(1, bis - von)
+  const fade = Math.min(4, Math.max(1, Math.floor(span / 5)))
+  const o = interpolate(frame, [von, von + fade, Math.max(von + fade + 1, bis - fade), bis], [von <= 1 ? 1 : 0, 1, 1, 0], {
+    extrapolateLeft: 'clamp',
+    extrapolateRight: 'clamp',
+  })
+  return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>
 }

@@ -82,7 +82,8 @@ export async function sprichSatz(opts: {
   const a = j.alignment?.characters?.length ? j.alignment : j.normalized_alignment
   const ends = a?.character_end_times_seconds ?? []
   const woerter = woerterAusZeichen(a?.characters ?? [], a?.character_start_times_seconds ?? [], ends)
-  const dauerMs = Math.round((ends.length ? ends[ends.length - 1]! : 0) * 1000) + 120
+  // Nur knappes Polster — große Extra-ms erzeugen hörbare Löcher zwischen Sätzen.
+  const dauerMs = Math.round((ends.length ? ends[ends.length - 1]! : 0) * 1000) + 40
 
   const id = randomUUID()
   const pfad = projektPfad(opts.projektId, 'stimme', `${opts.satzId}-${id}.mp3`)

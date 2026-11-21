@@ -1,4 +1,4 @@
-/** 10.000-$-Chart: eine durchgehende Szene, die je nach Satz Endwert, Einbruch und S&P-Vergleich zeigt. */
+/** 10.000-$-Chart: Aktie + S&P 500 von Anfang an, Zoom auf Drawdown, Endwert und Vergleich. */
 import { useMemo } from 'react'
 import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion'
 import { monatJahr, pct, usd } from '../../lib/youtube/longform/longform-format'
@@ -21,7 +21,7 @@ import {
 const X0 = LONG_RAND_X + 90
 const X1 = 1920 - LONG_RAND_X - 260
 const Y0 = 300
-const Y1 = 930
+const Y1 = 900
 
 function ersterFrame(sp: SzeneProps, szene: string): number | null {
   for (const i of sp.block.saetze) {
@@ -35,7 +35,7 @@ function ersterFrame(sp: SzeneProps, szene: string): number | null {
 
 function schoeneSchritte(max: number): number[] {
   const roh = max / 4
-  const p = Math.pow(10, Math.floor(Math.log10(roh)))
+  const p = Math.pow(10, Math.floor(Math.log10(roh || 1)))
   const schritt = [1, 2, 2.5, 5, 10].map((m) => m * p).find((s) => s >= roh) ?? roh
   const out: number[] = []
   for (let v = 0; v <= max * 1.001; v += schritt) out.push(v)
@@ -104,34 +104,57 @@ export function LongChart(sp: SzeneProps) {
   const fDd = ersterFrame(sp, 'chart_drawdown')
   const fSpy = ersterFrame(sp, 'chart_vergleich')
   const ddAktiv = szene === 'chart_drawdown' && geo.dd
+  const vergleichAktiv = szene === 'chart_vergleich'
   const endFort = fEnd != null ? ein(frame, fEnd, 30) : 0
-  const spyFort = fSpy != null ? ein(frame, fSpy, 60) : 0
+  const spyBeton = fSpy != null ? ein(frame, fSpy, 40) : vergleichAktiv ? 1 : 0
 
-  // Kamera fährt beim Einbruch auf die Stelle und wieder zurück.
   const ddMitte = geo.dd ? (geo.x(geo.dd.a) + geo.x(geo.dd.b)) / 2 : 960
   const ddIdx = sp.block.saetze.findIndex((k) => sp.p.saetze[k]!.visual.szene === 'chart_drawdown')
   const ddNaechster = ddIdx >= 0 ? sp.block.saetze[ddIdx + 1] : undefined
   const ddEnde = ddNaechster != null ? sp.t.saetze[ddNaechster]!.from - sp.block.from : sp.block.dauer
   const zoom =
     geo.dd && fDd != null && ddEnde > fDd + 30
-      ? interpolate(frame, [fDd, fDd + 24, ddEnde - 4, ddEnde + 18], [1, 1.35, 1.35, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+      ? interpolate(frame, [fDd, fDd + 20, ddEnde - 6, ddEnde + 14], [1, 1.18, 1.18, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
       : 1
 
-  const laenge = 6000
   const ende = c.punkte[c.punkte.length - 1]!
   const endX = geo.x(c.punkte.length - 1)
   const plus = c.endwertGesamt / LONGFORM_INVEST_USD - 1
+  const spyPlus = c.endwertSpy != null ? c.endwertSpy / LONGFORM_INVEST_USD - 1 : null
 
   return (
     <AbsoluteFill>
-      <div style={{ position: 'absolute', left: LONG_RAND_X, top: 92 }}>
-        <div style={{ fontFamily: LONG_SERIF, fontSize: 76, color: LONG_TEXT, opacity: ein(frame, 0, 18) }}>
+      <div style={{ position: 'absolute', left: LONG_RAND_X, top: 72 }}>
+        <div style={{ fontFamily: LONG_SERIF, fontSize: 68, color: LONG_TEXT, opacity: ein(frame, 0, 18) }}>
           {usd(LONGFORM_INVEST_USD)} in {sp.p.ticker}
+          {geo.spy ? <span style={{ color: LONG_MUTED, fontSize: 48 }}> vs S&P 500</span> : null}
         </div>
-        <div style={{ fontFamily: LONG_MONO, fontSize: 24, color: LONG_MUTED, marginTop: 10, letterSpacing: 1, opacity: ein(frame, 8, 18) }}>
+        <div style={{ fontFamily: LONG_MONO, fontSize: 22, color: LONG_MUTED, marginTop: 10, letterSpacing: 1, opacity: ein(frame, 8, 18) }}>
           {monatJahr(c.startDatum).toUpperCase()} – {monatJahr(c.endDatum).toUpperCase()} · DIVIDENDS REINVESTED · USD
         </div>
       </div>
+
+      {geo.spy ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: LONG_RAND_X,
+            top: 210,
+            display: 'flex',
+            gap: 28,
+            opacity: ein(frame, 10, 16),
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: akzent }} />
+            <span style={{ fontFamily: LONG_MONO, fontSize: 22, color: LONG_TEXT, letterSpacing: 1 }}>{sp.p.ticker}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 0, borderTop: `3px dashed ${LONG_SPY}` }} />
+            <span style={{ fontFamily: LONG_MONO, fontSize: 22, color: LONG_MUTED, letterSpacing: 1 }}>S&P 500</span>
+          </div>
+        </div>
+      ) : null}
 
       <AbsoluteFill style={{ transform: `scale(${zoom})`, transformOrigin: `${ddMitte}px ${(Y0 + Y1) / 2}px` }}>
         <svg width={1920} height={1080} style={{ position: 'absolute', inset: 0 }}>
@@ -172,13 +195,20 @@ export function LongChart(sp: SzeneProps) {
             </g>
           ) : null}
 
-          {geo.spy && spyFort > 0 ? (
-            <path d={geo.spy} fill="none" stroke={LONG_SPY} strokeWidth={3} strokeDasharray={laenge} strokeDashoffset={laenge * (1 - spyFort)} />
-          ) : null}
-
           <g clipPath="url(#lf-zeichnen)">
+            {geo.spy ? (
+              <path
+                d={geo.spy}
+                fill="none"
+                stroke={LONG_SPY}
+                strokeWidth={2.8 + spyBeton * 1.4}
+                strokeDasharray="10 9"
+                strokeLinejoin="round"
+                opacity={0.55 + spyBeton * 0.4}
+              />
+            ) : null}
             {flaeche ? <path d={`${geo.aktie}L${X1},${Y1}L${X0},${Y1}Z`} fill="url(#lf-flaeche)" /> : null}
-            <path d={geo.aktie} fill="none" stroke={akzent} strokeWidth={flaeche ? 4.5 : 3.5} strokeLinejoin="round" />
+            <path d={geo.aktie} fill="none" stroke={akzent} strokeWidth={flaeche ? 5 : 4} strokeLinejoin="round" />
           </g>
           {zeichnen > 0.02 ? (
             <circle
@@ -210,34 +240,51 @@ export function LongChart(sp: SzeneProps) {
           </div>
         ) : null}
 
-        {geo.spy && spyFort > 0.9 && c.endwertSpy != null ? (
-          <div style={{ position: 'absolute', left: endX + 24, top: geo.y(ende.spy ?? 0) - 18, fontFamily: LONG_MONO, fontSize: 24, color: LONG_SPY, opacity: ein(frame, (fSpy ?? 0) + 50, 12) }}>
-            S&P 500 {usd(c.endwertSpy)}
+        {geo.spy && zeichnen > 0.92 && c.endwertSpy != null ? (
+          <div
+            style={{
+              position: 'absolute',
+              left: Math.min(endX + 16, 1920 - LONG_RAND_X - 220),
+              top: Math.max(Y0 + 8, Math.min(Y1 - 48, geo.y(ende.spy ?? 0) - 22)),
+              fontFamily: LONG_MONO,
+              fontSize: 22,
+              color: LONG_SPY,
+              opacity: 0.55 + spyBeton * 0.45,
+              textShadow: '0 1px 8px rgba(0,0,0,0.65)',
+            }}
+          >
+            S&P {usd(c.endwertSpy)}
           </div>
         ) : null}
       </AbsoluteFill>
 
       {fEnd != null && frame >= fEnd ? (
-        <div style={{ position: 'absolute', right: LONG_RAND_X, top: 92, textAlign: 'right' }}>
-          <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 120, letterSpacing: -4, color: LONG_TEXT, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+        <div style={{ position: 'absolute', right: LONG_RAND_X, top: 72, textAlign: 'right' }}>
+          <div style={{ fontFamily: LONG_MONO, fontSize: 18, letterSpacing: 2, color: LONG_MUTED, opacity: ein(frame, fEnd, 10) }}>{sp.p.ticker}</div>
+          <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 110, letterSpacing: -4, color: LONG_TEXT, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
             {zaehleText(usd(c.endwertGesamt), endFort)}
           </div>
           <div
             style={{
               display: 'inline-block',
-              marginTop: 14,
+              marginTop: 12,
               padding: '6px 16px',
               borderRadius: 999,
               background: mitAlpha(plus >= 0 ? LONG_GRUEN : LONG_ROT, 0.16),
               color: plus >= 0 ? LONG_GRUEN : LONG_ROT,
               fontFamily: LONG_MONO,
               fontWeight: 700,
-              fontSize: 28,
+              fontSize: 26,
               opacity: ein(frame, fEnd + 24, 10),
             }}
           >
             {pct(plus * 100, { vorzeichen: true })}
           </div>
+          {spyPlus != null && (vergleichAktiv || spyBeton > 0.4) ? (
+            <div style={{ marginTop: 18, fontFamily: LONG_MONO, fontSize: 22, color: LONG_MUTED, opacity: ein(frame, (fSpy ?? fEnd) + 20, 14) }}>
+              S&P 500 {pct(spyPlus * 100, { vorzeichen: true })}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </AbsoluteFill>

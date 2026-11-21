@@ -11,7 +11,7 @@ import { ladeHoch, projektPfad } from '@/lib/youtube/longform/longform-db-server
 import type { LongformBild, LongformBildKandidat } from '@/lib/youtube/longform/longform-types'
 
 const UA = 'OmniaHaushalt/1.0 (YouTube long-form stock analysis; contact via app owner)'
-const MIN_BREITE_FOTO = 1200
+const MIN_BREITE_FOTO = 1000
 
 const FREIE_LIZENZ = /^(cc0|public domain|pd|cc[ -]by(?:[ -]sa)?(?:[ -]\d\.\d)?)/i
 
@@ -282,4 +282,36 @@ export async function uebernimmKandidat(projektId: string, satzId: string, k: Lo
   const pfad = projektPfad(projektId, 'bilder', `${satzId}-${id}.${endung}`)
   await ladeHoch(pfad, buf, mime)
   return { id, quelle: k.quelle, art: k.art, pfad, breite: k.breite, hoehe: k.hoehe, credit: k.credit, suchbegriff: k.suchbegriff }
+}
+
+export type AutoBildAuftrag = { satzId: string; text: string; begriff: string }
+
+/**
+ * Füllt fehlende B-Roll für bild/hook_bild-Sätze (Wikimedia + Openverse, bestes Scoring).
+ * Pixabay bewusst nicht — nur manuell laut Nutzungsbedingungen.
+ */
+export async function fuelleBrollAutomatisch(
+  projektId: string,
+  auftraege: AutoBildAuftrag[],
+): Promise<Record<string, LongformBild>> {
+  const out: Record<string, LongformBild> = {}
+  const gesehen = new Set<string>()
+  for (const a of auftraege) {
+    const begriff = a.begriff.trim().slice(0, 100)
+    if (begriff.length < 2) continue
+    const [wiki, ov] = await Promise.all([sucheWikimedia(begriff), sucheOpenverse(begriff)])
+    const roh = [...wiki, ...ov].filter((k) => !gesehen.has(k.originalUrl))
+    if (!roh.length) continue
+    const bewertet = await bewerteKandidaten(roh, a.text)
+    const pick = bewertet.find((k) => (k.eignung ?? 7) >= 5) ?? bewertet[0]
+    if (!pick) continue
+    try {
+      const bild = await uebernimmKandidat(projektId, a.satzId, pick)
+      out[a.satzId] = bild
+      gesehen.add(pick.originalUrl)
+    } catch {
+      /* nächster Auftrag */
+    }
+  }
+  return out
 }

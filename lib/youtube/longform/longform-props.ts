@@ -1,5 +1,6 @@
 /** Projektzustand → Props der Composition „AktienAnalyse“. Läuft im Studio (Vorschau) und im Render. */
 import type { AktienAnalyseProps, LongSatzProps } from '@/remotion/longform/long-types'
+import { industrieZeileEnglisch } from '@/lib/youtube/longform/longform-en'
 import { waehleMusik, type LongformMusikTrack } from '@/lib/youtube/longform/longform-musik'
 import { LONGFORM_ABSCHNITT_TITEL, type LongformProjektZustand } from '@/lib/youtube/longform/longform-types'
 
@@ -37,7 +38,7 @@ export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMus
     ticker: fb.ticker,
     firmenname: fb.firmenname,
     logoUrl: fb.logoUrl,
-    branche: [fb.sektor, fb.branche].filter(Boolean).join(' · ') || null,
+    branche: industrieZeileEnglisch(fb.sektor, fb.branche),
     leitfrage: skript.leitfrage,
     varianten: z.varianten,
     chart: fb.chart,

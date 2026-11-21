@@ -7,6 +7,7 @@ import 'server-only'
 
 import { resolveCoachProviderFromMode, runCoachCompletion, type CoachMessage } from '@/lib/ki-coach-backend'
 import { hookKatalogFuerPrompt } from '@/lib/youtube/longform/longform-abwechslung'
+import { klingtNachDeutsch } from '@/lib/youtube/longform/longform-en'
 import { faktenFuerPrompt } from '@/lib/youtube/longform/longform-fakten'
 import {
   LONGFORM_ABSCHNITT_TITEL,
@@ -73,20 +74,22 @@ async function frage<T>(opts: {
   }
 }
 
-const STIL = `You write long-form YouTube stock analyses in English for a calm, sharp, independent investor who narrates with his own cloned voice.
-Voice: confident, warm, slightly dry humour, zero hype. Talk to one viewer ("you"). Use contractions.
-Sentences are spoken by text-to-speech: 6 to 24 words, one idea each, no lists, no brackets, no emojis, no abbreviations the voice could misread (write "percent" only via the % sign attached to a number).
+const STIL = `You write long-form YouTube stock analyses in ENGLISH ONLY for a calm, sharp, independent investor who narrates with his own cloned voice.
+LANGUAGE LOCK: Every spoken word must be English. Sources may be German (company description, moat reasons) — translate meaning, never paste German words (no "Burggraben", "Technologie", "Halbleiter", "Umsatz", "Aktie", umlauts, etc.). On-screen fokus/titles: English only.
+Voice: confident, warm, slightly dry humour, zero hype, but entertaining — tension and curiosity, not a spreadsheet readout. Talk to one viewer ("you"). Use contractions.
+Cold open: the first sentence must land like a trailer beat (a shocking number, a sharp claim, or a dilemma). No throat-clearing.
+Sentences are spoken by text-to-speech: 6 to 22 words, one idea each, no lists, no brackets, no emojis, no abbreviations the voice could misread (write "percent" only via the % sign attached to a number).
 Every number you write must be copied exactly from the FACT SHEET text column and its fact id listed in faktIds. Never compute, round differently, convert or invent numbers, dates, names or events. If a fact is missing, say it qualitatively or leave it out.
 Qualitative claims must come from the company description, the moat check texts or the attached documents. No outside knowledge about recent news, products or people unless it is in the sources.
-Banned phrases: "let's dive in", "in today's video", "without further ado", "game changer", "buckle up", "at the end of the day", "it's worth noting", "delve", "testament to", "stay tuned", "no-brainer", "smash that like button".
-Transitions grow out of the content (a number, a tension, a question), never "now let's look at".`
+Banned phrases: "let's dive in", "in today's video", "without further ado", "game changer", "buckle up", "at the end of the day", "it's worth noting", "delve", "testament to", "stay tuned", "no-brainer", "smash that like button", "now let's look at", "as you can see".
+Transitions grow out of the content (a number, a tension, a question).`
 
 function kontext(fb: LongformFaktenblatt, thema: string): string {
   const m = fb.moat
   return [
     `COMPANY: ${fb.firmenname} (${fb.ticker})${fb.sektor ? `, sector ${fb.sektor}` : ''}${fb.branche ? `, industry ${fb.branche}` : ''}`,
     `VIDEO TOPIC FROM THE CREATOR: ${thema || '(none given, choose the most interesting angle the data supports)'}`,
-    fb.beschreibung ? `COMPANY DESCRIPTION (German source, translate meaning only):\n${fb.beschreibung.slice(0, 2500)}` : '',
+    fb.beschreibung ? `COMPANY DESCRIPTION (German source — translate into English meaning only, never quote German):\n${fb.beschreibung.slice(0, 2500)}` : '',
     m
       ? `MOAT CHECK (pillar shape from app assessment, overall score locked to scorecard):\nOverall moat score: ${m.score}/10 (${m.urteil}). Pillar scores average to this overall score — use moat.score and the pillar scores as written, never invent a different total.\nBusiness model: ${m.geschaeftsmodell}\n${m.pfeiler
           .map((p) => `- ${p.label} ${p.score}/10: ${p.begruendung} Risk: ${p.risiko}`)
@@ -161,9 +164,9 @@ export async function erzeugeHooks(opts: {
     kontext(fb, opts.zustand.thema),
     `ALLOWED HOOK TYPES (pick three different ones that the data genuinely supports):\n${hookKatalogFuerPrompt(opts.gesperrt)}`,
     opts.fruehereLeitfragen.length ? `GUIDING QUESTIONS OF RECENT VIDEOS (do not reuse their angle or wording):\n${opts.fruehereLeitfragen.map((q) => `- ${q}`).join('\n')}` : '',
-    `TASK: Propose exactly 3 openings for this video. Each has a guiding question (leitfrage) that the whole video will answer at the end, and 2 to 4 spoken sentences (about 20 to 30 seconds).
-The opening must create an open loop: tease the tension, never reveal the final verdict. No greeting, no channel name, no "in this video".
-begruendung: one German sentence for the creator explaining why this angle fits the data.`,
+    `TASK: Propose exactly 3 openings for this video. Each has a guiding question (leitfrage, ENGLISH) that the whole video will answer at the end, and 2 to 4 spoken ENGLISH sentences (about 20 to 30 seconds).
+The opening must feel like a cold open / trailer: first line hits hard, create an open loop, never reveal the final verdict. No greeting, no channel name, no "in this video". Spoken text and leitfrage: English only.
+begruendung: one German sentence for the creator (studio only) explaining why this angle fits the data.`,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -206,11 +209,11 @@ begruendung: one German sentence for the creator explaining why this angle fits 
 function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): string {
   switch (id) {
     case 'hook':
-      return 'hook: Keep the chosen opening almost word for word. You may smooth it into 2 to 4 sentences. Scenes: the given hook scene; optionally end with titel_karte (fokus = short title on screen, max 6 words).'
+      return 'hook: Keep the chosen opening almost word for word. You may smooth it into 2 to 4 punchy English sentences. First sentence = cold open. Scenes: the given hook scene; optionally end with titel_karte (fokus = short English title on screen, max 6 words).'
     case 'chart10k':
-      return `chart10k (about 70 to 110 seconds, 10 to 16 sentences): the long-term chart and what $10,000 invested ${fb.chart ? `in ${fb.chart.startDatum.slice(0, 4)}` : '10 years ago'} became, in dollars and percent, dividends reinvested. Mention how much came from dividends if that fact exists, compare with the S&P 500 if the facts exist, and make the worst drawdown feel real (what the viewer would have had to sit through). Scenes: chart_linie, chart_endwert, chart_drawdown, chart_vergleich, bild (bildWunsch = concrete English photo search, e.g. "semiconductor cleanroom").`
+      return `chart10k (about 70 to 110 seconds, 10 to 16 sentences): the long-term chart and what $10,000 invested ${fb.chart ? `in ${fb.chart.startDatum.slice(0, 4)}` : '10 years ago'} became, in dollars and percent, dividends reinvested. Mention how much came from dividends if that fact exists, make the worst drawdown feel real (what the viewer would have had to sit through)${fb.chart?.endwertSpy != null ? ', and you MUST include at least two sentences with scene chart_vergleich that name the S&P 500 comparison using the SPY facts (k10.spy_endwert / k10.spy_rendite / k10.vs_spy)' : ''}. REQUIRED pacing: at least 2 full-screen B-roll cuts (scene bild) with concrete English bildWunsch (e.g. "semiconductor wafer cleanroom", "data center server racks") — place them between chart beats so the section is not one long static chart. Scenes: chart_linie, chart_endwert, chart_drawdown${fb.chart?.endwertSpy != null ? ', chart_vergleich (required)' : ''}, bild.`
     case 'burggraben':
-      return `burggraben (about 100 to 150 seconds, 14 to 22 sentences): the moat check. The overall score is moat.score (identical to the scorecard Burggraben score) — say that number once as the verdict, never a conflicting total. Start from how the business earns money (moat_geschaeft${fb.segmente ? ', moat_segmente for the revenue mix' : ''}), then walk through the four moat pillars with their scores and one concrete reason each (scene moat_pfeiler, fokus = pillar id: preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte), then the scorecard moat column (moat_scorecard), and end on the biggest threat to the moat as a bridge to the rest of the video. Spend more time on the strongest and the weakest pillar, less on average ones.`
+      return `burggraben (about 100 to 150 seconds, 14 to 22 sentences): the moat check. Say "moat", never the German word. The overall score is moat.score (identical to the scorecard moat quality score) — say that number once as the verdict, never a conflicting total. Start from how the business earns money (moat_geschaeft${fb.segmente ? ', moat_segmente for the revenue mix' : ''}), then walk through the four moat pillars with their scores and one concrete reason each (scene moat_pfeiler, fokus = pillar id: preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte), then the scorecard moat column (moat_scorecard), and end on the biggest threat to the moat as a bridge to the rest of the video. REQUIRED: at least 2 scene bild cuts with English bildWunsch (factory floor, product close-up, cleanroom — no logos of rivals). Spend more time on the strongest and the weakest pillar, less on average ones.`
     default:
       return `${id}: ${LONGFORM_ABSCHNITT_TITEL[id]}`
   }
@@ -237,7 +240,7 @@ export async function erzeugeSkript(opts: {
     `CHOSEN OPENING (type ${opts.hook.typ}):\nGuiding question: ${opts.hook.leitfrage}\n${opts.hook.saetze.map((s) => `- ${s.text} [${s.faktIds.join(', ')}]`).join('\n')}`,
     `PREFERRED HOOK SCENE: ${z.varianten.hookSzene}`,
     `TASK: Write these sections of the video, in this order. Every section keeps the guiding question alive without answering it (the answer comes in the final section of the full video, not now).\n${LONGFORM_AKTIVE_ABSCHNITTE.map((a) => `- ${abschnittAuftrag(a, fb)}`).join('\n')}
-For every sentence choose the scene that best shows what is being said. Consecutive sentences may share a scene; change scenes at least every 3 to 4 sentences to keep the edit alive. betonung = the single word or number in the sentence where the visual should land.
+For every sentence choose the scene that best shows what is being said. Consecutive sentences may share a scene; change scenes at least every 2 to 3 sentences — never leave the same chart or moat layout on screen for more than ~20 seconds without a B-roll cut (scene bild + bildWunsch). betonung = the single word or number in the sentence where the visual should land.
 kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks in later videos).`,
   ].join('\n\n')
   const schema = {
@@ -259,7 +262,75 @@ kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks
     return { id, titel: LONGFORM_ABSCHNITT_TITEL[id], saetze: (roh?.saetze ?? []).filter((s) => s.text?.trim()).map((s) => satzAusRoh(s, id, fb)) }
   })
   if (abschnitte.every((a) => !a.saetze.length)) throw new Error('Gemini hat kein Skript geliefert.')
+  stelleChartVergleichSicher(abschnitte, fb)
+  stelleBrollSicher(abschnitte, fb)
+  const deutsch = abschnitte.flatMap((a) => a.saetze).filter((s) => klingtNachDeutsch(s.text))
+  if (deutsch.length) {
+    throw new Error(
+      `Skript enthält noch deutsche Wörter (z. B. „${deutsch[0]!.text.slice(0, 80)}“). Bitte Skript neu erzeugen — nur Englisch erlaubt.`,
+    )
+  }
+  if (klingtNachDeutsch(opts.hook.leitfrage)) {
+    throw new Error('Leitfrage ist nicht auf Englisch. Bitte anderen Hook wählen oder neu erzeugen.')
+  }
   return { leitfrage: opts.hook.leitfrage, hookTyp: opts.hook.typ, abschnitte, kernphrasen: (daten.kernphrasen ?? []).slice(0, 12) }
+}
+
+/** Wenn SPY-Daten da sind, muss mindestens eine chart_vergleich-Szene existieren. */
+function stelleChartVergleichSicher(abschnitte: LongformAbschnitt[], fb: LongformFaktenblatt) {
+  if (fb.chart?.endwertSpy == null) return
+  const chart = abschnitte.find((a) => a.id === 'chart10k')
+  if (!chart?.saetze.length) return
+  if (chart.saetze.some((s) => s.visual.szene === 'chart_vergleich')) return
+  const kandidat =
+    chart.saetze.find((s) => /S&P|SPY|index|benchmark/i.test(s.text) || s.faktIds.some((id) => id.includes('spy') || id === 'k10.vs_spy')) ??
+    chart.saetze.find((s) => s.visual.szene === 'chart_endwert') ??
+    chart.saetze[chart.saetze.length - 1]
+  if (kandidat) kandidat.visual.szene = 'chart_vergleich'
+}
+
+const BROLL_POOL = [
+  'semiconductor wafer cleanroom',
+  'DRAM memory chips close up',
+  'data center server racks',
+  'silicon wafer manufacturing',
+  'circuit board macro photography',
+  'factory industrial robotics',
+]
+
+function brollSuchbegriff(fb: LongformFaktenblatt, index: number): string {
+  const branche = (fb.branche ?? fb.sektor ?? '').toLowerCase()
+  if (/semi|chip|memory|halbleiter|technologie|technology/.test(branche) || /MU|micron/i.test(fb.ticker + fb.firmenname)) {
+    return BROLL_POOL[index % BROLL_POOL.length]!
+  }
+  if (/bank|financ/.test(branche)) return ['bank trading floor', 'city skyline financial district', 'stock exchange building'][index % 3]!
+  if (/health|bio|pharma/.test(branche)) return ['laboratory research', 'medical laboratory', 'pharmaceutical manufacturing'][index % 3]!
+  return [`${fb.firmenname} industry`, 'modern office building exterior', 'global supply chain shipping'][index % 3]!
+}
+
+/** Mindestens zwei B-Roll-Schnitte pro Langabschnitt, mit Suchbegriff. */
+function stelleBrollSicher(abschnitte: LongformAbschnitt[], fb: LongformFaktenblatt) {
+  let pool = 0
+  for (const a of abschnitte) {
+    if (a.id === 'hook' || a.saetze.length < 4) continue
+    const bilder = a.saetze.filter((s) => s.visual.szene === 'bild' || s.visual.szene === 'hook_bild')
+    for (const s of bilder) {
+      if (!s.visual.bildWunsch) s.visual.bildWunsch = brollSuchbegriff(fb, pool++)
+    }
+    const fehlt = Math.max(0, 2 - bilder.length)
+    if (!fehlt) continue
+    const kandidaten = a.saetze
+      .map((s, i) => ({ s, i }))
+      .filter(({ s, i }) => s.visual.szene !== 'bild' && s.visual.szene !== 'hook_bild' && i > 0 && i < a.saetze.length - 1)
+    const schritt = Math.max(1, Math.floor(kandidaten.length / (fehlt + 1)))
+    let gesetzt = 0
+    for (let k = schritt; k < kandidaten.length && gesetzt < fehlt; k += schritt) {
+      const ziel = kandidaten[k]!
+      ziel.s.visual.szene = 'bild'
+      ziel.s.visual.bildWunsch = brollSuchbegriff(fb, pool++)
+      gesetzt += 1
+    }
+  }
 }
 
 /** Carbon prüft qualitative Aussagen gegen die Quellen. Zahlen prüft der Code. */

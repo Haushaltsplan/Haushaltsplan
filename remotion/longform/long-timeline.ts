@@ -34,11 +34,13 @@ export type LongTimeline = {
   abo: { from: number; dauer: number } | null
 }
 
-const VORLAUF = 8
-const LUECKE = 9
-const BUMPER = 54
-const ABSPANN = 60
-export const LONG_ABO_DAUER = 165
+/** Wenig Luft vor dem ersten Wort — Cold Open soll sofort sitzen. */
+const VORLAUF = 3
+/** Satzlücke ~100 ms: gesprächig, ohne Hektik (früher ~300 ms + TTS-Polster = spürbare Löcher). */
+const LUECKE = 3
+const BUMPER = 40
+const ABSPANN = 36
+export const LONG_ABO_DAUER = 150
 
 export function familieVon(s: LongSatzProps): LongFamilie {
   const sz = s.visual.szene
@@ -51,7 +53,8 @@ export function familieVon(s: LongSatzProps): LongFamilie {
 
 export function geschaetzteDauerMs(text: string): number {
   const woerter = text.trim().split(/\s+/).filter(Boolean).length
-  return Math.round((woerter / 2.6) * 1000 + 350)
+  // ~155 WPM + knappes Polster — näher an ElevenLabs-Tempo, weniger Fake-Pause in der Vorschau.
+  return Math.round((woerter / 2.6) * 1000 + 180)
 }
 
 const norm = (w: string) => w.toLowerCase().replace(/[^a-z0-9$%.]/g, '')

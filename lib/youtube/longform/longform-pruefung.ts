@@ -2,6 +2,7 @@
  * Prüfung ohne KI: Jede Zahl im Skript muss aus dem Faktenblatt kommen.
  * Dazu Floskel-Sperrliste und Wiederholungscheck gegen frühere Videos.
  */
+import { klingtNachDeutsch } from '@/lib/youtube/longform/longform-en'
 import { zahlenImText } from '@/lib/youtube/longform/longform-format'
 import type { LongformFakt, LongformFaktenblatt, LongformPruefHinweis, LongformSatz, LongformSkript } from '@/lib/youtube/longform/longform-types'
 
@@ -92,6 +93,10 @@ export function pruefeSatz(satz: LongformSatz, ctx: PruefKontext): LongformSatz 
     if (m) hinweise.push({ art: 'floskel', text: `Floskel „${m[0]}“ — klingt nach Fließband.` })
   }
 
+  if (klingtNachDeutsch(satz.text)) {
+    hinweise.push({ art: 'sprache', text: 'Satz klingt deutsch — Video ist Englisch only. Umschreiben.' })
+  }
+
   const eigene = ngramme(satz.text, 5)
   if (eigene.size) {
     for (const alt of ctx.frueher) {
@@ -115,7 +120,12 @@ export function pruefeSkript(skript: LongformSkript, ctx: PruefKontext): Longfor
 
 export function anzahlKritisch(skript: LongformSkript): number {
   return skript.abschnitte.reduce(
-    (n, a) => n + a.saetze.reduce((m, s) => m + (s.hinweise?.filter((h) => h.art === 'zahl_ohne_fakt' || h.art === 'behauptung').length ?? 0), 0),
+    (n, a) =>
+      n +
+      a.saetze.reduce(
+        (m, s) => m + (s.hinweise?.filter((h) => h.art === 'zahl_ohne_fakt' || h.art === 'behauptung' || h.art === 'sprache').length ?? 0),
+        0,
+      ),
     0,
   )
 }

@@ -5,9 +5,10 @@
 import { baueScorecard } from '@/lib/portfolio-analyse/fundamentaldaten-scorecard'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { gesamtScoreAusPfeilern, type MoatKiBewertung } from '@/lib/portfolio-analyse/moat-ki-types'
+import { istMuellSegmentName, sektorBrancheEnglisch } from '@/lib/youtube/longform/longform-en'
+import { monatJahr, pct, scorecardTextEnglisch, usd } from '@/lib/youtube/longform/longform-format'
 import { metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import { pfeilerAufZielScore, urteilAusMoatScore } from '@/lib/youtube/moat-short-urteil'
-import { monatJahr, pct, scorecardTextEnglisch, usd } from '@/lib/youtube/longform/longform-format'
 import {
   LONGFORM_INVEST_USD,
   type LongformChart10k,
@@ -202,8 +203,8 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
     firmenname: paket.firmenname,
     isin: e.isin,
     symbolYahoo: paket.symbolYahoo,
-    sektor: paket.sektor,
-    branche: paket.branche,
+    sektor: sektorBrancheEnglisch(paket.sektor),
+    branche: sektorBrancheEnglisch(paket.branche),
     beschreibung: paket.beschreibung,
     website: paket.website,
     exportDatum: exportTag,
@@ -228,7 +229,7 @@ function segmenteAus(paket: FundamentaldatenPaket): LongformSegmente | null {
   ]
   for (const k of kandidaten) {
     const eintraege = k.liste
-      .filter((x) => x.anteilPct != null && x.anteilPct > 0 && x.name?.trim())
+      .filter((x) => x.anteilPct != null && x.anteilPct > 0 && x.name?.trim() && !istMuellSegmentName(x.name))
       .map((x) => ({ name: x.name.trim(), anteilPct: Math.round(x.anteilPct! * 10) / 10 }))
       .sort((a, b) => b.anteilPct - a.anteilPct)
     if (eintraege.length >= 2) {

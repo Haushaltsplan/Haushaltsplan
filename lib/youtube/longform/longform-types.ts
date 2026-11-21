@@ -166,7 +166,7 @@ export type LongformVisual = {
 }
 
 export type LongformPruefHinweis = {
-  art: 'zahl_ohne_fakt' | 'fakt_unbekannt' | 'floskel' | 'wiederholung' | 'behauptung'
+  art: 'zahl_ohne_fakt' | 'fakt_unbekannt' | 'floskel' | 'wiederholung' | 'behauptung' | 'sprache'
   text: string
 }
 
@@ -195,11 +195,12 @@ export type LongformStimmeEinstellungen = {
   speed: number
 }
 
+/** Expressiver Long-Form-Ton: etwas weniger Stabilität, mehr Style, leicht langsamer. */
 export const LONGFORM_STIMME_STANDARD: LongformStimmeEinstellungen = {
-  stability: 0.45,
-  similarity: 0.8,
-  style: 0.15,
-  speed: 1,
+  stability: 0.32,
+  similarity: 0.78,
+  style: 0.42,
+  speed: 0.94,
 }
 
 export type LongformWort = { text: string; startMs: number; endMs: number }

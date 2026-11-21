@@ -16,15 +16,17 @@ export const LONG_TEXT = SHORT_TEXT
 export const LONG_MUTED = SHORT_MUTED
 export const LONG_GRUEN = SHORT_GRUEN
 export const LONG_ROT = SHORT_ROT
-export const LONG_SPY = 'rgba(243, 241, 236, 0.38)'
+/** S&P-Linie: hell genug, dass sie neben der Aktie lesbar bleibt. */
+export const LONG_SPY = 'rgba(180, 196, 220, 0.85)'
 
 export const LONG_RAND_X = 120
 export const LONG_RAND_Y = 96
 
 export const LONG_STIMME_PEGEL = 1
-export const LONG_MUSIK_UNTER_STIMME = 0.07
-export const LONG_MUSIK_FREI = 0.2
-export const LONG_SFX_PEGEL = 0.22
+/** Ducking enger an die Stimme — weniger „Musik fällt in ein Loch“ zwischen kurzen Satzpausen. */
+export const LONG_MUSIK_UNTER_STIMME = 0.09
+export const LONG_MUSIK_FREI = 0.18
+export const LONG_SFX_PEGEL = 0.18
 
 export function mitAlpha(hex: string, a: number): string {
   const h = hex.replace('#', '')

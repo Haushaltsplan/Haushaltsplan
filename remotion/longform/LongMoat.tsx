@@ -43,7 +43,11 @@ function Geschaeft({ sp }: { sp: SzeneProps }) {
         <Logo url={p.logoUrl} groesse={168} ticker={p.ticker} />
         <div>
           <div style={{ fontFamily: LONG_SERIF, fontSize: 110, color: LONG_TEXT, lineHeight: 1 }}>{p.firmenname}</div>
-          {p.branche ? <div style={{ fontFamily: LONG_MONO, fontSize: 28, letterSpacing: 2, color: LONG_MUTED, marginTop: 18 }}>{p.branche.toUpperCase()}</div> : null}
+          {p.branche ? (
+            <div style={{ fontFamily: LONG_MONO, fontSize: 26, letterSpacing: 2, color: LONG_MUTED, marginTop: 18 }}>
+              {p.branche.toUpperCase()}
+            </div>
+          ) : null}
         </div>
       </div>
       {seg.length ? (
@@ -116,11 +120,12 @@ function Pfeiler({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
               key={x.id}
               style={{
                 background: LONG_PANEL,
-                borderRadius: 22,
-                padding: '30px 34px',
+                borderRadius: 18,
+                padding: '28px 32px',
                 border: `2px solid ${aktiv ? farbe : LONG_LINIE}`,
                 opacity: o * dim,
-                transform: `translateY(${(1 - o) * 26}px) scale(${aktiv ? 1.03 : 1})`,
+                transform: `translateY(${(1 - o) * 18}px)`,
+                boxShadow: aktiv ? `0 0 0 1px ${farbe}, 0 18px 40px rgba(0,0,0,0.35)` : 'none',
               }}
             >
               <div style={{ fontFamily: LONG_SANS, fontWeight: 700, fontSize: 30, color: LONG_MUTED }}>{x.label}</div>
@@ -249,8 +254,8 @@ export function LongMoat(sp: SzeneProps) {
   return (
     <AbsoluteFill>
       {laeufe.map((l, k) => (
-        <Blende key={k} von={l.from} bis={l.bis + (k < laeufe.length - 1 ? 8 : 0)}>
-          <Sequence from={l.from} layout="none">
+        <Blende key={k} von={l.from} bis={l.bis + (k < laeufe.length - 1 ? 3 : 0)}>
+          <Sequence from={l.from} layout="none" durationInFrames={Math.max(1, l.bis - l.from + 4)}>
             {l.szene === 'moat_pfeiler' ? (
               <Pfeiler sp={sp} lauf={l} />
             ) : l.szene === 'moat_scorecard' ? (
