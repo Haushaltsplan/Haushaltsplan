@@ -6,6 +6,7 @@ import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { stelleTracksSicher } from '@/lib/youtube/moat-short-musik-server'
+import type { AktienAnalyseProps } from '@/remotion/longform/long-types'
 import type { MoatShortProps } from '@/remotion/moat-short-types'
 
 export const MOAT_SHORT_OUT_ORDNER = path.join(process.cwd(), 'out', 'youtube')
@@ -23,8 +24,10 @@ function freierPort(): Promise<number> {
   })
 }
 
-const DATEINAME = /^[A-Z0-9]{1,16}-\d{12,14}\.mp4$/
+const DATEINAME = /^[A-Z0-9]{1,16}(-LF)?-\d{12,14}\.mp4$/
 const RENDER_TIMEOUT_MS = 8 * 60 * 1000
+/** 15 Minuten 1080p brauchen lokal deutlich länger als ein Short. */
+const LONGFORM_TIMEOUT_MS = 90 * 60 * 1000
 
 export type MoatShortRenderStand =
   | { ok: true; status: 'laeuft'; dateiname: string; sekunden: number }
@@ -107,8 +110,9 @@ export async function leseRenderStatus(dateiname: string): Promise<MoatShortRend
     return { ok: false, status: 'fehler', fehler: job.fehler || 'Render fehlgeschlagen.' }
   }
   if (job?.status === 'laeuft') {
-    if (Date.now() - job.gestartet > RENDER_TIMEOUT_MS) {
-      return { ok: false, status: 'fehler', fehler: 'Render hat länger als 8 Minuten gedauert.' }
+    const timeout = dateiname.includes('-LF-') ? LONGFORM_TIMEOUT_MS : RENDER_TIMEOUT_MS
+    if (Date.now() - job.gestartet > timeout) {
+      return { ok: false, status: 'fehler', fehler: `Render hat länger als ${Math.round(timeout / 60000)} Minuten gedauert.` }
     }
     return { ok: true, status: 'laeuft', dateiname, sekunden: Math.floor((Date.now() - job.gestartet) / 1000) }
   }
@@ -123,17 +127,25 @@ export async function leseRenderDatei(dateiname: string): Promise<Buffer | null>
 }
 
 export async function starteMoatShortRender(props: MoatShortProps): Promise<{ dateiname: string }> {
+  await stelleTracksSicher()
   const fertig = normalisiereRenderProps(props)
-  const ticker = fertig.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'SHORT'
+  return starteRender({ composition: 'MoatShort', props: fertig, ticker: fertig.ticker, longform: false })
+}
+
+export async function starteAktienAnalyseRender(props: AktienAnalyseProps): Promise<{ dateiname: string }> {
+  return starteRender({ composition: 'AktienAnalyse', props, ticker: props.ticker, longform: true })
+}
+
+async function starteRender(opts: { composition: string; props: unknown; ticker: string; longform: boolean }): Promise<{ dateiname: string }> {
+  const ticker = opts.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 16) || 'SHORT'
   const stempel = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')
-  const dateiname = `${ticker}-${stempel}.mp4`
+  const dateiname = `${ticker}${opts.longform ? '-LF' : ''}-${stempel}.mp4`
   const ziel = renderDateiPfad(dateiname)
-  const propsDatei = path.join(os.tmpdir(), `moat-short-${ticker}-${stempel}.json`)
+  const propsDatei = path.join(os.tmpdir(), `${opts.composition}-${ticker}-${stempel}.json`)
   const logDatei = path.join(MOAT_SHORT_OUT_ORDNER, `.${dateiname}.log`)
 
   await fs.mkdir(MOAT_SHORT_OUT_ORDNER, { recursive: true })
-  await stelleTracksSicher()
-  await fs.writeFile(propsDatei, JSON.stringify(fertig), 'utf8')
+  await fs.writeFile(propsDatei, JSON.stringify(opts.props), 'utf8')
   await schreibeJob({ status: 'laeuft', dateiname, gestartet: Date.now() })
   const port = await freierPort()
 
@@ -143,11 +155,12 @@ export async function starteMoatShortRender(props: MoatShortProps): Promise<{ da
       remotionCli(),
       'render',
       path.join(process.cwd(), 'remotion', 'index.ts'),
-      'MoatShort',
+      opts.composition,
       ziel,
       `--props=${propsDatei}`,
       `--port=${port}`,
       '--overwrite',
+      ...(opts.longform ? ['--concurrency=50%', '--timeout=120000'] : []),
     ],
     { cwd: process.cwd(), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
   )

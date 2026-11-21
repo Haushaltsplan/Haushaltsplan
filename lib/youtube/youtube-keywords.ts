@@ -1,4 +1,4 @@
-/** YouTube-Suchleisten-Vorschläge — kein VidIQ, keine search.list-Quota. */
+/** YouTube-Suchleisten-Vorschläge — keine search.list-Quota. */
 
 const RECHTSFORM =
   /\b(inc|incorporated|corp|corporation|ltd|limited|plc|sa|se|nv|ag|holding|holdings|group|company|co)\b\.?/gi
@@ -35,14 +35,14 @@ export function phrasePasst(phrase: string, ticker: string, firmenname: string):
 export async function sucheYoutubePhrasen(
   ticker: string,
   firmenname: string,
-  thema: 'moat' | 'earnings' = 'moat',
+  thema: 'moat' | 'analysis' = 'moat',
 ): Promise<string[]> {
   const name = firmenKurzname(firmenname)
   const kern = name.length >= 4 ? name : ticker.trim()
   const tickerSeed = ticker.trim().length >= 4 ? ticker.trim() : ''
   const seeds =
-    thema === 'earnings'
-      ? [`${kern} earnings`, `${kern} earnings call`, `${kern} stock`, tickerSeed ? `${tickerSeed} earnings` : '']
+    thema === 'analysis'
+      ? [`${kern} stock analysis`, `${kern} stock`, `is ${kern} a buy`, tickerSeed ? `${tickerSeed} stock` : '']
       : [`${kern} moat`, `${kern} stock`, `${kern} monopoly`, tickerSeed ? `${tickerSeed} stock` : '']
   const einzig = seeds.filter((s, i, a) => s.trim().length >= 4 && a.indexOf(s) === i)
   const treffer = await Promise.all(einzig.slice(0, 4).map((q) => youtubeSuggest(q)))

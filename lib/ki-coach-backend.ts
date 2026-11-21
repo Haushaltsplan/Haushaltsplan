@@ -879,6 +879,8 @@ export type RunCoachCompletionOptions = {
   maxOutputTokens?: number
   /** Wenig Thinking via thinkingLevel (minimal wo erlaubt, sonst low). Nie thinkingBudget. */
   thinkingMinimal?: boolean
+  /** Feste Denkstufe (Gemini 3+/4). Hat Vorrang vor `thinkingMinimal`. */
+  thinkingLevel?: 'low' | 'medium' | 'high'
 }
 
 export async function runCoachCompletion(
@@ -906,6 +908,7 @@ export async function runCoachCompletion(
         timeoutMs: options?.timeoutMs,
         maxOutputTokens: options?.maxOutputTokens,
         thinkingMinimal: options?.thinkingMinimal,
+        thinkingLevelOverride: options?.thinkingLevel,
       },
       options?.geminiModels,
       options?.geminiForcePaidApiKey === true,

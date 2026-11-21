@@ -1,13 +1,7 @@
 import { Composition } from 'remotion'
-import { EarningsShort } from './EarningsShort'
-import { berechneEarningsShortTimeline } from './earnings-short-timeline'
-import {
-  EARNINGS_SHORT_DEFAULT_PROPS,
-  EARNINGS_SHORT_FPS,
-  EARNINGS_SHORT_HEIGHT,
-  EARNINGS_SHORT_WIDTH,
-  type EarningsShortProps,
-} from './earnings-short-types'
+import { AktienAnalyse } from './longform/AktienAnalyse'
+import { berechneLongTimeline } from './longform/long-timeline'
+import { AKTIEN_ANALYSE_DEFAULT_PROPS, LONG_FPS, LONG_HEIGHT, LONG_WIDTH, type AktienAnalyseProps } from './longform/long-types'
 import { MoatShort } from './MoatShort'
 import { berechneMoatShortTimeline } from './moat-short-timeline'
 import {
@@ -33,15 +27,15 @@ export const RemotionRoot: React.FC = () => (
       })}
     />
     <Composition
-      id="EarningsShort"
-      component={EarningsShort}
-      fps={EARNINGS_SHORT_FPS}
-      width={EARNINGS_SHORT_WIDTH}
-      height={EARNINGS_SHORT_HEIGHT}
-      durationInFrames={berechneEarningsShortTimeline(EARNINGS_SHORT_DEFAULT_PROPS).durationInFrames}
-      defaultProps={EARNINGS_SHORT_DEFAULT_PROPS}
-      calculateMetadata={({ props }: { props: EarningsShortProps }) => ({
-        durationInFrames: berechneEarningsShortTimeline(props).durationInFrames,
+      id="AktienAnalyse"
+      component={AktienAnalyse}
+      fps={LONG_FPS}
+      width={LONG_WIDTH}
+      height={LONG_HEIGHT}
+      durationInFrames={berechneLongTimeline(AKTIEN_ANALYSE_DEFAULT_PROPS).durationInFrames}
+      defaultProps={AKTIEN_ANALYSE_DEFAULT_PROPS}
+      calculateMetadata={({ props }: { props: AktienAnalyseProps }) => ({
+        durationInFrames: berechneLongTimeline(props).durationInFrames,
       })}
     />
   </>

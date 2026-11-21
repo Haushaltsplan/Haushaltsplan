@@ -1,0 +1,60 @@
+---
+description: YouTube Long-Form Aktienanalyse — Keys, Modelle, Testausbau
+alwaysApply: true
+---
+
+# YouTube Long-Form Aktienanalyse
+
+## Was ist das?
+Englische Long-Form-Aktienanalysen (~15 Min, 16:9) im YouTube-Tab **Aktienanalyse**.
+Eingabe: Fundamentaldaten-Export-JSON + optionale PDFs/Bilder + Thema-Text.
+Ausgabe: faktengeprüftes Skript, satzweise ElevenLabs-Stimme, Remotion-Video.
+
+## Testausbau (aktuell)
+Nur Abschnitte `hook` · `chart10k` · `burggraben` (`LONGFORM_AKTIVE_ABSCHNITTE`).
+Composition: `AktienAnalyse` in `remotion/Root.tsx`.
+
+## Gemini-Keys — nicht vermischen
+
+| Feature | Key | Flag |
+|---------|-----|------|
+| Long-Form Skript / Faktencheck / Bildprüfung / Chat | `GEMINI_API_KEY` (Billing) | `geminiForcePaidApiKey: true` |
+| Moat-Shorts Script | `GEMINI_API_KEY_FREE` | Free-Tier Flash |
+| Portfolio-Berater, Finanz-Coach | nur Free | Billing **verboten** |
+
+### Modelle (Long-Form)
+- Schreiben (Hooks, Abschnitte): `gemini-4-argon`
+- Behauptungscheck: `gemini-4-carbon`
+- Kleine Chat-Umformulierungen + Bild-Eignung: `gemini-4-hydrogen`
+
+Niemals den Billing-Flag vom Long-Form auf den Portfolio-Berater kopieren.
+
+## Zahlen & Halluzinationen
+- Alle Zahlen kommen aus `baueFaktenblatt` (Code), nicht aus der KI.
+- Kurse: 10J Yahoo `adjclose` Aktie + SPY → 10.000-$-Rechnung.
+- Scorecard-Spalte Burggraben: `baueScorecard`, nicht aus dem JSON-Objekt.
+- Jede Zahl im Skript muss eine `faktIds`-Referenz haben; Code prüft sie.
+- Fehlende Daten → weglassen, nie schätzen (z. B. EU ohne `secStruktur`).
+
+## Abwechslung
+Fester Abschnitts-Aufbau, wechselnde Hooks/Varianten/Musik/Abo-Text über `longform-abwechslung.ts`
+und Verlauf in `youtube_longform_projekt` (letzte 5 Videos).
+
+## Stimme & Render
+- ElevenLabs satzweise (`previous_text` / `next_text`), Takes, Fingerprint.
+- MP4-Export: **Browser-Render** (`longform-render-web.ts` / `@remotion/web-renderer`) — funktioniert lokal und auf der Live-Domain (Chrome/Edge).
+- Server-CLI-Render (`/api/youtube/longform/render`) bleibt optional für localhost; auf Vercel 501.
+- Storage-Bucket: `youtube-longform`. Migration: `20261121210000_youtube_longform.sql`.
+
+## Bilder
+- Automatisch: Wikimedia + Openverse (CC, Credits in Beschreibung).
+- Pixabay nur per Studio-Button „+ Pixabay“ wenn `PIXABAY_API_KEY` gesetzt (keine Auto-Requests).
+- Keine Google-Bildersuche, keine KI-Bilder echter Produkte/Personen.
+
+## Wichtige Dateien
+```
+components/youtube/longform/longform-studio.client.tsx
+lib/youtube/longform/
+remotion/longform/
+app/api/youtube/longform/
+```

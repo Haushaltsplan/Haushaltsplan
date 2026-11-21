@@ -66,8 +66,9 @@ Stark negativ (≤ −6) blockiert Grün ohne Kauftrigger.
 |---------|-----|-------------------------|
 | **Portfolio-Berater**, Finanz-Coach, News-Fazit | nur `GEMINI_API_KEY_FREE` | **verboten** |
 | Nachkauf Scan / Deep Research / Kaufempfehlung | `GEMINI_API_KEY` (Billing) | `true` |
+| YouTube Long-Form (Skript/Check/Bilder) | `GEMINI_API_KEY` (Billing) | `true` — siehe `youtube-longform.mdc` |
 
-Niemals den Billing-Flag vom Radar auf den Portfolio-Berater kopieren.
+Niemals den Billing-Flag vom Radar oder Long-Form auf den Portfolio-Berater kopieren.
 
 ## Wichtigste Dateien
 

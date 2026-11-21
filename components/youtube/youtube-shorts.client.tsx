@@ -3,9 +3,8 @@
 import dynamic from 'next/dynamic'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { EarningsShortsClient } from '@/components/youtube/earnings-shorts.client'
+import { LongformStudio } from '@/components/youtube/longform/longform-studio.client'
 import { MoatScriptStudio } from '@/components/youtube/moat-script-studio.client'
-import { VidiqClient } from '@/components/youtube/vidiq.client'
 import { YoutubeEigeneTags } from '@/components/youtube/youtube-eigene-tags'
 import { PageChrome, PageHero } from '@/components/page-shell'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -30,7 +29,7 @@ import { MOAT_SHORT_DEFAULT_PROPS, MOAT_SHORT_FPS, type MoatShortProps } from '@
 
 type YtStatus = { configured: boolean; connected: boolean; channelTitle: string | null }
 type YtPrivacy = 'unlisted' | 'private' | 'public'
-type YoutubeModus = 'moat' | 'earnings' | 'vidiq'
+type YoutubeModus = 'moat' | 'analyse'
 
 function base64ZuMp3(b64: string): Blob {
   const bin = atob(b64)
@@ -449,8 +448,7 @@ export function YoutubeShortsClient() {
       .then((j) => setStimmeOk(Boolean(j.configured)))
       .catch(() => setStimmeOk(false))
     const sp = new URLSearchParams(window.location.search)
-    if (sp.get('modus') === 'earnings') setModus('earnings')
-    if (sp.get('modus') === 'vidiq') setModus('vidiq')
+    if (sp.get('modus') === 'analyse') setModus('analyse')
     if (sp.get('yt') === 'connected') {
       toast.success('YouTube verbunden.')
       const next = new URL(window.location.href)
@@ -912,13 +910,11 @@ export function YoutubeShortsClient() {
     <PageChrome>
       <PageHero
         eyebrow="YouTube"
-        title={modus === 'earnings' ? 'Earnings Check Shorts' : modus === 'vidiq' ? 'VidIQ' : 'Moat Check Shorts'}
+        title={modus === 'analyse' ? 'Aktienanalyse (Long-Form)' : 'Moat Check Shorts'}
         description={
-          modus === 'earnings'
-            ? 'Ticker wählen. Daraus entstehen Beat/Miss, die wichtigen Call-Themen und ein längeres Short im gleichen Look.'
-            : modus === 'vidiq'
-              ? 'Bestehende Shorts bewerten, Titel und Tags verbessern und direkt auf YouTube schreiben.'
-              : 'Fundamentaldaten-Export einfügen. Daraus entstehen Moat-Urteil, englisches Script und ein Short, das unsichtbar in sich zurückläuft.'
+          modus === 'analyse'
+            ? 'Fundamentaldaten-Export und Quellen hochladen, Thema beschreiben. Daraus entstehen ein faktengeprüftes englisches Skript, deine Stimme und ein automatisch geschnittenes 16:9-Video.'
+            : 'Fundamentaldaten-Export einfügen. Daraus entstehen Moat-Urteil, englisches Script und ein Short, das unsichtbar in sich zurückläuft.'
         }
       />
       <div className="mb-4 flex gap-2 px-1">
@@ -935,25 +931,14 @@ export function YoutubeShortsClient() {
         </button>
         <button
           type="button"
-          onClick={() => wechsleModus('earnings')}
+          onClick={() => wechsleModus('analyse')}
           className={`rounded-xl px-4 py-2 text-sm font-medium ${
-            modus === 'earnings'
+            modus === 'analyse'
               ? 'bg-red-600 text-white'
               : 'border border-[var(--app-border)] text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]'
           }`}
         >
-          Earnings Check
-        </button>
-        <button
-          type="button"
-          onClick={() => wechsleModus('vidiq')}
-          className={`rounded-xl px-4 py-2 text-sm font-medium ${
-            modus === 'vidiq'
-              ? 'bg-emerald-600 text-white'
-              : 'border border-[var(--app-border)] text-[var(--app-text-muted)] hover:bg-[var(--app-surface-muted)]'
-          }`}
-        >
-          VidIQ
+          Aktienanalyse
         </button>
       </div>
 
@@ -1002,13 +987,7 @@ export function YoutubeShortsClient() {
         </div>
       </section>
 
-      {modus === 'earnings' ? (
-        <EarningsShortsClient yt={yt} onVerbindungWeg={() => setYt((s) => ({ ...s, connected: false, channelTitle: null }))} />
-      ) : null}
-
-      {modus === 'vidiq' ? (
-        <VidiqClient onReconnect={() => setYt((s) => ({ ...s, connected: false, channelTitle: null }))} />
-      ) : null}
+      {modus === 'analyse' ? <LongformStudio /> : null}
 
       {modus === 'moat' ? (
       <>
