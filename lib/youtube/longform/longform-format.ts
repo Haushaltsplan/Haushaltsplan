@@ -32,6 +32,13 @@ export function scorecardTextEnglisch(roh: string): string {
     .replace(/\s*%/g, '%')
     .replace(/\bJ\.\s*ohne Senk\w*\.?/gi, 'y without a cut')
     .replace(/\bJ\./g, 'y')
+    .replace(/\bPp\./gi, 'pp')
+    .replace(/\bpp\./gi, 'pp')
+    .replace(/\bWarnung\b/gi, 'Warning')
+    .replace(/\bwarnung\b/gi, 'warning')
+    .replace(/\bbeobachten\b/gi, 'watch')
+    .replace(/\bkapitalleicht\b/gi, 'asset-light')
+    .replace(/\bKapitalleicht\b/gi, 'Asset-light')
     .replace(/\bkeine Daten\b/gi, 'no data')
     .replace(/\bintakt\b/gi, 'intact')
     .replace(/\berodiert\b/gi, 'eroding')
@@ -50,6 +57,23 @@ export function scorecardTextEnglisch(roh: string): string {
     .replace(/\bTilgung\b/gi, 'paydown')
     .replace(/\bAusschüttung\b/gi, 'payout')
     .replace(/\bAusschuettung\b/gi, 'payout')
+    .replace(/\bGeschäft\b/gi, 'Business')
+    .replace(/\bGeschaeft\b/gi, 'Business')
+    .replace(/\bBurggraben\b/gi, 'Moat')
+    .replace(/\bUmsatz\b/gi, 'Revenue')
+    .replace(/\bGewinn\b/gi, 'Earnings')
+}
+
+/** Moat-/Geschäftsmodell-Freitext: DE-Reste raus, Kurzform für On-Screen. */
+export function moatTextEnglisch(roh: string | null | undefined): string | null {
+  if (!roh?.trim()) return null
+  const t = scorecardTextEnglisch(roh.trim())
+    .replace(/\bGeschäftsmodell\b/gi, 'Business model')
+    .replace(/\bGeschaeftsmodell\b/gi, 'Business model')
+    .replace(/\bKunden\b/gi, 'customers')
+    .replace(/\bProdukte\b/gi, 'products')
+    .replace(/\bund\b/gi, 'and')
+  return t.length > 220 ? `${t.slice(0, 217).trim()}…` : t
 }
 
 /** Alle Zahlen eines Textes, normalisiert („58,240“ → 58240, „1.2B“ → 1.2e9). */

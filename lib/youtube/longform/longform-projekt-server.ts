@@ -64,7 +64,9 @@ export async function erstelleProjekt(eingabe: LongformExportEingabe, thema: str
   const { paket, isin } = eingabe
   const ticker = (paket.symbolYahoo?.split('.')[0] || paket.ticker).trim().toUpperCase()
   const [chart, moatKi, logoUrl, depot, verlauf] = await Promise.all([
-    paket.symbolYahoo ? ladeChart10k(paket.symbolYahoo).catch(() => null) : Promise.resolve(null),
+    paket.symbolYahoo
+      ? ladeChart10k(paket.symbolYahoo, 10, paket.sektor).catch(() => null)
+      : Promise.resolve(null),
     moatFuer(paket, isin),
     findeMoatShortLogo({ ticker, firmenname: paket.firmenname, isin, website: paket.website, symbolYahoo: paket.symbolYahoo }).catch(() => null),
     imDepot(isin),
@@ -82,8 +84,9 @@ export async function erstelleProjekt(eingabe: LongformExportEingabe, thema: str
     stimme: { global: { ...LONGFORM_STIMME_STANDARD }, saetze: {} },
     bilder: {},
     varianten: waehleVarianten(verlauf),
-    musik: { aktiv: true, pegel: 50 },
+    musik: { aktiv: false, pegel: 50 },
     denkstufe: 'medium',
+    investiert: depot,
   }
   const projekt = await legeProjektAn(zustand)
   await ladeHoch(projektPfad(projekt.id, 'export', 'fundamentaldaten.json'), JSON.stringify(paket), 'application/json')

@@ -6,13 +6,21 @@ import { AbsoluteFill, Sequence, interpolate, useCurrentFrame } from 'remotion'
 import { SFX_CONFIG } from '../sfx-config'
 import { Hintergrund, Korn, oeffentlichSrc, type SzeneProps } from './long-bausteine'
 import { LONG_MUSIK_FREI, LONG_MUSIK_UNTER_STIMME, LONG_SFX_PEGEL } from './long-look'
-import { berechneLongTimeline, type LongBlock, type LongTimeline } from './long-timeline'
+import { LONG_ABSPANN, berechneLongTimeline, type LongBlock, type LongTimeline } from './long-timeline'
 import type { AktienAnalyseProps } from './long-types'
 import { ABO_KLICK_ABO, ABO_KLICK_LIKE, LongAbo } from './LongAbo'
 import { LongBild, LongBumper, LongTitelKarte } from './LongBild'
 import { LongChart } from './LongChart'
+import { LongDisclosure, LongSchluss } from './LongDisclosure'
 import { LongHook } from './LongHook'
+import { LongJahresChart } from './LongJahresChart'
 import { LongMoat } from './LongMoat'
+
+function KornAbSekunde() {
+  const frame = useCurrentFrame()
+  if (frame < 90) return null
+  return <Korn />
+}
 
 function Szene(sp: SzeneProps) {
   switch (sp.block.familie) {
@@ -22,6 +30,8 @@ function Szene(sp: SzeneProps) {
       return <LongChart {...sp} />
     case 'moat':
       return <LongMoat {...sp} />
+    case 'reihe':
+      return <LongJahresChart {...sp} />
     case 'titel':
       return <LongTitelKarte {...sp} />
     default:
@@ -39,8 +49,11 @@ function Kamera({ p, t, block, children }: SzeneProps & { children: React.ReactN
     if (d >= -4 && d < 40) punch = Math.max(punch, interpolate(d, [-4, 6, 40], [0, 1, 0.55], { extrapolateRight: 'clamp' }))
   }
   // Chart/B-Roll: kaum Punch — sonst „zucken“ die Linien und Fotos.
-  if (block.familie === 'chart') punch = 0
+  if (block.familie === 'chart' || block.familie === 'reihe') punch = 0
   if (block.familie === 'bild' || block.familie === 'moat') punch *= 0.25
+  if (block.familie === 'hook' && frame + block.from < 90) {
+    return <AbsoluteFill>{children}</AbsoluteFill>
+  }
   const drift = interpolate(frame, [0, Math.max(1, block.dauer)], [1, block.familie === 'chart' ? 1.008 : 1.018], {
     extrapolateRight: 'clamp',
   })
@@ -147,12 +160,26 @@ export function AktienAnalyse(p: AktienAnalyseProps) {
           />
         </Sequence>
       ))}
-      {t.abo ? (
-        <Sequence from={t.abo.from} durationInFrames={t.abo.dauer}>
-          <LongAbo dauer={t.abo.dauer} text={p.varianten.aboText} akzent={p.varianten.akzent} ticker={p.ticker} />
+      {t.disclosure && p.investiert != null ? (
+        <Sequence from={t.disclosure.from} durationInFrames={t.disclosure.dauer}>
+          <LongDisclosure investiert={p.investiert} firmenname={p.firmenname} />
         </Sequence>
       ) : null}
-      <Korn />
+      <Sequence from={Math.max(0, t.durationInFrames - LONG_ABSPANN)} durationInFrames={LONG_ABSPANN}>
+        <LongSchluss name={p.kanalName ?? 'DailyMoat'} logoUrl={p.kanalLogoUrl ?? null} />
+      </Sequence>
+      {t.abo ? (
+        <Sequence from={t.abo.from} durationInFrames={t.abo.dauer}>
+          <LongAbo
+            dauer={t.abo.dauer}
+            text={p.varianten.aboText}
+            akzent={p.varianten.akzent}
+            kanalName={p.kanalName}
+            kanalLogoUrl={p.kanalLogoUrl}
+          />
+        </Sequence>
+      ) : null}
+      <KornAbSekunde />
       <Ton p={p} t={t} />
     </AbsoluteFill>
   )

@@ -1,7 +1,7 @@
 /** Burggraben: Geschäft, Pfeiler (Karten oder Balken), Scorecard-Spalte, Umsatzmix. Nur Zahlen und Labels, kein KI-Fließtext. */
 import { AbsoluteFill, Sequence, useCurrentFrame } from 'remotion'
-import { pct } from '../../lib/youtube/longform/longform-format'
-import { Blende, Logo, aktiverSatz, ein, satzLaeufe, type SatzLauf, type SzeneProps } from './long-bausteine'
+import { moatTextEnglisch, pct } from '../../lib/youtube/longform/longform-format'
+import { Blende, Logo, aktiverSatz, ein, satzLaeufe, zaehleText, type SatzLauf, type SzeneProps } from './long-bausteine'
 import {
   LONG_DISPLAY,
   LONG_GRUEN,
@@ -37,21 +37,38 @@ function Geschaeft({ sp }: { sp: SzeneProps }) {
   const frame = useCurrentFrame()
   const { p } = sp
   const seg = p.segmente?.eintraege.slice(0, 4) ?? []
+  const roh = moatTextEnglisch(p.moat?.geschaeftsmodell)
+  const business = roh && roh.length > 140 ? `${roh.slice(0, 137).trim()}…` : roh
   return (
     <AbsoluteFill style={{ justifyContent: 'center', paddingLeft: LONG_RAND_X, paddingRight: LONG_RAND_X }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 44, opacity: ein(frame, 0, 18), transform: `translateY(${(1 - ein(frame, 0, 18)) * 20}px)` }}>
         <Logo url={p.logoUrl} groesse={168} ticker={p.ticker} />
-        <div>
-          <div style={{ fontFamily: LONG_SERIF, fontSize: 110, color: LONG_TEXT, lineHeight: 1 }}>{p.firmenname}</div>
+        <div style={{ maxWidth: 1280 }}>
+          <div style={{ fontFamily: LONG_SERIF, fontSize: 96, color: LONG_TEXT, lineHeight: 1 }}>{p.firmenname}</div>
           {p.branche ? (
-            <div style={{ fontFamily: LONG_MONO, fontSize: 26, letterSpacing: 2, color: LONG_MUTED, marginTop: 18 }}>
+            <div style={{ fontFamily: LONG_MONO, fontSize: 24, letterSpacing: 2, color: LONG_MUTED, marginTop: 14 }}>
               {p.branche.toUpperCase()}
+            </div>
+          ) : null}
+          {business ? (
+            <div
+              style={{
+                fontFamily: LONG_SERIF_KURSIV,
+                fontSize: 36,
+                color: LONG_TEXT,
+                marginTop: 28,
+                lineHeight: 1.35,
+                maxWidth: 1100,
+                opacity: ein(frame, 14, 16),
+              }}
+            >
+              {business}
             </div>
           ) : null}
         </div>
       </div>
       {seg.length ? (
-        <div style={{ display: 'flex', gap: 28, marginTop: 90 }}>
+        <div style={{ display: 'flex', gap: 28, marginTop: business ? 64 : 90 }}>
           {seg.map((s, k) => (
             <div key={s.name} style={{ flex: 1, borderTop: `3px solid ${k === 0 ? p.varianten.akzent : LONG_LINIE}`, paddingTop: 22, opacity: ein(frame, 24 + k * 8, 14) }}>
               <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 800, fontSize: 64, color: LONG_TEXT }}>{pct(s.anteilPct)}</div>
@@ -70,6 +87,31 @@ function Pfeiler({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   if (!m) return null
   const akzent = sp.p.varianten.akzent
   const fokus = sp.p.saetze[aktiverSatz(sp, frame + lauf.from)]!.visual.fokus ?? null
+  const nur = fokus != null ? m.pfeiler.find((x) => x.id === fokus) : null
+  if (nur) {
+    const farbe = farbeFuerScore(nur.score, akzent)
+    const f = ein(frame, 8, 18)
+    return (
+      <AbsoluteFill style={{ justifyContent: 'center', paddingLeft: LONG_RAND_X, paddingRight: LONG_RAND_X }}>
+        <div style={{ fontFamily: LONG_MONO, fontSize: 22, letterSpacing: 4, color: LONG_MUTED, opacity: ein(frame, 0, 12) }}>THE MOAT</div>
+        <div style={{ fontFamily: LONG_SERIF, fontSize: 92, color: LONG_TEXT, marginTop: 12, opacity: ein(frame, 4, 14) }}>{nur.label}</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginTop: 28 }}>
+          <span style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 180, color: LONG_TEXT, lineHeight: 0.9 }}>{nur.score}</span>
+          <span style={{ fontFamily: LONG_MONO, fontSize: 36, color: LONG_MUTED }}>/ 10</span>
+        </div>
+        <div style={{ marginTop: 36, height: 10, width: 720, borderRadius: 5, background: 'rgba(243,241,236,0.08)' }}>
+          <div style={{ width: `${nur.score * 10 * f}%`, height: '100%', borderRadius: 5, background: farbe }} />
+        </div>
+        {(() => {
+          const roh = moatTextEnglisch(nur.begruendung)
+          const zeile = roh && roh.length > 120 ? `${roh.slice(0, 117).trim()}…` : roh
+          return zeile ? (
+            <div style={{ marginTop: 32, maxWidth: 980, fontFamily: LONG_SERIF_KURSIV, fontSize: 32, lineHeight: 1.35, color: LONG_MUTED }}>{zeile}</div>
+          ) : null
+        })()}
+      </AbsoluteFill>
+    )
+  }
   const hatFokus = fokus != null && m.pfeiler.some((x) => x.id === fokus)
 
   if (sp.p.varianten.moatLayout === 'balken') {
@@ -212,13 +254,42 @@ function Scorecard({ sp }: { sp: SzeneProps }) {
   )
 }
 
+function segmentIndex(sp: SzeneProps, satzIndex: number, namen: string[]): number | null {
+  const s = sp.p.saetze[satzIndex]!
+  for (const id of s.faktIds) {
+    const m = /^seg\.(\d+)/.exec(id)
+    if (m) return Number(m[1])
+  }
+  const fokus = s.visual.fokus?.trim().toLowerCase()
+  if (!fokus) return null
+  const alsId = /^seg\.(\d+)/.exec(fokus)
+  if (alsId) return Number(alsId[1])
+  if (/^\d+$/.test(fokus)) return Number(fokus)
+  const name = namen.findIndex((n) => n.toLowerCase() === fokus)
+  return name >= 0 ? name : null
+}
+
 function Segmente({ sp }: { sp: SzeneProps }) {
   const frame = useCurrentFrame()
   const seg = sp.p.segmente
   if (!seg) return null
   const akzent = sp.p.varianten.akzent
   const stufen = [1, 0.7, 0.5, 0.36, 0.26, 0.18, 0.12]
-  let links = 0
+  const i = aktiverSatz(sp, frame)
+  const idx = segmentIndex(sp, i, seg.eintraege.map((e) => e.name))
+  const aktiv = idx != null ? seg.eintraege[idx] : null
+  const z = sp.t.saetze[i]!
+  const beton = (z.betonungFrame ?? z.from + 8) - sp.block.from
+  const fokusId = sp.p.saetze[i]!.visual.fokus ?? ''
+  const gesprochen = sp.p.saetze[i]!.faktIds.find((id) => id.startsWith('seg.')) ?? (fokusId.startsWith('seg.') ? fokusId : '')
+  const modus: 'share' | 'marge' | 'wachstum' | null = gesprochen.endsWith('.marge')
+    ? 'marge'
+    : gesprochen.endsWith('.wachstum')
+      ? 'wachstum'
+      : aktiv
+        ? 'share'
+        : null
+  const fort = frame >= beton ? ein(frame, beton, 16) : 0
   return (
     <AbsoluteFill>
       <Ueberschrift
@@ -226,26 +297,111 @@ function Segmente({ sp }: { sp: SzeneProps }) {
         unter={`REVENUE MIX${seg.jahr ? ` · FISCAL ${seg.jahr}` : ''}`}
         frame={frame}
       />
-      <div style={{ position: 'absolute', left: LONG_RAND_X, right: LONG_RAND_X, top: 330, height: 90, borderRadius: 18, overflow: 'hidden', display: 'flex', background: 'rgba(243,241,236,0.05)' }}>
+      <div style={{ position: 'absolute', left: LONG_RAND_X, right: aktiv ? 760 : LONG_RAND_X, top: 300, height: 72, borderRadius: 16, overflow: 'hidden', display: 'flex', background: 'rgba(243,241,236,0.05)' }}>
         {seg.eintraege.map((s, k) => {
-          const w = s.anteilPct * ein(frame, 10 + k * 5, 24)
-          links += w
-          return <div key={s.name} style={{ width: `${w}%`, height: '100%', background: mitAlpha(akzent, stufen[k] ?? 0.1), borderRight: '2px solid #0C0C0E' }} />
+          const w = s.anteilPct * ein(frame, 8, 20)
+          const hell = !aktiv || k === idx
+          return (
+            <div
+              key={s.name}
+              style={{
+                width: `${w}%`,
+                height: '100%',
+                background: mitAlpha(akzent, (stufen[k] ?? 0.1) * (hell ? 1 : 0.35)),
+                borderRight: '2px solid #0C0C0E',
+              }}
+            />
+          )
         })}
       </div>
-      <div style={{ position: 'absolute', left: LONG_RAND_X, right: LONG_RAND_X, top: 480, display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', columnGap: 80, rowGap: 30 }}>
-        {seg.eintraege.map((s, k) => (
-          <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 22, opacity: ein(frame, 20 + k * 6, 12) }}>
-            <div style={{ width: 22, height: 22, borderRadius: 6, background: mitAlpha(akzent, stufen[k] ?? 0.1) }} />
-            <div style={{ flex: 1, fontFamily: LONG_SANS, fontWeight: 600, fontSize: 32, color: LONG_TEXT }}>{s.name}</div>
-            <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 800, fontSize: 40, color: LONG_TEXT }}>{pct(s.anteilPct)}</div>
-          </div>
-        ))}
+      <div style={{ position: 'absolute', left: LONG_RAND_X, right: aktiv ? 780 : LONG_RAND_X, top: 400, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {seg.eintraege.map((s, k) => {
+          const an = aktiv != null && k === idx
+          return (
+            <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 16, opacity: aktiv && !an ? 0.35 : ein(frame, 12 + k * 4, 10) }}>
+              <div style={{ width: 14, height: 14, borderRadius: 4, background: mitAlpha(akzent, stufen[k] ?? 0.1), boxShadow: an ? `0 0 0 2px ${akzent}` : undefined }} />
+              <div style={{ flex: 1, fontFamily: LONG_SANS, fontWeight: 600, fontSize: an ? 32 : 24, color: LONG_TEXT }}>{s.name}</div>
+              <div style={{ fontFamily: LONG_MONO, fontSize: an ? 28 : 22, color: LONG_TEXT }}>{pct(s.anteilPct)}</div>
+            </div>
+          )
+        })}
       </div>
-      <div style={{ position: 'absolute', left: LONG_RAND_X, bottom: 70, fontFamily: LONG_SERIF_KURSIV, fontSize: 26, color: LONG_MUTED, opacity: links > 0 ? 0.8 : 0 }}>
-        Source: company filings
-      </div>
+      {aktiv && modus ? (
+        <div
+          style={{
+            position: 'absolute',
+            right: LONG_RAND_X,
+            top: 280,
+            width: 560,
+            padding: '32px 36px',
+            borderRadius: 24,
+            background: 'rgba(20,20,23,0.92)',
+            border: `1px solid ${mitAlpha(akzent, 0.35)}`,
+            opacity: ein(frame, Math.max(0, beton - 4), 12),
+          }}
+        >
+          <div style={{ fontFamily: LONG_MONO, fontSize: 18, letterSpacing: 3, color: LONG_MUTED }}>{aktiv.name.toUpperCase()}</div>
+          <SegmentZeile label="Share" text={pct(aktiv.anteilPct)} breite={aktiv.anteilPct} laut={modus === 'share'} fort={fort} akzent={akzent} />
+          {aktiv.margePct != null ? (
+            <SegmentZeile
+              label="Operating margin"
+              text={pct(aktiv.margePct)}
+              breite={Math.min(100, (aktiv.margePct / Math.max(40, aktiv.margePct)) * 100)}
+              laut={modus === 'marge'}
+              fort={fort}
+              akzent={aktiv.margePct >= 15 ? LONG_GRUEN : akzent}
+            />
+          ) : null}
+          {aktiv.wachstumPct != null ? (
+            <div style={{ marginTop: 22, opacity: modus === 'wachstum' ? 1 : 0.55 }}>
+              <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 2, color: LONG_MUTED }}>REVENUE VS LAST YEAR</div>
+              <div
+                style={{
+                  marginTop: 6,
+                  fontFamily: LONG_DISPLAY,
+                  fontWeight: 800,
+                  fontSize: modus === 'wachstum' ? 64 : 28,
+                  color: aktiv.wachstumPct >= 0 ? LONG_GRUEN : LONG_ROT,
+                }}
+              >
+                {aktiv.wachstumPct >= 0 ? '▲ ' : '▼ '}
+                {modus === 'wachstum' ? zaehleText(pct(aktiv.wachstumPct, { vorzeichen: true }), fort) : pct(aktiv.wachstumPct, { vorzeichen: true })}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </AbsoluteFill>
+  )
+}
+
+function SegmentZeile({
+  label,
+  text,
+  breite,
+  laut,
+  fort,
+  akzent,
+}: {
+  label: string
+  text: string
+  breite: number
+  laut: boolean
+  fort: number
+  akzent: string
+}) {
+  return (
+    <div style={{ marginTop: 18, opacity: laut ? 1 : 0.55 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 2, color: LONG_MUTED }}>
+        <span>{label.toUpperCase()}</span>
+        <span style={{ fontFamily: LONG_DISPLAY, fontWeight: 800, fontSize: laut ? 64 : 28, color: LONG_TEXT, letterSpacing: 0 }}>
+          {laut ? zaehleText(text, fort) : text}
+        </span>
+      </div>
+      <div style={{ marginTop: 8, height: laut ? 12 : 6, borderRadius: 6, background: 'rgba(243,241,236,0.08)' }}>
+        <div style={{ width: `${Math.max(0, Math.min(100, breite)) * (laut ? fort : 1)}%`, height: '100%', borderRadius: 6, background: akzent }} />
+      </div>
+    </div>
   )
 }
 

@@ -204,7 +204,7 @@ async function alsBase64(url: string): Promise<{ mime: string; base64: string } 
 /** Günstiges Modell mit Bildverständnis: Passgenauigkeit, Wasserzeichen, fremde Logos. */
 export async function bewerteKandidaten(kandidaten: LongformBildKandidat[], kontextSatz: string): Promise<LongformBildKandidat[]> {
   const provider = resolveCoachProviderFromMode('gemini')
-  const auswahl = kandidaten.slice(0, 8)
+  const auswahl = kandidaten.slice(0, 4)
   if (!provider || !auswahl.length) return kandidaten
   const bilder = await Promise.all(auswahl.map((k) => (k.vorschauUrl ? alsBase64(k.vorschauUrl) : Promise.resolve(null))))
   const mitBild = auswahl.map((k, i) => ({ k, b: bilder[i] })).filter((x) => x.b)
@@ -216,17 +216,18 @@ export async function bewerteKandidaten(kandidaten: LongformBildKandidat[], kont
     [
       {
         role: 'user',
-        content: `Narration at this moment: "${kontextSatz}"\nRate each of the ${mitBild.length} images (in order, index from 0) from 0 to 10 for this moment. Give 0 for visible watermarks, text overlays, logos of other companies, memes, low quality, or anything that looks AI-generated. grund: one short German sentence.`,
+        content: `Narration at this moment: "${kontextSatz}"\nRate each of the ${mitBild.length} images (in order, index from 0) from 0 to 10 for this moment. Give 0 for visible watermarks, text overlays, logos of other companies, memes, low quality, or anything that looks AI-generated. grund: one short English sentence.`,
         images: mitBild.map((x) => ({ mimeType: x.b!.mime, base64: x.b!.base64 })),
       },
     ],
     {
       geminiModels: ['gemini-4-hydrogen', 'gemini-3.8-flash'],
       geminiForcePaidApiKey: true,
+      geminiServiceTier: 'flex',
       skipMessageTrim: true,
       thinkingLevel: 'low',
-      timeoutMs: 45_000,
-      geminiTotalBudgetMs: 60_000,
+      timeoutMs: 90_000,
+      geminiTotalBudgetMs: 120_000,
       jsonResponse: {
         schema: {
           type: 'object',

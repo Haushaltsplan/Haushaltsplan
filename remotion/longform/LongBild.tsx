@@ -1,5 +1,6 @@
 /** Foto/Clip mit Ken-Burns-Fahrt, Zwischentitel und Titelkarte. */
-import { AbsoluteFill, Img, OffthreadVideo, interpolate, useCurrentFrame } from 'remotion'
+import { Video } from '@remotion/media'
+import { AbsoluteFill, Img, interpolate, useCurrentFrame } from 'remotion'
 import { Logo, ein, oeffentlichSrc, type SzeneProps } from './long-bausteine'
 import { LONG_MONO, LONG_MUTED, LONG_RAND_X, LONG_RAND_Y, LONG_SERIF, LONG_TEXT, mitAlpha } from './long-look'
 
@@ -15,15 +16,18 @@ export function LongBild(sp: SzeneProps) {
   const s = sp.p.saetze[sp.block.saetze[0]!]!
   const akzent = sp.p.varianten.akzent
   if (!s.bildUrl) {
+    // Kein PENDING-Platzhalter: Firmenlogo / Name als sauberer Daten-Fallback.
     return (
       <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center', gap: 28 }}>
         <div style={{ opacity: ein(frame, 0, 14) }}>
           <Logo url={sp.p.logoUrl} groesse={160} ticker={sp.p.ticker} />
         </div>
         <div style={{ fontFamily: LONG_SERIF, fontSize: 72, color: LONG_TEXT, opacity: ein(frame, 6, 16) }}>{sp.p.firmenname}</div>
-        <div style={{ fontFamily: LONG_MONO, fontSize: 22, letterSpacing: 3, color: LONG_MUTED, opacity: ein(frame, 12, 14) }}>
-          B-ROLL PENDING
-        </div>
+        {sp.p.branche ? (
+          <div style={{ fontFamily: LONG_MONO, fontSize: 22, letterSpacing: 3, color: LONG_MUTED, opacity: ein(frame, 12, 14) }}>
+            {sp.p.branche.toUpperCase()}
+          </div>
+        ) : null}
       </AbsoluteFill>
     )
   }
@@ -37,7 +41,7 @@ export function LongBild(sp: SzeneProps) {
     <AbsoluteFill>
       <AbsoluteFill style={{ transform: `scale(${zoom}) translate(${x}%, ${y}%)` }}>
         {s.bildArt === 'video' ? (
-          <OffthreadVideo src={src} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <Video src={src} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
           <Img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         )}
@@ -104,7 +108,7 @@ export function LongTitelKarte(sp: SzeneProps) {
 /** Zwischentitel vor jedem Abschnitt: Nummer, Titel, eine Linie, die sich zieht. */
 export function LongBumper({ nummer, titel, akzent, gesamt = 3 }: { nummer: number; titel: string; akzent: string; gesamt?: number }) {
   const frame = useCurrentFrame()
-  const raus = interpolate(frame, [32, 40], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const raus = interpolate(frame, [30, 38], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   return (
     <AbsoluteFill style={{ background: '#0C0C0E', opacity: Math.min(ein(frame, 0, 6), 1) }}>
       <AbsoluteFill

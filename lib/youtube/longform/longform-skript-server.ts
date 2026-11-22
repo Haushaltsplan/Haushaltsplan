@@ -62,8 +62,10 @@ async function frage<T>(opts: {
     jsonResponse: { schema: opts.schema },
     skipMessageTrim: true,
     thinkingLevel: opts.denkstufe,
-    timeoutMs: 240_000,
-    geminiTotalBudgetMs: 280_000,
+    /** Flex: ~50 % günstiger, Batch ok — Timeouts höher wegen möglicher Warteschlange. */
+    geminiServiceTier: 'flex',
+    timeoutMs: 360_000,
+    geminiTotalBudgetMs: 420_000,
     maxOutputTokens: opts.maxTokens ?? 32_768,
   })
   if (!r.ok) throw new Error(r.hint)
@@ -123,7 +125,9 @@ type SatzRoh = { text: string; faktIds?: string[]; szene?: string; fokus?: strin
 const SZENEN_JE_ABSCHNITT: Partial<Record<LongformAbschnittId, LongformSzenenTyp[]>> = {
   hook: ['hook_zahl', 'hook_frage', 'hook_bild', 'titel_karte'],
   chart10k: ['chart_linie', 'chart_endwert', 'chart_drawdown', 'chart_vergleich', 'bild'],
-  burggraben: ['moat_geschaeft', 'moat_pfeiler', 'moat_scorecard', 'moat_segmente', 'bild'],
+  geschaeft: ['moat_geschaeft', 'moat_segmente', 'bild'],
+  burggraben: ['moat_pfeiler', 'moat_scorecard', 'moat_segmente', 'bild'],
+  zahlen: ['zahl_reihe', 'bild'],
 }
 
 let satzZaehler = 0
@@ -211,9 +215,13 @@ function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): str
     case 'hook':
       return 'hook: Keep the chosen opening almost word for word. You may smooth it into 2 to 4 punchy English sentences. First sentence = cold open. Scenes: the given hook scene; optionally end with titel_karte (fokus = short English title on screen, max 6 words).'
     case 'chart10k':
-      return `chart10k (about 70 to 110 seconds, 10 to 16 sentences): the long-term chart and what $10,000 invested ${fb.chart ? `in ${fb.chart.startDatum.slice(0, 4)}` : '10 years ago'} became, in dollars and percent, dividends reinvested. Mention how much came from dividends if that fact exists, make the worst drawdown feel real (what the viewer would have had to sit through)${fb.chart?.endwertSpy != null ? ', and you MUST include at least two sentences with scene chart_vergleich that name the S&P 500 comparison using the SPY facts (k10.spy_endwert / k10.spy_rendite / k10.vs_spy)' : ''}. REQUIRED pacing: at least 2 full-screen B-roll cuts (scene bild) with concrete English bildWunsch (e.g. "semiconductor wafer cleanroom", "data center server racks") — place them between chart beats so the section is not one long static chart. Scenes: chart_linie, chart_endwert, chart_drawdown${fb.chart?.endwertSpy != null ? ', chart_vergleich (required)' : ''}, bild.`
+      return `chart10k (about 70 to 110 seconds, 10 to 16 sentences): ONE continuous chart chapter — do NOT insert scene bild in the middle of chart beats (that redraws the chart). Order: (1) chart_linie while the lines draw — S&P and sector ETF are already on screen; (2) one sentence per core number with matching faktIds: k10.nur_kurs (price only), then k10.dividenden_usd if present, then k10.endwert (total with dividends), then k10.rendite or k10.cagr; (3) chart_drawdown for the worst drop; (4) chart_vergleich for S&P${fb.chart?.endwertSektor != null ? ' and sector ETF (k10.sektor_endwert / k10.sektor_rendite / k10.vs_sektor)' : ''}. ${fb.chart?.endwertSpy != null ? 'You MUST include at least two chart_vergleich sentences using k10.spy_endwert / k10.spy_rendite / k10.vs_spy. ' : ''}OPTIONAL: at most ONE scene bild BEFORE the first chart_linie sentence OR AFTER the last chart sentence — never between chart_linie / endwert / drawdown / vergleich. Each sentence = exactly one core number; faktIds and betonung must point at that number. Scenes allowed: chart_linie, chart_endwert, chart_drawdown${fb.chart?.endwertSpy != null ? ', chart_vergleich (required)' : ''}, and optionally bild only at section edges.`
+    case 'geschaeft':
+      return `geschaeft (about 70 to 90 seconds): how the company gets paid, in everyday English a non-investor understands. First 2 sentences: scene moat_geschaeft, who the customer is and what they pay for. Spell an acronym out once (CMBU = the memory chips sold to phone makers), then the short name is fine. No scores, no moat theory.${fb.segmente ? ` Then scene moat_segmente: one overview sentence with no fokus, then 2 or 3 sentences on the largest segments. Each of those carries exactly one faktId (seg.N or seg.N.marge or seg.N.wachstum), fokus set to that same id, betonung on the spoken number. Never three numbers in one sentence.` : ' No revenue mix is available, do not use moat_segmente.'} A bild sentence only before the first line or after the last segment sentence, with a concrete English bildWunsch.`
     case 'burggraben':
-      return `burggraben (about 100 to 150 seconds, 14 to 22 sentences): the moat check. Say "moat", never the German word. The overall score is moat.score (identical to the scorecard moat quality score) — say that number once as the verdict, never a conflicting total. Start from how the business earns money (moat_geschaeft${fb.segmente ? ', moat_segmente for the revenue mix' : ''}), then walk through the four moat pillars with their scores and one concrete reason each (scene moat_pfeiler, fokus = pillar id: preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte), then the scorecard moat column (moat_scorecard), and end on the biggest threat to the moat as a bridge to the rest of the video. REQUIRED: at least 2 scene bild cuts with English bildWunsch (factory floor, product close-up, cleanroom — no logos of rivals). Spend more time on the strongest and the weakest pillar, less on average ones.`
+      return `burggraben (about 100 to 140 seconds): the moat, starting at the pillars. Do NOT re-explain how the company makes money. Say "moat", never the German word. Overall score is moat.score, said once. One sentence per pillar, scene moat_pfeiler, fokus = exactly one pillar id (preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte). Put a scene bild with a concrete English bildWunsch BETWEEN pillars so the same card is never on screen for the whole chapter. Then moat_scorecard. ${fb.segmente ? 'At most one moat_segmente callback.' : ''} End on one threat, a single sentence. Somewhere between two finished thoughts, not over a number, insert ONE short sentence: if the viewer likes the video they should like and subscribe. That sentence has fokus "abo", scene bild, no faktIds, and must not cut another sentence in half.`
+    case 'zahlen':
+      return `zahlen: one chart per series, never combined. Scenes zahl_reihe with fokus umsatz, marge, gewinn, fcf — only for series that exist as reihe.* facts. One sentence per chart, faktIds = reihe.<id>, betonung on the latest figure. If a year is an outlier, say so only when a fact gives the company's own reason; otherwise just name the year. A bild sentence with bildWunsch may sit between two charts.`
     default:
       return `${id}: ${LONGFORM_ABSCHNITT_TITEL[id]}`
   }
@@ -240,7 +248,7 @@ export async function erzeugeSkript(opts: {
     `CHOSEN OPENING (type ${opts.hook.typ}):\nGuiding question: ${opts.hook.leitfrage}\n${opts.hook.saetze.map((s) => `- ${s.text} [${s.faktIds.join(', ')}]`).join('\n')}`,
     `PREFERRED HOOK SCENE: ${z.varianten.hookSzene}`,
     `TASK: Write these sections of the video, in this order. Every section keeps the guiding question alive without answering it (the answer comes in the final section of the full video, not now).\n${LONGFORM_AKTIVE_ABSCHNITTE.map((a) => `- ${abschnittAuftrag(a, fb)}`).join('\n')}
-For every sentence choose the scene that best shows what is being said. Consecutive sentences may share a scene; change scenes at least every 2 to 3 sentences — never leave the same chart or moat layout on screen for more than ~20 seconds without a B-roll cut (scene bild + bildWunsch). betonung = the single word or number in the sentence where the visual should land.
+For every sentence choose the scene that best shows what is being said. Consecutive sentences may share a scene. For moat: change visuals / insert scene bild about every 20–25 seconds. For chart10k: keep ONE unbroken chart sequence (no mid-chapter bild). One core number per sentence; faktIds + betonung must match that spoken number so on-screen HUD syncs with the voice. Every bild / hook_bild sentence MUST include a concrete English bildWunsch (image brief a human can search or shoot).
 kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks in later videos).`,
   ].join('\n\n')
   const schema = {
@@ -264,6 +272,9 @@ kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks
   if (abschnitte.every((a) => !a.saetze.length)) throw new Error('Gemini hat kein Skript geliefert.')
   stelleChartVergleichSicher(abschnitte, fb)
   stelleBrollSicher(abschnitte, fb)
+  stelleSegmentFokusSicher(abschnitte)
+  stellePfeilerFokusSicher(abschnitte)
+  stelleAboSatzSicher(abschnitte)
   const deutsch = abschnitte.flatMap((a) => a.saetze).filter((s) => klingtNachDeutsch(s.text))
   if (deutsch.length) {
     throw new Error(
@@ -308,20 +319,114 @@ function brollSuchbegriff(fb: LongformFaktenblatt, index: number): string {
   return [`${fb.firmenname} industry`, 'modern office building exterior', 'global supply chain shipping'][index % 3]!
 }
 
-/** Mindestens zwei B-Roll-Schnitte pro Langabschnitt, mit Suchbegriff. */
+const PFEILER_IDS = ['preissetzungsmacht', 'replikationsbarriere', 'wechselkosten', 'marktdichte']
+
+function stelleSegmentFokusSicher(abschnitte: LongformAbschnitt[]) {
+  for (const a of abschnitte) {
+    for (const s of a.saetze) {
+      if (s.visual.szene !== 'moat_segmente') continue
+      const id = s.faktIds.find((x) => /^seg\.\d+/.test(x))
+      if (id && !s.visual.fokus) s.visual.fokus = id
+    }
+  }
+}
+
+function stellePfeilerFokusSicher(abschnitte: LongformAbschnitt[]) {
+  const moat = abschnitte.find((a) => a.id === 'burggraben')
+  if (!moat) return
+  let n = 0
+  for (const s of moat.saetze) {
+    if (s.visual.szene !== 'moat_pfeiler') continue
+    const ausFakt = s.faktIds.map((id) => id.replace(/^moat\./, '')).find((id) => PFEILER_IDS.includes(id))
+    if (!s.visual.fokus || !PFEILER_IDS.includes(s.visual.fokus)) {
+      s.visual.fokus = ausFakt ?? PFEILER_IDS[n % PFEILER_IDS.length]!
+    }
+    n += 1
+  }
+}
+
+function stelleAboSatzSicher(abschnitte: LongformAbschnitt[]) {
+  const moat = abschnitte.find((a) => a.id === 'burggraben')
+  if (!moat || moat.saetze.some((s) => s.visual.fokus === 'abo')) return
+  const idx = moat.saetze.findIndex((s) => s.visual.szene === 'moat_scorecard')
+  const bei = idx > 0 ? idx : Math.max(1, moat.saetze.length - 1)
+  moat.saetze.splice(bei, 0, {
+    id: neueSatzId('burggraben'),
+    text: 'If this is useful, a like and a subscribe help.',
+    faktIds: [],
+    visual: { szene: 'bild', fokus: 'abo', betonung: 'subscribe', bildWunsch: null },
+  })
+}
+
+/** B-Roll absichern: Chart nie in der Mitte zerreißen; Moat mind. 2 Schnitte. */
 function stelleBrollSicher(abschnitte: LongformAbschnitt[], fb: LongformFaktenblatt) {
   let pool = 0
   for (const a of abschnitte) {
     if (a.id === 'hook' || a.saetze.length < 4) continue
-    const bilder = a.saetze.filter((s) => s.visual.szene === 'bild' || s.visual.szene === 'hook_bild')
+    if (a.id === 'geschaeft') {
+      for (const s of a.saetze) {
+        if ((s.visual.szene === 'bild' || s.visual.szene === 'hook_bild') && !s.visual.bildWunsch) {
+          s.visual.bildWunsch = brollSuchbegriff(fb, pool++)
+        }
+      }
+      continue
+    }
+
+    if (a.id === 'chart10k') {
+      // Mid-Chart-B-Roll → Chart zeichnet neu. Nur Rand erlauben.
+      const chartIdx = a.saetze
+        .map((s, i) => ({ s, i }))
+        .filter(({ s }) => s.visual.szene.startsWith('chart_'))
+      const firstChart = chartIdx[0]?.i ?? -1
+      const lastChart = chartIdx[chartIdx.length - 1]?.i ?? -1
+      a.saetze.forEach((s, i) => {
+        if (s.visual.szene !== 'bild' && s.visual.szene !== 'hook_bild') return
+        if (firstChart >= 0 && lastChart >= 0 && i > firstChart && i < lastChart) {
+          s.visual.szene = 'chart_linie'
+          s.visual.bildWunsch = null
+        } else if (!s.visual.bildWunsch) {
+          s.visual.bildWunsch = brollSuchbegriff(fb, pool++)
+        }
+      })
+      // Optional ein Bild nach dem Chart-Block, falls keines am Rand steht.
+      const randBilder = a.saetze.filter(
+        (s, i) =>
+          (s.visual.szene === 'bild' || s.visual.szene === 'hook_bild') &&
+          (firstChart < 0 || i <= firstChart || i >= lastChart),
+      )
+      if (!randBilder.length && lastChart >= 0 && lastChart < a.saetze.length - 1) {
+        const ziel = a.saetze[a.saetze.length - 1]!
+        if (!ziel.visual.szene.startsWith('chart_')) {
+          ziel.visual.szene = 'bild'
+          ziel.visual.bildWunsch = brollSuchbegriff(fb, pool++)
+        }
+      } else if (!randBilder.length && a.saetze.length >= 2) {
+        // Kein freier Rand-Satz: keinen Extra-Split erzwingen — Chart bleibt ein Block.
+      }
+      continue
+    }
+
+    const bilder = a.saetze.filter((s) => (s.visual.szene === 'bild' || s.visual.szene === 'hook_bild') && s.visual.fokus !== 'abo')
     for (const s of bilder) {
-      if (!s.visual.bildWunsch) s.visual.bildWunsch = brollSuchbegriff(fb, pool++)
+      if (!s.visual.bildWunsch && s.visual.fokus !== 'abo') s.visual.bildWunsch = brollSuchbegriff(fb, pool++)
     }
     const fehlt = Math.max(0, 2 - bilder.length)
     if (!fehlt) continue
     const kandidaten = a.saetze
       .map((s, i) => ({ s, i }))
-      .filter(({ s, i }) => s.visual.szene !== 'bild' && s.visual.szene !== 'hook_bild' && i > 0 && i < a.saetze.length - 1)
+      .filter(
+        ({ s, i }) =>
+          s.visual.fokus !== 'abo' &&
+          s.visual.szene !== 'bild' &&
+          s.visual.szene !== 'hook_bild' &&
+          s.visual.szene !== 'moat_pfeiler' &&
+          s.visual.szene !== 'moat_segmente' &&
+          s.visual.szene !== 'moat_scorecard' &&
+          s.visual.szene !== 'zahl_reihe' &&
+          !s.visual.szene.startsWith('chart_') &&
+          i > 0 &&
+          i < a.saetze.length - 1,
+      )
     const schritt = Math.max(1, Math.floor(kandidaten.length / (fehlt + 1)))
     let gesetzt = 0
     for (let k = schritt; k < kandidaten.length && gesetzt < fehlt; k += schritt) {

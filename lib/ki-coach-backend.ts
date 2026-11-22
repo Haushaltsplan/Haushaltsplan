@@ -538,6 +538,11 @@ type CallGeminiEinModellOptions = {
   thinkingMinimal?: boolean
   /** Erzwingt thinkingLevel (z. B. Retry nach „MINIMAL not supported“). */
   thinkingLevelOverride?: 'minimal' | 'low' | 'medium' | 'high'
+  /**
+   * Gemini Batch/Flex: ~50 % günstiger, Best-Effort (kann 503 → Retry).
+   * Gleiches Modell/Gewichte — nur Preis- und Warteschlangen-Tier.
+   */
+  geminiServiceTier?: 'flex' | 'standard'
 }
 
 /**
@@ -598,6 +603,9 @@ async function callGeminiEinModell(
     systemInstruction: { parts: [{ text: systemText }] },
     contents,
     generationConfig,
+  }
+  if (opts.geminiServiceTier === 'flex') {
+    body.service_tier = 'flex'
   }
   if (opts.geminiGoogleSearch) {
     body.tools = [{ google_search: {} }]
@@ -881,6 +889,11 @@ export type RunCoachCompletionOptions = {
   thinkingMinimal?: boolean
   /** Feste Denkstufe (Gemini 3+/4). Hat Vorrang vor `thinkingMinimal`. */
   thinkingLevel?: 'low' | 'medium' | 'high'
+  /**
+   * Gemini Flex (~50 % Input+Output). Ideal für Longform-Batch (Skript/Hooks/Prüfung).
+   * Nicht für Live-Chat. Bei 503 retryt callGemini bereits.
+   */
+  geminiServiceTier?: 'flex' | 'standard'
 }
 
 export async function runCoachCompletion(
@@ -909,6 +922,7 @@ export async function runCoachCompletion(
         maxOutputTokens: options?.maxOutputTokens,
         thinkingMinimal: options?.thinkingMinimal,
         thinkingLevelOverride: options?.thinkingLevel,
+        geminiServiceTier: options?.geminiServiceTier,
       },
       options?.geminiModels,
       options?.geminiForcePaidApiKey === true,

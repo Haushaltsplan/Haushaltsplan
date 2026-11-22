@@ -24,6 +24,7 @@ const SZENE_LABEL: Record<(typeof LONGFORM_SZENEN)[number], string> = {
   moat_pfeiler: 'Moat · Pfeiler',
   moat_scorecard: 'Moat · Scorecard',
   moat_segmente: 'Moat · Umsatzmix',
+  zahl_reihe: 'Zahlen · Jahresreihe',
   bild: 'Foto / Clip',
   titel_karte: 'Titelkarte',
 }
@@ -191,6 +192,14 @@ export function LongformSatzEditor({
           placeholder="Betontes Wort (Zoom)"
           className="w-40 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1 text-[var(--app-text)]"
         />
+        {satz.visual.szene === 'moat_segmente' || satz.visual.szene === 'moat_pfeiler' || satz.visual.szene === 'zahl_reihe' ? (
+          <input
+            value={satz.visual.fokus ?? ''}
+            onChange={(e) => onLokal({ ...satz, visual: { ...satz.visual, fokus: e.target.value || null } })}
+            placeholder={satz.visual.szene === 'moat_segmente' ? 'seg.0 / seg.0.marge / seg.0.wachstum' : satz.visual.szene === 'zahl_reihe' ? 'umsatz / marge / gewinn / fcf' : 'Pfeiler-ID'}
+            className="w-64 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1 text-[var(--app-text)]"
+          />
+        ) : null}
         {satz.faktIds.length ? <span className="font-mono text-[var(--app-text-muted)]">{satz.faktIds.join(', ')}</span> : null}
         <button type="button" className="ml-auto underline text-[var(--app-text-muted)]" onClick={() => setChatOffen((x) => !x)}>
           Satz per Chat ändern
@@ -255,7 +264,27 @@ export function LongformSatzEditor({
       ) : null}
 
       {mitBild ? (
-        <div className="mt-3 border-t border-[var(--app-border)] pt-3">
+        <div className="mt-3 space-y-2 border-t border-[var(--app-border)] pt-3">
+          <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-2.5">
+            <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-wide text-[var(--app-text-muted)]">
+              <span>Bildbrief</span>
+              <span className={bild?.url ? 'text-emerald-400' : 'text-amber-300'}>{bild?.url ? 'gesetzt' : 'fehlt'}</span>
+            </div>
+            <textarea
+              value={satz.visual.bildWunsch ?? ''}
+              onChange={(e) => {
+                const v = e.target.value
+                onLokal({ ...satz, visual: { ...satz.visual, bildWunsch: v || null } })
+                setSuche(v)
+              }}
+              rows={2}
+              placeholder='z. B. "wide shot of semiconductor cleanroom workers in bunny suits, no logos"'
+              className={`${LF_FELD} mt-1.5 resize-y text-sm`}
+            />
+            <p className="mt-1.5 text-[11px] text-[var(--app-text-muted)]">
+              Qualitäts-Pfad: selbst suchen/hochladen (eigene Fotos, IR, CC mit Credit). Vorschläge unten sind nur Hilfe — Credits landen in der Videobeschreibung.
+            </p>
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             {bild?.url ? (
               bild.art === 'video' ? (
@@ -265,11 +294,16 @@ export function LongformSatzEditor({
                 <img src={bild.url} alt="" className="h-16 w-28 rounded-md object-cover" />
               )
             ) : (
-              <span className="text-xs text-[var(--app-text-muted)]">Kein Bild — im Video erscheint das Logo.</span>
+              <span className="text-xs text-[var(--app-text-muted)]">Kein Bild — im Video erscheint Logo / Firmenname (kein „PENDING“).</span>
             )}
-            <input value={suche} onChange={(e) => setSuche(e.target.value)} placeholder="Suchbegriff (englisch)" className="w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1 text-sm text-[var(--app-text)]" />
+            <input
+              value={suche}
+              onChange={(e) => setSuche(e.target.value)}
+              placeholder="Such-Keywords (englisch)"
+              className="w-56 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1 text-sm text-[var(--app-text)]"
+            />
             <button type="button" className={LF_KNOPF} disabled={laeuft != null || suche.trim().length < 2} onClick={() => void bilderSuchen(false)}>
-              {laeuft === 'suche' ? 'Sucht…' : 'Freie Bilder suchen'}
+              {laeuft === 'suche' ? 'Sucht…' : 'Vorschläge suchen'}
             </button>
             {pixabay ? (
               <button type="button" className={LF_KNOPF} disabled={laeuft != null || suche.trim().length < 2} onClick={() => void bilderSuchen(true)}>
@@ -277,10 +311,24 @@ export function LongformSatzEditor({
               </button>
             ) : null}
             <label className={`${LF_KNOPF} cursor-pointer`}>
-              Eigenes hochladen
-              <input type="file" accept="image/jpeg,image/png,image/webp,video/mp4" className="hidden" onChange={(e) => bildHochladen(e.target.files?.[0])} />
+              Am Satz hochladen
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,video/mp4"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (!f) return
+                  if (!window.confirm('Ich bestätige, dass ich die Rechte an dieser Datei habe (eigene Aufnahme, Lizenz oder Press Kit).')) {
+                    e.target.value = ''
+                    return
+                  }
+                  bildHochladen(f)
+                }}
+              />
             </label>
           </div>
+          {bild?.credit ? <p className="text-[11px] text-[var(--app-text-muted)]">Credit: {bild.credit}</p> : null}
           {kandidaten?.length ? (
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {kandidaten.map((k) => (

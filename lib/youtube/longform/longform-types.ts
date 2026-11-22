@@ -17,8 +17,8 @@ export const LONGFORM_ABSCHNITTE = [
 ] as const
 export type LongformAbschnittId = (typeof LONGFORM_ABSCHNITTE)[number]
 
-/** Testausbau: nur diese Abschnitte werden geschrieben und gerendert. */
-export const LONGFORM_AKTIVE_ABSCHNITTE: LongformAbschnittId[] = ['hook', 'chart10k', 'burggraben']
+/** Test = Anfang des späteren Videos: Hook, Chart, Geschäft, Moat. Dieselben Bilder, nichts dazwischengeschoben. */
+export const LONGFORM_AKTIVE_ABSCHNITTE: LongformAbschnittId[] = ['hook', 'chart10k', 'geschaeft', 'burggraben']
 
 export const LONGFORM_ABSCHNITT_TITEL: Record<LongformAbschnittId, string> = {
   hook: 'Hook',
@@ -49,7 +49,16 @@ export type LongformFakt = {
   quelle: string
 }
 
-export type LongformChartPunkt = { d: string; aktie: number; spy: number | null }
+export type LongformChartPunkt = {
+  d: string
+  /** Total Return (Dividenden reinvestiert). */
+  aktie: number
+  /** Nur Kurs / Close, ohne Dividenden-Reinvest. */
+  kursOhneDiv: number | null
+  spy: number | null
+  /** Sektor-ETF Total Return, falls bekannt. */
+  sektor: number | null
+}
 
 export type LongformChart10k = {
   startDatum: string
@@ -60,6 +69,9 @@ export type LongformChart10k = {
   endwertNurKurs: number
   endwertGesamt: number
   endwertSpy: number | null
+  endwertSektor: number | null
+  /** Yahoo-Ticker des Sektor-ETFs (z. B. XLK), null wenn unbekannt/fehlend. */
+  sektorEtf: string | null
   drawdown: { hochDatum: string; tiefDatum: string; pct: number } | null
   /** Handelswährung; die Rechnung läuft immer in USD. */
   waehrung: string
@@ -80,10 +92,28 @@ export type LongformScorecardBalken = { label: string; wertText: string; positio
 
 export type LongformScorecardSpalte = { titel: string; score: number | null; balken: LongformScorecardBalken[] }
 
+export type LongformSegmentEintrag = {
+  name: string
+  anteilPct: number
+  /** Operative Marge in Prozent, null wenn der 10-K sie nicht ausweist. */
+  margePct: number | null
+  /** Umsatzwachstum zum Vorjahr in Prozent, null ohne Vorjahr. */
+  wachstumPct: number | null
+}
+
 export type LongformSegmente = {
   art: 'produkt' | 'geo'
   jahr: number | null
-  eintraege: { name: string; anteilPct: number }[]
+  eintraege: LongformSegmentEintrag[]
+}
+
+export type LongformJahresreiheId = 'umsatz' | 'marge' | 'gewinn' | 'fcf'
+
+export type LongformJahresreihe = {
+  id: LongformJahresreiheId
+  label: string
+  einheit: 'usd' | 'pct'
+  punkte: { jahr: number; wert: number }[]
 }
 
 export type LongformQuelle = {
@@ -111,6 +141,8 @@ export type LongformFaktenblatt = {
   moat: LongformMoat | null
   burggraben: LongformScorecardSpalte | null
   segmente: LongformSegmente | null
+  /** Jahresreihen aus dem 10-K. Leer, wenn der Export sie nicht hat. */
+  reihen: LongformJahresreihe[]
   logoUrl: string | null
   /** true/false aus dem Cloud-Depot, null = unbekannt. */
   imDepot: boolean | null
@@ -150,6 +182,7 @@ export const LONGFORM_SZENEN = [
   'moat_pfeiler',
   'moat_scorecard',
   'moat_segmente',
+  'zahl_reihe',
   'bild',
   'titel_karte',
 ] as const
@@ -275,6 +308,8 @@ export type LongformProjektZustand = {
   varianten: LongformVarianten
   musik: { aktiv: boolean; pegel: number }
   denkstufe: 'low' | 'medium' | 'high'
+  /** null = noch nicht gewählt. true = investiert, false = nicht investiert. */
+  investiert: boolean | null
 }
 
 export type LongformProjektKurz = {

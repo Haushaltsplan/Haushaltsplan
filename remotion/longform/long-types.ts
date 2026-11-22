@@ -2,6 +2,7 @@
 import type {
   LongformAbschnittId,
   LongformChart10k,
+  LongformJahresreihe,
   LongformMoat,
   LongformScorecardSpalte,
   LongformSegmente,
@@ -43,12 +44,16 @@ export type AktienAnalyseProps = {
   moat: LongformMoat | null
   burggraben: LongformScorecardSpalte | null
   segmente: LongformSegmente | null
+  reihen: LongformJahresreihe[]
   /** faktId → englischer Text und Label. */
   fakten: Record<string, { text: string; label: string; wert: number | null }>
   saetze: LongSatzProps[]
   musik: { aktiv: boolean; pegel: number; tracks: LongMusikTrack[] }
   sfx: boolean
   abschnittTitel: Partial<Record<LongformAbschnittId, string>>
+  kanalName?: string
+  kanalLogoUrl?: string | null
+  investiert: boolean | null
 }
 
 export const AKTIEN_ANALYSE_DEFAULT_PROPS: AktienAnalyseProps = {
@@ -70,6 +75,7 @@ export const AKTIEN_ANALYSE_DEFAULT_PROPS: AktienAnalyseProps = {
   moat: null,
   burggraben: null,
   segmente: null,
+  reihen: [],
   fakten: { 'k10.endwert': { text: '$34,210', label: 'Value of $10,000 today', wert: 34210 } },
   saetze: [
     {
@@ -89,4 +95,7 @@ export const AKTIEN_ANALYSE_DEFAULT_PROPS: AktienAnalyseProps = {
   musik: { aktiv: false, pegel: 50, tracks: [] },
   sfx: true,
   abschnittTitel: {},
+  kanalName: 'DailyMoat',
+  kanalLogoUrl: '/youtube-longform/dailymoat.jpg',
+  investiert: null,
 }

@@ -1,4 +1,4 @@
-/** 10 Jahre Tageskurse für den 10.000-$-Chart: Kurs, Total Return (adjclose), SPY, Wechselkurs. */
+/** 10 Jahre Tageskurse für den 10.000-$-Chart: Kurs, Total Return (adjclose), SPY, Sektor-ETF, Wechselkurs. */
 import 'server-only'
 
 import { LONGFORM_INVEST_USD, type LongformChart10k, type LongformChartPunkt } from '@/lib/youtube/longform/longform-types'
@@ -9,6 +9,37 @@ const KOPF = {
   Referer: 'https://finance.yahoo.com/',
   Accept: 'application/json',
 } as const
+
+/** Yahoo GICS-ähnliche Sektoren → Select-Sector SPDR. Unbekannt → null (UI zeigt nur SPY). */
+const SEKTOR_ETF: Record<string, string> = {
+  technology: 'XLK',
+  'information technology': 'XLK',
+  'communication services': 'XLC',
+  'consumer cyclical': 'XLY',
+  'consumer discretionary': 'XLY',
+  'consumer defensive': 'XLP',
+  'consumer staples': 'XLP',
+  energy: 'XLE',
+  financial: 'XLF',
+  financials: 'XLF',
+  healthcare: 'XLV',
+  'health care': 'XLV',
+  industrials: 'XLI',
+  'basic materials': 'XLB',
+  materials: 'XLB',
+  'real estate': 'XLRE',
+  utilities: 'XLU',
+}
+
+export function sektorEtfSymbol(sektor: string | null | undefined): string | null {
+  if (!sektor?.trim()) return null
+  const key = sektor.trim().toLowerCase()
+  if (SEKTOR_ETF[key]) return SEKTOR_ETF[key]!
+  for (const [k, v] of Object.entries(SEKTOR_ETF)) {
+    if (key.includes(k) || k.includes(key)) return v
+  }
+  return null
+}
 
 type YahooChart = {
   chart?: {
@@ -104,11 +135,20 @@ function fxSymbol(waehrung: string): { symbol: string; faktor: number } | null {
   return { symbol: `${waehrung}USD=X`, faktor: 1 }
 }
 
-export async function ladeChart10k(symbolYahoo: string, jahre = 10): Promise<LongformChart10k | null> {
+export async function ladeChart10k(
+  symbolYahoo: string,
+  jahre = 10,
+  sektor?: string | null,
+): Promise<LongformChart10k | null> {
   const bis = new Date()
   const von = new Date(bis)
   von.setUTCFullYear(von.getUTCFullYear() - jahre)
-  const [aktie, spy] = await Promise.all([ladeReihe(symbolYahoo, von, bis), ladeReihe('SPY', von, bis)])
+  const sektorSym = sektorEtfSymbol(sektor)
+  const [aktie, spy, sektorReihe] = await Promise.all([
+    ladeReihe(symbolYahoo, von, bis),
+    ladeReihe('SPY', von, bis),
+    sektorSym ? ladeReihe(sektorSym, von, bis) : Promise.resolve(null),
+  ])
   if (!aktie) return null
 
   const fxInfo = fxSymbol(aktie.waehrung)
@@ -132,6 +172,10 @@ export async function ladeChart10k(symbolYahoo: string, jahre = 10): Promise<Lon
   const spyZeiger = { i: 0 }
   const spy0 = spySort.length ? wertBis(spySort, start, { i: 0 }) ?? spySort[0]![1] : null
 
+  const sektSort = sektorReihe ? [...sektorReihe.gesamt.entries()].sort((a, b) => a[0].localeCompare(b[0])) : []
+  const sektZeiger = { i: 0 }
+  const sekt0 = sektSort.length ? wertBis(sektSort, start, { i: 0 }) ?? sektSort[0]![1] : null
+
   const punkte: LongformChartPunkt[] = []
   let hoch = -Infinity
   let hochDatum = start
@@ -140,7 +184,9 @@ export async function ladeChart10k(symbolYahoo: string, jahre = 10): Promise<Lon
   for (let i = 0; i < tage.length; i++) {
     const d = tage[i]!
     const wert = (gesamtUsd.get(d)! / g0) * LONGFORM_INVEST_USD
+    const kursWert = kursUsd.has(d) ? (kursUsd.get(d)! / k0) * LONGFORM_INVEST_USD : null
     const spyWert = spy0 ? wertBis(spySort, d, spyZeiger) : null
+    const sektWert = sekt0 ? wertBis(sektSort, d, sektZeiger) : null
     if (wert > hoch) {
       hoch = wert
       hochDatum = d
@@ -153,7 +199,9 @@ export async function ladeChart10k(symbolYahoo: string, jahre = 10): Promise<Lon
       punkte.push({
         d,
         aktie: Math.round(wert),
+        kursOhneDiv: kursWert != null ? Math.round(kursWert) : null,
         spy: spyWert != null && spy0 ? Math.round((spyWert / spy0) * LONGFORM_INVEST_USD) : null,
+        sektor: sektWert != null && sekt0 ? Math.round((sektWert / sekt0) * LONGFORM_INVEST_USD) : null,
       })
     }
   }
@@ -166,6 +214,8 @@ export async function ladeChart10k(symbolYahoo: string, jahre = 10): Promise<Lon
     endwertNurKurs: Math.round((kursUsd.get(ende)! / k0) * LONGFORM_INVEST_USD),
     endwertGesamt: letzter.aktie,
     endwertSpy: letzter.spy,
+    endwertSektor: letzter.sektor,
+    sektorEtf: sektorSym && letzter.sektor != null ? sektorSym : null,
     drawdown: dd && dd.pct < -5 ? { ...dd, pct: Math.round(dd.pct * 10) / 10 } : null,
     waehrung: aktie.waehrung,
     jahre: Math.round(jahreIst * 10) / 10,

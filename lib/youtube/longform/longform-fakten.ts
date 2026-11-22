@@ -6,7 +6,7 @@ import { baueScorecard } from '@/lib/portfolio-analyse/fundamentaldaten-scorecar
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { gesamtScoreAusPfeilern, type MoatKiBewertung } from '@/lib/portfolio-analyse/moat-ki-types'
 import { istMuellSegmentName, sektorBrancheEnglisch } from '@/lib/youtube/longform/longform-en'
-import { monatJahr, pct, scorecardTextEnglisch, usd } from '@/lib/youtube/longform/longform-format'
+import { monatJahr, moatTextEnglisch, pct, scorecardTextEnglisch, usd } from '@/lib/youtube/longform/longform-format'
 import { metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import { pfeilerAufZielScore, urteilAusMoatScore } from '@/lib/youtube/moat-short-urteil'
 import {
@@ -14,10 +14,13 @@ import {
   type LongformChart10k,
   type LongformFakt,
   type LongformFaktenblatt,
+  type LongformJahresreihe,
   type LongformMoat,
   type LongformScorecardSpalte,
+  type LongformSegmentEintrag,
   type LongformSegmente,
 } from '@/lib/youtube/longform/longform-types'
+import type { SecSegmentEintrag, SecSegmentHistorie } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 
 const PFEILER_LABEL: Record<string, string> = {
   preissetzungsmacht: 'Pricing power',
@@ -106,6 +109,31 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
       const diff = c.endwertGesamt - c.endwertSpy
       add({ id: 'k10.vs_spy', label: diff >= 0 ? 'Ahead of the S&P 500 by' : 'Behind the S&P 500 by', wert: Math.abs(diff), text: usd(Math.abs(diff)), einheit: 'usd' }, s)
     }
+    if (c.endwertSektor != null && c.sektorEtf) {
+      const sektRendite = (c.endwertSektor / invest - 1) * 100
+      add({
+        id: 'k10.sektor_endwert',
+        label: `Same $10,000 in sector ETF ${c.sektorEtf}`,
+        wert: c.endwertSektor,
+        text: usd(c.endwertSektor),
+        einheit: 'usd',
+      }, s)
+      add({
+        id: 'k10.sektor_rendite',
+        label: `${c.sektorEtf} total return`,
+        wert: sektRendite,
+        text: pct(sektRendite),
+        einheit: 'pct',
+      }, s)
+      const diffS = c.endwertGesamt - c.endwertSektor
+      add({
+        id: 'k10.vs_sektor',
+        label: diffS >= 0 ? `Ahead of ${c.sektorEtf} by` : `Behind ${c.sektorEtf} by`,
+        wert: Math.abs(diffS),
+        text: usd(Math.abs(diffS)),
+        einheit: 'usd',
+      }, s)
+    }
     if (c.drawdown) {
       add({ id: 'k10.drawdown', label: 'Worst drop from a high', wert: c.drawdown.pct, text: pct(c.drawdown.pct), einheit: 'pct' }, s)
       add({ id: 'k10.drawdown_hoch', label: 'Drop started', wert: null, text: monatJahr(c.drawdown.hochDatum), einheit: 'text' }, s)
@@ -176,7 +204,7 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
       pfeiler,
       score,
       urteil: URTEIL_EN[urteilKey] ?? urteilKey,
-      geschaeftsmodell: e.moatKi.geschaeftsmodell,
+      geschaeftsmodell: moatTextEnglisch(e.moatKi.geschaeftsmodell) ?? e.moatKi.geschaeftsmodell,
       zerstoerung: e.moatKi.zerstoerungsszenarien ?? [],
     }
     add({ id: 'moat.score', label: 'Moat score (out of 10)', wert: score, text: `${score} out of 10`, einheit: 'score' }, s)
@@ -193,9 +221,37 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
     const s = { stichtag: exportTag, quelle: `SEC-Segmente ${segmente.art === 'geo' ? 'nach Region' : 'nach Produkt'}${segmente.jahr ? ` FY${segmente.jahr}` : ''}` }
     segmente.eintraege.forEach((x, i) => {
       add({ id: `seg.${i}`, label: `Revenue share: ${x.name}`, wert: x.anteilPct, text: pct(x.anteilPct), einheit: 'pct' }, s)
+      if (x.margePct != null) {
+        add({ id: `seg.${i}.marge`, label: `Operating margin: ${x.name}`, wert: x.margePct, text: pct(x.margePct), einheit: 'pct' }, s)
+      }
+      if (x.wachstumPct != null) {
+        add({
+          id: `seg.${i}.wachstum`,
+          label: `Revenue growth vs last year: ${x.name}`,
+          wert: x.wachstumPct,
+          text: pct(x.wachstumPct, { vorzeichen: true }),
+          einheit: 'pct',
+        }, s)
+      }
     })
   } else {
     hinweise.push('Kein Umsatzmix im Export (bei EU/CH/UK üblich). Lade ein IR-Dokument hoch, sonst entfällt die Segmentgrafik.')
+  }
+
+  const reihen = reihenAus(paket)
+  for (const reihe of reihen) {
+    const letzter = reihe.punkte[reihe.punkte.length - 1]!
+    const text = reihe.einheit === 'pct' ? pct(letzter.wert) : usd(letzter.wert * 1_000_000)
+    add(
+      {
+        id: `reihe.${reihe.id}`,
+        label: `${reihe.label}, latest year`,
+        wert: letzter.wert,
+        text,
+        einheit: reihe.einheit === 'pct' ? 'pct' : 'usd',
+      },
+      { stichtag: exportTag, quelle: `SEC 10-K Kennzahlen FY${letzter.jahr}` },
+    )
   }
 
   return {
@@ -214,32 +270,75 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
     moat,
     burggraben,
     segmente,
+    reihen,
     logoUrl: e.logoUrl,
     imDepot: e.imDepot,
     hinweise,
   }
 }
 
+function margeVon(x: SecSegmentEintrag): number | null {
+  if (x.margePct != null && Number.isFinite(x.margePct)) return Math.round(x.margePct * 10) / 10
+  if (x.umsatzMio != null && x.operatingIncomeMio != null && x.umsatzMio !== 0) {
+    return Math.round((x.operatingIncomeMio / x.umsatzMio) * 1000) / 10
+  }
+  return null
+}
+
+function wachstumYoY(historie: SecSegmentHistorie | null | undefined, name: string): number | null {
+  const jahre = historie?.jahre ?? []
+  if (jahre.length < 2) return null
+  const neu = jahre[jahre.length - 1]!
+  const alt = jahre[jahre.length - 2]!
+  const gleich = (s: SecSegmentEintrag) => s.name.trim().toLowerCase() === name.trim().toLowerCase()
+  const n = neu.segmente.find(gleich)
+  const a = alt.segmente.find(gleich)
+  if (n?.umsatzMio == null || a?.umsatzMio == null || !(a.umsatzMio > 0)) return null
+  return Math.round(((n.umsatzMio - a.umsatzMio) / a.umsatzMio) * 1000) / 10
+}
+
 function segmenteAus(paket: FundamentaldatenPaket): LongformSegmente | null {
   const st = paket.erweitert?.secStruktur
   if (!st) return null
-  const kandidaten: { art: 'produkt' | 'geo'; liste: typeof st.segmenteProdukt }[] = [
-    { art: 'produkt', liste: st.segmenteProdukt ?? [] },
-    { art: 'geo', liste: st.segmenteGeo ?? [] },
+  const hist = paket.erweitert?.secSegmentHistorie
+  const kandidaten: { art: 'produkt' | 'geo'; liste: SecSegmentEintrag[]; historie: SecSegmentHistorie | null }[] = [
+    { art: 'produkt', liste: st.segmenteProdukt ?? [], historie: hist?.produkt ?? null },
+    { art: 'geo', liste: st.segmenteGeo ?? [], historie: hist?.geo ?? null },
   ]
   for (const k of kandidaten) {
-    const eintraege = k.liste
+    const eintraege: LongformSegmentEintrag[] = k.liste
       .filter((x) => x.anteilPct != null && x.anteilPct > 0 && x.name?.trim() && !istMuellSegmentName(x.name))
-      .map((x) => ({ name: x.name.trim(), anteilPct: Math.round(x.anteilPct! * 10) / 10 }))
+      .map((x) => ({
+        name: x.name.trim(),
+        anteilPct: Math.round(x.anteilPct! * 10) / 10,
+        margePct: margeVon(x),
+        wachstumPct: wachstumYoY(k.historie, x.name),
+      }))
       .sort((a, b) => b.anteilPct - a.anteilPct)
     if (eintraege.length >= 2) {
       const top = eintraege.slice(0, 6)
       const rest = eintraege.slice(6).reduce((a, x) => a + x.anteilPct, 0)
-      if (rest > 0.5) top.push({ name: 'Other', anteilPct: Math.round(rest * 10) / 10 })
+      if (rest > 0.5) top.push({ name: 'Other', anteilPct: Math.round(rest * 10) / 10, margePct: null, wachstumPct: null })
       return { art: k.art, jahr: st.berichtJahr, eintraege: top }
     }
   }
   return null
+}
+
+function reihenAus(paket: FundamentaldatenPaket): LongformJahresreihe[] {
+  const k = paket.erweitert?.secSegmentHistorie?.kennzahlen
+  if (!k) return []
+  const bau = (id: LongformJahresreihe['id'], label: string, einheit: LongformJahresreihe['einheit'], roh: { jahr: number; wert: number }[] | undefined): LongformJahresreihe | null => {
+    const punkte = (roh ?? []).filter((p) => Number.isFinite(p.wert)).sort((a, b) => a.jahr - b.jahr)
+    if (punkte.length < 2) return null
+    return { id, label, einheit, punkte }
+  }
+  return [
+    bau('umsatz', 'Revenue', 'usd', k.umsatzMio),
+    bau('marge', 'Operating margin', 'pct', k.ebitMargePct),
+    bau('gewinn', 'Net income', 'usd', k.nettogewinnMio),
+    bau('fcf', 'Free cash flow', 'usd', k.fcfMio),
+  ].filter((x): x is LongformJahresreihe => x != null)
 }
 
 /** Kompakte Textform fürs KI-Prompt: nur Kennung, Bezeichnung, erlaubter Text. */

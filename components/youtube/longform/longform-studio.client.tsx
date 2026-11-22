@@ -188,12 +188,16 @@ export function LongformStudio() {
       setProjekt({ ...projekt!, zustand: r.zustand })
       setDirty(false)
       setSchritt('skript')
-      toast.success('Skript fertig — lade B-Roll…')
+      toast.success('Skript fertig — optionale B-Roll-Vorschläge…')
       try {
         const n = await brollLaden(projekt!.id)
-        toast.success(n ? `${n} B-Roll-Bilder geladen.` : 'Skript ok — optional B-Roll nachladen.')
+        toast.success(
+          n
+            ? `${n} Vorschläge vorbelegt — Bildbrief prüfen und bei Bedarf am Satz hochladen.`
+            : 'Skript ok — Bildbriefe am Satz prüfen / hochladen.',
+        )
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'B-Roll fehlgeschlagen — Button „B-Roll automatisch“.')
+        toast.error(e instanceof Error ? e.message : 'B-Roll-Vorschläge fehlgeschlagen — am Satz hochladen.')
       }
     })
 
@@ -263,21 +267,32 @@ export function LongformStudio() {
   const starteRender = () =>
     aktion('render', async () => {
       await speichereLokal()
-      if (!vorschauProps) throw new Error('Noch kein Skript.')
-      const ticker = projekt!.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'LF'
+      if (!projekt) throw new Error('Kein Projekt.')
+      // Frische signed URLs, dann blob:-Normalisierung im Web-Renderer.
+      const frisch = await lfApi<{ projekt: LongformProjekt }>(`/api/youtube/longform?id=${encodeURIComponent(projekt.id)}`)
+      setProjekt(frisch.projekt)
+      const props = baueAnalyseProps(frisch.projekt.zustand, katalog)
+      if (!props) throw new Error('Noch kein Skript.')
+      const ticker = frisch.projekt.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'LF'
       const dateiname = `${ticker}-LF.mp4`
       setRenderProzent(0)
-      const blob = await rendereAktienAnalyseImBrowser(vorschauProps, (p) => {
-        if (Number.isFinite(p)) setRenderProzent(Math.max(0, Math.min(100, Math.round(p * 100))))
-      })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = dateiname
-      a.click()
-      URL.revokeObjectURL(url)
-      setRenderProzent(100)
-      toast.success(`${dateiname} heruntergeladen.`)
+      try {
+        const blob = await rendereAktienAnalyseImBrowser(props, (p) => {
+          if (Number.isFinite(p)) setRenderProzent(Math.max(0, Math.min(100, Math.round(p * 100))))
+        })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = dateiname
+        a.click()
+        URL.revokeObjectURL(url)
+        setRenderProzent(100)
+        toast.success(`${dateiname} heruntergeladen.`)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Export fehlgeschlagen'
+        toast.error(msg.length > 180 ? `${msg.slice(0, 177)}…` : msg)
+        throw e
+      }
     })
 
   const loeschen = () =>
@@ -531,7 +546,7 @@ export function LongformStudio() {
               {laeuft === 'pruefen' ? 'Prüft…' : 'Erneut prüfen'}
             </button>
             <button type="button" className={LF_KNOPF} disabled={laeuft != null} onClick={() => void brollAuto()}>
-              {laeuft === 'broll' ? 'B-Roll…' : 'B-Roll automatisch'}
+              {laeuft === 'broll' ? 'Vorschläge…' : 'B-Roll-Vorschläge'}
             </button>
             <button type="button" className={LF_KNOPF_PRIMAER} onClick={() => setSchritt('stimme')}>
               Weiter zur Stimme
@@ -615,6 +630,22 @@ export function LongformStudio() {
           <div className="app-surface-card-header flex flex-wrap items-center gap-2 px-4 py-2.5 sm:px-5">
             <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">Vorschau & Render</h2>
             <label className="ml-auto flex items-center gap-2 text-xs text-[var(--app-text-muted)]">
+              Disclosure
+              <select
+                value={z.investiert === true ? 'ja' : z.investiert === false ? 'nein' : ''}
+                onChange={(e) => {
+                  const investiert = e.target.value === 'ja' ? true : e.target.value === 'nein' ? false : null
+                  setProjekt({ ...projekt, zustand: { ...z, investiert } })
+                  setDirty(true)
+                }}
+                className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1 text-[var(--app-text)]"
+              >
+                <option value="">Noch nicht gewählt</option>
+                <option value="ja">Ich bin investiert</option>
+                <option value="nein">Ich bin nicht investiert</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-xs text-[var(--app-text-muted)]">
               <input
                 type="checkbox"
                 checked={z.musik.aktiv}
@@ -638,13 +669,16 @@ export function LongformStudio() {
                 }}
               />
             </label>
-            <button type="button" className={LF_KNOPF_PRIMAER} disabled={laeuft != null || !stimmeFertig} onClick={() => void starteRender()}>
+            <button type="button" className={LF_KNOPF_PRIMAER} disabled={laeuft != null || !stimmeFertig || z.investiert == null} onClick={() => void starteRender()}>
               {laeuft === 'render'
                 ? `Rendert… ${renderProzent ?? 0}%`
                 : 'MP4 im Browser erzeugen'}
             </button>
           </div>
           <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
+            {z.investiert == null ? (
+              <p className="text-sm text-amber-200">Disclosure wählen: investiert oder nicht. Die Zeile steht am Ende des Videos. Ohne Wahl kein Export.</p>
+            ) : null}
             {!stimmeFertig ? (
               <p className="text-sm text-amber-200">Noch nicht alle Sätze haben eine Stimme. Render ist gesperrt.</p>
             ) : (

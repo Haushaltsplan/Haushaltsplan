@@ -1,8 +1,28 @@
 /** Projektzustand → Props der Composition „AktienAnalyse“. Läuft im Studio (Vorschau) und im Render. */
 import type { AktienAnalyseProps, LongSatzProps } from '@/remotion/longform/long-types'
+import { LONGFORM_KANAL_LOGO, LONGFORM_KANAL_NAME } from '@/remotion/longform/LongAbo'
 import { industrieZeileEnglisch } from '@/lib/youtube/longform/longform-en'
 import { waehleMusik, type LongformMusikTrack } from '@/lib/youtube/longform/longform-musik'
-import { LONGFORM_ABSCHNITT_TITEL, type LongformProjektZustand } from '@/lib/youtube/longform/longform-types'
+import {
+  LONGFORM_ABSCHNITT_TITEL,
+  type LongformChart10k,
+  type LongformProjektZustand,
+} from '@/lib/youtube/longform/longform-types'
+
+/** Alte Projekte ohne Sektor-/Price-only-Felder bleiben renderbar. */
+function normalisiereChart(c: LongformChart10k | null): LongformChart10k | null {
+  if (!c) return null
+  return {
+    ...c,
+    endwertSektor: c.endwertSektor ?? null,
+    sektorEtf: c.sektorEtf ?? null,
+    punkte: c.punkte.map((p) => ({
+      ...p,
+      kursOhneDiv: p.kursOhneDiv ?? null,
+      sektor: p.sektor ?? null,
+    })),
+  }
+}
 
 export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMusikTrack[], opts?: { sfx?: boolean }): AktienAnalyseProps | null {
   const fb = z.faktenblatt
@@ -41,15 +61,28 @@ export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMus
     branche: industrieZeileEnglisch(fb.sektor, fb.branche),
     leitfrage: skript.leitfrage,
     varianten: z.varianten,
-    chart: fb.chart,
+    chart: normalisiereChart(fb.chart),
     moat: fb.moat,
     burggraben: fb.burggraben,
-    segmente: fb.segmente,
+    segmente: fb.segmente
+      ? {
+          ...fb.segmente,
+          eintraege: fb.segmente.eintraege.map((e) => ({
+            ...e,
+            margePct: e.margePct ?? null,
+            wachstumPct: e.wachstumPct ?? null,
+          })),
+        }
+      : null,
+    reihen: fb.reihen ?? [],
     fakten,
     saetze,
     musik: { aktiv: z.musik.aktiv, pegel: z.musik.pegel, tracks: waehleMusik(katalog, abschnittIds, z.varianten.kameraSeed) },
     sfx: opts?.sfx !== false,
     abschnittTitel: LONGFORM_ABSCHNITT_TITEL,
+    kanalName: LONGFORM_KANAL_NAME,
+    kanalLogoUrl: LONGFORM_KANAL_LOGO,
+    investiert: z.investiert ?? null,
   }
 }
 
