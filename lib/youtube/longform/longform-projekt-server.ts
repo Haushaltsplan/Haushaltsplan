@@ -9,6 +9,7 @@ import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
 import { waehleVarianten } from '@/lib/youtube/longform/longform-abwechslung'
 import { ladeHerunter, ladeHoch, ladeVerlauf, legeProjektAn, projektPfad, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
 import { baueFaktenblatt } from '@/lib/youtube/longform/longform-fakten'
+import { moatTexteEnglisch } from '@/lib/youtube/longform/longform-moat-en-server'
 import { ladeChart10k } from '@/lib/youtube/longform/longform-kurse-server'
 import type { LongformDokument } from '@/lib/youtube/longform/longform-skript-server'
 import {
@@ -72,7 +73,9 @@ export async function erstelleProjekt(eingabe: LongformExportEingabe, thema: str
     imDepot(isin),
     ladeVerlauf(),
   ])
-  const faktenblatt = baueFaktenblatt({ paket, isin, exportDatum: eingabe.exportDatum, chart, moatKi, logoUrl, imDepot: depot })
+  const faktenblatt = await moatTexteEnglisch(
+    baueFaktenblatt({ paket, isin, exportDatum: eingabe.exportDatum, chart, moatKi, logoUrl, imDepot: depot }),
+  )
   const zustand: LongformProjektZustand = {
     version: 1,
     thema: thema.trim(),

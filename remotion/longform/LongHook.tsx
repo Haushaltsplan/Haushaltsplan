@@ -1,7 +1,7 @@
 /** Hook: cold open — große Zahl, Leitfrage oder Foto. Professioneller Einstieg ohne leere Flächen. */
 import { Video } from '@remotion/media'
 import { AbsoluteFill, Img, Sequence, interpolate, useCurrentFrame } from 'remotion'
-import { Blende, aktiverSatz, ein, oeffentlichSrc, satzLaeufe, type SatzLauf, type SzeneProps } from './long-bausteine'
+import { Blende, Logo, aktiverSatz, ein, oeffentlichSrc, satzLaeufe, type SatzLauf, type SzeneProps } from './long-bausteine'
 import { LONG_DISPLAY, LONG_MONO, LONG_MUTED, LONG_RAND_X, LONG_SERIF, LONG_SERIF_KURSIV, LONG_TEXT } from './long-look'
 
 function zahlFakt(sp: SzeneProps, i: number) {
@@ -114,12 +114,21 @@ function HookFrage({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   )
 }
 
+function HookRuhe({ sp }: { sp: SzeneProps }) {
+  return (
+    <AbsoluteFill style={{ background: '#0C0C0E', justifyContent: 'center', alignItems: 'center' }}>
+      <Logo url={sp.p.logoUrl} groesse={160} ticker={sp.p.ticker} />
+      <div style={{ marginTop: 28, fontFamily: LONG_SERIF, fontSize: 64, color: LONG_TEXT }}>{sp.p.firmenname}</div>
+    </AbsoluteFill>
+  )
+}
+
 function HookBild({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   const frame = useCurrentFrame()
-  const s = lauf.saetze.map((i) => sp.p.saetze[i]!).find((x) => x.bildUrl)
-  if (!s?.bildUrl) return <HookFrage sp={sp} lauf={lauf} />
+  const s = sp.p.saetze[lauf.saetze[0]!]
+  if (!s?.bildUrl) return <HookRuhe sp={sp} />
   const dauer = Math.max(1, lauf.bis - lauf.from)
-  const zoom = interpolate(frame, [0, dauer], [1.14, 1.02], { extrapolateRight: 'clamp' })
+  const zoom = interpolate(frame, [0, dauer], [1.06, 1], { extrapolateRight: 'clamp' })
   const src = oeffentlichSrc(s.bildUrl)
   return (
     <AbsoluteFill>
@@ -130,24 +139,11 @@ function HookBild({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
           <Img src={src} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         )}
       </AbsoluteFill>
-      <AbsoluteFill style={{ background: 'linear-gradient(to top, rgba(12,12,14,0.96) 0%, rgba(12,12,14,0.2) 42%, rgba(12,12,14,0) 68%)' }} />
-      {(() => {
-        const f = zahlFakt(sp, lauf.saetze[0]!)
-        return (
-          <div style={{ position: 'absolute', left: 220, bottom: 120, right: 160, opacity: ein(frame, 6, 8) }}>
-            {f ? (
-              <>
-                <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: Math.min(160, zahlGroesse(f.text)), color: '#F3F1EC', letterSpacing: -3, lineHeight: 0.92 }}>
-                  {f.text}
-                </div>
-                <div style={{ marginTop: 16, fontFamily: LONG_MONO, fontSize: 22, letterSpacing: 4, color: LONG_MUTED }}>{f.label.toUpperCase()}</div>
-              </>
-            ) : (
-              <div style={{ fontFamily: LONG_SERIF, fontSize: 64, lineHeight: 1.12, color: LONG_TEXT }}>{sp.p.leitfrage}</div>
-            )}
-          </div>
-        )
-      })()}
+      <AbsoluteFill style={{ background: 'linear-gradient(to top, rgba(12,12,14,0.82) 0%, rgba(12,12,14,0.05) 42%, rgba(12,12,14,0) 70%)' }} />
+      <div style={{ position: 'absolute', left: 80, bottom: 72, display: 'flex', alignItems: 'center', gap: 18, opacity: ein(frame, 8, 12) }}>
+        <Logo url={sp.p.logoUrl} groesse={64} ticker={sp.p.ticker} />
+        <div style={{ fontFamily: LONG_SERIF, fontSize: 36, color: LONG_TEXT }}>{sp.p.firmenname}</div>
+      </div>
     </AbsoluteFill>
   )
 }

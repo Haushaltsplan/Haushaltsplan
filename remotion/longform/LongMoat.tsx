@@ -1,6 +1,7 @@
 /** Burggraben: Geschäft, Pfeiler (Karten oder Balken), Scorecard-Spalte, Umsatzmix. Nur Zahlen und Labels, kein KI-Fließtext. */
 import { AbsoluteFill, Sequence, useCurrentFrame } from 'remotion'
-import { moatTextEnglisch, pct } from '../../lib/youtube/longform/longform-format'
+import { englischOderLeer } from '../../lib/youtube/longform/longform-en'
+import { pct } from '../../lib/youtube/longform/longform-format'
 import { Blende, Logo, aktiverSatz, ein, satzLaeufe, zaehleText, type SatzLauf, type SzeneProps } from './long-bausteine'
 import {
   LONG_DISPLAY,
@@ -37,8 +38,8 @@ function Geschaeft({ sp }: { sp: SzeneProps }) {
   const frame = useCurrentFrame()
   const { p } = sp
   const seg = p.segmente?.eintraege.slice(0, 4) ?? []
-  const roh = moatTextEnglisch(p.moat?.geschaeftsmodell)
-  const business = roh && roh.length > 140 ? `${roh.slice(0, 137).trim()}…` : roh
+  const en = englischOderLeer(p.moat?.geschaeftsmodell)
+  const business = en && en.length > 140 ? `${en.slice(0, 137).trim()}…` : en
   return (
     <AbsoluteFill style={{ justifyContent: 'center', paddingLeft: LONG_RAND_X, paddingRight: LONG_RAND_X }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 44, opacity: ein(frame, 0, 18), transform: `translateY(${(1 - ein(frame, 0, 18)) * 20}px)` }}>
@@ -103,11 +104,20 @@ function Pfeiler({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
           <div style={{ width: `${nur.score * 10 * f}%`, height: '100%', borderRadius: 5, background: farbe }} />
         </div>
         {(() => {
-          const roh = moatTextEnglisch(nur.begruendung)
-          const zeile = roh && roh.length > 120 ? `${roh.slice(0, 117).trim()}…` : roh
-          return zeile ? (
-            <div style={{ marginTop: 32, maxWidth: 980, fontFamily: LONG_SERIF_KURSIV, fontSize: 32, lineHeight: 1.35, color: LONG_MUTED }}>{zeile}</div>
-          ) : null
+          const zeile = englischOderLeer(nur.begruendung)
+          const risiko = englischOderLeer(nur.risiko)
+          const kurz = zeile && zeile.length > 140 ? `${zeile.slice(0, 137).trim()}…` : zeile
+          const risikoKurz = risiko && risiko.length > 140 ? `${risiko.slice(0, 137).trim()}…` : risiko
+          return (
+            <>
+              {kurz ? (
+                <div style={{ marginTop: 32, maxWidth: 980, fontFamily: LONG_SERIF_KURSIV, fontSize: 32, lineHeight: 1.35, color: LONG_MUTED }}>{kurz}</div>
+              ) : null}
+              {risikoKurz ? (
+                <div style={{ marginTop: 16, maxWidth: 980, fontFamily: LONG_SANS, fontWeight: 600, fontSize: 26, lineHeight: 1.35, color: LONG_MUTED }}>{risikoKurz}</div>
+              ) : null}
+            </>
+          )
         })()}
       </AbsoluteFill>
     )
@@ -117,7 +127,7 @@ function Pfeiler({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   if (sp.p.varianten.moatLayout === 'balken') {
     return (
       <AbsoluteFill>
-        <Ueberschrift titel="The moat, pillar by pillar" unter={`OVERALL ${m.score} / 10 · ${m.urteil.toUpperCase()}`} frame={frame} />
+        <Ueberschrift titel="The moat, pillar by pillar" unter={`OVERALL ${m.score} / 10${englischOderLeer(m.urteil) ? ` · ${englischOderLeer(m.urteil)!.toUpperCase()}` : ''}`} frame={frame} />
         <div style={{ position: 'absolute', left: LONG_RAND_X, right: LONG_RAND_X, top: 300, display: 'flex', flexDirection: 'column', gap: 34 }}>
           {m.pfeiler.map((x, k) => {
             const f = ein(frame, 14 + k * 9, 22)
@@ -140,7 +150,7 @@ function Pfeiler({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   const spalten = m.pfeiler.length > 4 ? 3 : 2
   return (
     <AbsoluteFill>
-      <Ueberschrift titel="Where the moat comes from" unter={`OVERALL ${m.score} / 10 · ${m.urteil.toUpperCase()}`} frame={frame} />
+      <Ueberschrift titel="Where the moat comes from" unter={`OVERALL ${m.score} / 10${englischOderLeer(m.urteil) ? ` · ${englischOderLeer(m.urteil)!.toUpperCase()}` : ''}`} frame={frame} />
       <div
         style={{
           position: 'absolute',
@@ -192,7 +202,11 @@ function Scorecard({ sp }: { sp: SzeneProps }) {
   const sc = sp.p.burggraben
   if (!sc) return null
   const akzent = sp.p.varianten.akzent
-  const balken = sc.balken.filter((b) => b.position != null || b.wertText !== '–').slice(0, 8)
+  const balken = sc.balken
+    .filter((b) => englischOderLeer(b.label))
+    .map((b) => ({ ...b, wertText: englischOderLeer(b.wertText) ?? '–' }))
+    .filter((b) => b.position != null || b.wertText !== '–')
+    .slice(0, 8)
   return (
     <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ width: 980, background: LONG_PANEL, borderRadius: 28, padding: '44px 56px', border: `1px solid ${LONG_LINIE}`, opacity: ein(frame, 0, 16), transform: `scale(${0.96 + 0.04 * ein(frame, 0, 18)})` }}>
@@ -254,9 +268,76 @@ function Scorecard({ sp }: { sp: SzeneProps }) {
   )
 }
 
+function SegmentKarte({
+  eintrag,
+  menge,
+  modus,
+  fort,
+  akzent,
+}: {
+  eintrag: { name: string; anteilPct: number; margePct: number | null; wachstumPct: number | null }
+  menge: number
+  modus: 'share' | 'marge' | 'wachstum'
+  fort: number
+  akzent: string
+}) {
+  if (menge <= 0.02) return null
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        right: LONG_RAND_X,
+        top: 260,
+        width: 560,
+        padding: '32px 36px',
+        borderRadius: 24,
+        background: 'rgba(20,20,23,0.94)',
+        border: `1px solid ${mitAlpha(akzent, 0.35)}`,
+        opacity: menge,
+        transform: `translateX(${(1 - menge) * -340}px) scale(${0.62 + 0.38 * menge})`,
+        transformOrigin: 'left center',
+      }}
+    >
+      <div style={{ fontFamily: LONG_MONO, fontSize: 18, letterSpacing: 3, color: LONG_MUTED }}>{eintrag.name.toUpperCase()}</div>
+      <SegmentZeile label="Share" text={pct(eintrag.anteilPct)} breite={eintrag.anteilPct} laut={modus === 'share'} fort={fort} akzent={akzent} />
+      {eintrag.margePct != null ? (
+        <SegmentZeile
+          label="Operating margin"
+          text={pct(eintrag.margePct)}
+          breite={Math.min(100, (eintrag.margePct / Math.max(40, eintrag.margePct)) * 100)}
+          laut={modus === 'marge'}
+          fort={fort}
+          akzent={eintrag.margePct >= 15 ? LONG_GRUEN : akzent}
+        />
+      ) : null}
+      {eintrag.wachstumPct != null ? (
+        <div style={{ marginTop: 22, opacity: modus === 'wachstum' ? 1 : 0.55 }}>
+          <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 2, color: LONG_MUTED }}>REVENUE VS LAST YEAR</div>
+          <div
+            style={{
+              marginTop: 6,
+              fontFamily: LONG_DISPLAY,
+              fontWeight: 800,
+              fontSize: modus === 'wachstum' ? 64 : 28,
+              color: eintrag.wachstumPct >= 0 ? LONG_GRUEN : LONG_ROT,
+            }}
+          >
+            {eintrag.wachstumPct >= 0 ? '▲ ' : '▼ '}
+            {modus === 'wachstum' ? zaehleText(pct(eintrag.wachstumPct, { vorzeichen: true }), fort) : pct(eintrag.wachstumPct, { vorzeichen: true })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function segmentIndex(sp: SzeneProps, satzIndex: number, namen: string[]): number | null {
   const s = sp.p.saetze[satzIndex]!
   for (const id of s.faktIds) {
+    if (id === 'seg.other' || id.startsWith('seg.other.')) {
+      const o = namen.findIndex((n) => n.toLowerCase() === 'other')
+      if (o >= 0) return o
+    }
     const m = /^seg\.(\d+)/.exec(id)
     if (m) return Number(m[1])
   }
@@ -269,8 +350,9 @@ function segmentIndex(sp: SzeneProps, satzIndex: number, namen: string[]): numbe
   return name >= 0 ? name : null
 }
 
-function Segmente({ sp }: { sp: SzeneProps }) {
-  const frame = useCurrentFrame()
+function Segmente({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
+  const local = useCurrentFrame()
+  const frame = local + lauf.from
   const seg = sp.p.segmente
   if (!seg) return null
   const akzent = sp.p.varianten.akzent
@@ -290,6 +372,18 @@ function Segmente({ sp }: { sp: SzeneProps }) {
         ? 'share'
         : null
   const fort = frame >= beton ? ein(frame, beton, 16) : 0
+  const satzStart = z.from - sp.block.from
+  const flug = ein(frame - satzStart, 0, 16)
+  const namen = seg.eintraege.map((e) => e.name)
+  const vorgaenger = (() => {
+    const pos = sp.block.saetze.indexOf(i)
+    if (pos <= 0) return null
+    const vor = sp.block.saetze[pos - 1]!
+    if (sp.p.saetze[vor]!.visual.szene !== 'moat_segmente') return null
+    const alt = segmentIndex(sp, vor, namen)
+    return alt != null && alt !== idx ? alt : null
+  })()
+  const gewachsen = ein(local, 8, 20)
   return (
     <AbsoluteFill>
       <Ueberschrift
@@ -299,15 +393,16 @@ function Segmente({ sp }: { sp: SzeneProps }) {
       />
       <div style={{ position: 'absolute', left: LONG_RAND_X, right: aktiv ? 760 : LONG_RAND_X, top: 300, height: 72, borderRadius: 16, overflow: 'hidden', display: 'flex', background: 'rgba(243,241,236,0.05)' }}>
         {seg.eintraege.map((s, k) => {
-          const w = s.anteilPct * ein(frame, 8, 20)
-          const hell = !aktiv || k === idx
+          const w = s.anteilPct * gewachsen
+          const draus = k === idx ? flug : k === vorgaenger ? 1 - flug : 0
+          const hell = !aktiv || k === idx ? 1 - draus * 0.45 : 0.4
           return (
             <div
               key={s.name}
               style={{
                 width: `${w}%`,
                 height: '100%',
-                background: mitAlpha(akzent, (stufen[k] ?? 0.1) * (hell ? 1 : 0.35)),
+                background: mitAlpha(akzent, (stufen[k] ?? 0.1) * hell),
                 borderRight: '2px solid #0C0C0E',
               }}
             />
@@ -326,51 +421,10 @@ function Segmente({ sp }: { sp: SzeneProps }) {
           )
         })}
       </div>
-      {aktiv && modus ? (
-        <div
-          style={{
-            position: 'absolute',
-            right: LONG_RAND_X,
-            top: 280,
-            width: 560,
-            padding: '32px 36px',
-            borderRadius: 24,
-            background: 'rgba(20,20,23,0.92)',
-            border: `1px solid ${mitAlpha(akzent, 0.35)}`,
-            opacity: ein(frame, Math.max(0, beton - 4), 12),
-          }}
-        >
-          <div style={{ fontFamily: LONG_MONO, fontSize: 18, letterSpacing: 3, color: LONG_MUTED }}>{aktiv.name.toUpperCase()}</div>
-          <SegmentZeile label="Share" text={pct(aktiv.anteilPct)} breite={aktiv.anteilPct} laut={modus === 'share'} fort={fort} akzent={akzent} />
-          {aktiv.margePct != null ? (
-            <SegmentZeile
-              label="Operating margin"
-              text={pct(aktiv.margePct)}
-              breite={Math.min(100, (aktiv.margePct / Math.max(40, aktiv.margePct)) * 100)}
-              laut={modus === 'marge'}
-              fort={fort}
-              akzent={aktiv.margePct >= 15 ? LONG_GRUEN : akzent}
-            />
-          ) : null}
-          {aktiv.wachstumPct != null ? (
-            <div style={{ marginTop: 22, opacity: modus === 'wachstum' ? 1 : 0.55 }}>
-              <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 2, color: LONG_MUTED }}>REVENUE VS LAST YEAR</div>
-              <div
-                style={{
-                  marginTop: 6,
-                  fontFamily: LONG_DISPLAY,
-                  fontWeight: 800,
-                  fontSize: modus === 'wachstum' ? 64 : 28,
-                  color: aktiv.wachstumPct >= 0 ? LONG_GRUEN : LONG_ROT,
-                }}
-              >
-                {aktiv.wachstumPct >= 0 ? '▲ ' : '▼ '}
-                {modus === 'wachstum' ? zaehleText(pct(aktiv.wachstumPct, { vorzeichen: true }), fort) : pct(aktiv.wachstumPct, { vorzeichen: true })}
-              </div>
-            </div>
-          ) : null}
-        </div>
+      {vorgaenger != null && seg.eintraege[vorgaenger] ? (
+        <SegmentKarte eintrag={seg.eintraege[vorgaenger]!} menge={1 - flug} modus="share" fort={1} akzent={akzent} />
       ) : null}
+      {aktiv && modus ? <SegmentKarte eintrag={aktiv} menge={flug} modus={modus} fort={fort} akzent={akzent} /> : null}
     </AbsoluteFill>
   )
 }
@@ -417,7 +471,7 @@ export function LongMoat(sp: SzeneProps) {
             ) : l.szene === 'moat_scorecard' ? (
               <Scorecard sp={sp} />
             ) : l.szene === 'moat_segmente' ? (
-              <Segmente sp={sp} />
+              <Segmente sp={sp} lauf={l} />
             ) : (
               <Geschaeft sp={sp} />
             )}

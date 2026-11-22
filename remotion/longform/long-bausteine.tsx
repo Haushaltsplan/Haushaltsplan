@@ -132,11 +132,12 @@ export function satzLaeufe({ p, t, block }: SzeneProps): SatzLauf[] {
     const z = t.saetze[i]!
     const rel = z.from - block.from
     const letzter = laeufe[laeufe.length - 1]
-    const einzeln = s.visual.szene === 'moat_pfeiler' || s.visual.szene === 'moat_segmente' || s.visual.szene === 'zahl_reihe'
+    const einzeln = s.visual.szene === 'moat_pfeiler' || s.visual.szene === 'zahl_reihe'
     const gleicherFokus =
       letzter != null &&
       (p.saetze[letzter.saetze[letzter.saetze.length - 1]!]!.visual.fokus ?? '') === (s.visual.fokus ?? '')
-    if (letzter && letzter.szene === s.visual.szene && (!einzeln || gleicherFokus)) letzter.saetze.push(i)
+    const eigenerSchnitt = s.visual.szene === 'hook_bild'
+    if (letzter && letzter.szene === s.visual.szene && !eigenerSchnitt && (!einzeln || gleicherFokus)) letzter.saetze.push(i)
     else laeufe.push({ szene: s.visual.szene, from: laeufe.length ? rel : 0, bis: block.dauer, saetze: [i] })
   }
   laeufe.forEach((l, k) => {

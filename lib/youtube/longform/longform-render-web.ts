@@ -83,12 +83,17 @@ export async function propsMitBlobMedien(props: AktienAnalyseProps): Promise<Akt
       bildUrl: await alsBlobUrl(s.bildUrl),
     })),
   )
-  const tracks = await Promise.all(
-    basis.musik.tracks.map(async (t) => ({
-      ...t,
-      src: (await alsBlobUrl(t.src)) ?? t.src,
-    })),
-  )
+  if (basis.musik.aktiv && basis.musik.tracks.length === 0) {
+    throw new Error('Musik ist an, aber auf dem Server liegt keine Musikdatei. Schalter aus, oder die Dateien nach public/youtube-music/long legen.')
+  }
+  const tracks = basis.musik.aktiv
+    ? await Promise.all(
+        basis.musik.tracks.map(async (t) => ({
+          ...t,
+          src: (await alsBlobUrl(t.src)) ?? t.src,
+        })),
+      )
+    : []
   return {
     ...basis,
     logoUrl: (await alsBlobUrl(basis.logoUrl)) ?? basis.logoUrl,

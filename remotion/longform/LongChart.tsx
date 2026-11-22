@@ -6,7 +6,6 @@ import { LONGFORM_INVEST_USD } from '../../lib/youtube/longform/longform-types'
 import { aktiverSatz, ein, zaehleText, type SzeneProps } from './long-bausteine'
 import {
   LONG_DISPLAY,
-  LONG_GRUEN,
   LONG_LINIE,
   LONG_MONO,
   LONG_MUTED,
@@ -31,17 +30,6 @@ function ersterFrame(sp: SzeneProps, szene: string): number | null {
       const z = sp.t.saetze[i]!
       return (z.betonungFrame ?? z.from + 6) - sp.block.from
     }
-  }
-  return null
-}
-
-/** Relativer Frame, an dem ein Fakt erstmals gesprochen wird (Betonung des Satzes). */
-function faktBetonungFrame(sp: SzeneProps, faktId: string): number | null {
-  for (const i of sp.block.saetze) {
-    const s = sp.p.saetze[i]!
-    if (!s.faktIds.includes(faktId)) continue
-    const z = sp.t.saetze[i]!
-    return (z.betonungFrame ?? z.from + 8) - sp.block.from
   }
   return null
 }
@@ -85,41 +73,6 @@ function hudAusSatz(sp: SzeneProps, satzIndex: number): HudZeile[] {
     }
   }
   return zeilen
-}
-
-/** Gestaffelter Stack: einmal gesprochene Kernzahlen bleiben sichtbar und bauen sich auf. */
-function stackAusBlock(sp: SzeneProps, frame: number): {
-  nurKurs: string | null
-  div: string | null
-  total: string | null
-  rendite: string | null
-  spy: string | null
-  sektor: string | null
-} {
-  const gesehen = (id: string) => {
-    const f = faktBetonungFrame(sp, id)
-    return f != null && frame >= f
-  }
-  return {
-    nurKurs: gesehen('k10.nur_kurs') ? sp.p.fakten['k10.nur_kurs']?.text ?? null : null,
-    div: gesehen('k10.dividenden_usd') ? sp.p.fakten['k10.dividenden_usd']?.text ?? null : null,
-    total: gesehen('k10.endwert') ? sp.p.fakten['k10.endwert']?.text ?? null : null,
-    rendite: gesehen('k10.rendite')
-      ? sp.p.fakten['k10.rendite']?.text ?? null
-      : gesehen('k10.cagr')
-        ? sp.p.fakten['k10.cagr']?.text ?? null
-        : null,
-    spy: gesehen('k10.spy_endwert')
-      ? sp.p.fakten['k10.spy_endwert']?.text ?? null
-      : gesehen('k10.spy_rendite')
-        ? sp.p.fakten['k10.spy_rendite']?.text ?? null
-        : null,
-    sektor: gesehen('k10.sektor_endwert')
-      ? sp.p.fakten['k10.sektor_endwert']?.text ?? null
-      : gesehen('k10.sektor_rendite')
-        ? sp.p.fakten['k10.sektor_rendite']?.text ?? null
-        : null,
-  }
 }
 
 export function LongChart(sp: SzeneProps) {
@@ -198,14 +151,13 @@ export function LongChart(sp: SzeneProps) {
       ? interpolate(frame, [fDd, fDd + 20, ddEnde - 6, ddEnde + 14], [1, 1.18, 1.18, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
       : 1
 
-  const stack = stackAusBlock(sp, frame)
   const satzHud = hudAusSatz(sp, i)
   const zSatz = sp.t.saetze[i]!
   const betonRel = (zSatz.betonungFrame ?? zSatz.from + 8) - sp.block.from
   const hudEin = frame >= betonRel ? ein(frame, betonRel, 12) : 0
 
   const sektLabel = c.sektorEtf ?? 'Sector'
-  const ddLabelX = geo.dd ? Math.min(Math.max(LONG_RAND_X, geo.x(geo.dd.b) - 40), 1920 - LONG_RAND_X - 280) : LONG_RAND_X
+  const ddLabelX = geo.dd ? Math.min(Math.max(LONG_RAND_X, geo.x(geo.dd.b) - 40), 1180) : LONG_RAND_X
   const ddLabelY = 220
 
   return (
@@ -351,74 +303,24 @@ export function LongChart(sp: SzeneProps) {
         ) : null}
       </AbsoluteFill>
 
-      {(stack.nurKurs || stack.total || stack.div || stack.rendite || stack.spy || stack.sektor || (satzHud.length > 0 && hudEin > 0)) ? (
-        <div style={{ position: 'absolute', right: LONG_RAND_X, top: 72, textAlign: 'right', maxWidth: 520 }}>
-          {stack.nurKurs && !stack.total ? (
-            <>
-              <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 2, color: LONG_MUTED }}>PRICE ONLY</div>
-              <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 92, letterSpacing: -3, color: LONG_TEXT, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                {zaehleText(stack.nurKurs, 1)}
-              </div>
-            </>
-          ) : null}
-          {stack.div ? (
-            <div style={{ marginTop: stack.nurKurs && !stack.total ? 8 : 0, fontFamily: LONG_MONO, fontSize: 28, color: LONG_GRUEN }}>
-              + dividends {stack.div}
-            </div>
-          ) : null}
-          {stack.total ? (
-            <>
-              <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 2, color: LONG_MUTED, marginTop: stack.div || stack.nurKurs ? 10 : 0 }}>
-                {sp.p.ticker} TOTAL
-              </div>
-              <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 100, letterSpacing: -4, color: LONG_TEXT, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                {zaehleText(stack.total, 1)}
-              </div>
-            </>
-          ) : null}
-          {stack.rendite ? (
-            <div
-              style={{
-                display: 'inline-block',
-                marginTop: 12,
-                padding: '6px 16px',
-                borderRadius: 999,
-                background: mitAlpha(LONG_GRUEN, 0.16),
-                color: LONG_GRUEN,
-                fontFamily: LONG_MONO,
-                fontWeight: 700,
-                fontSize: 26,
-              }}
-            >
-              {stack.rendite.startsWith('+') || stack.rendite.startsWith('-') ? stack.rendite : `+${stack.rendite}`}
-            </div>
-          ) : null}
-          {stack.spy ? (
-            <div style={{ marginTop: 14, fontFamily: LONG_MONO, fontSize: 22, color: LONG_SPY }}>S&P 500 {stack.spy}</div>
-          ) : null}
-          {stack.sektor ? (
-            <div style={{ marginTop: 8, fontFamily: LONG_MONO, fontSize: 22, color: LONG_SEKTOR }}>
-              {sektLabel} {stack.sektor}
-            </div>
-          ) : null}
-          {!stack.nurKurs && !stack.total && satzHud[0] && hudEin > 0 ? (
-            <div style={{ opacity: hudEin }}>
-              <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 2, color: LONG_MUTED }}>{satzHud[0].label.toUpperCase()}</div>
-              <div
-                style={{
-                  fontFamily: LONG_DISPLAY,
-                  fontWeight: 900,
-                  fontSize: satzHud[0].art === 'pct' ? 84 : 96,
-                  letterSpacing: -3,
-                  color: satzHud[0].art === 'pct' ? LONG_ROT : LONG_TEXT,
-                  fontVariantNumeric: 'tabular-nums',
-                  lineHeight: 1,
-                }}
-              >
-                {zaehleText(satzHud[0].text, hudEin)}
-              </div>
-            </div>
-          ) : null}
+      {satzHud[0] && hudEin > 0 ? (
+        <div style={{ position: 'absolute', right: LONG_RAND_X, top: 88, textAlign: 'right', width: 520 }}>
+          <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 2, color: LONG_MUTED }}>{satzHud[0].label.toUpperCase()}</div>
+          <div
+            style={{
+              marginTop: 12,
+              fontFamily: LONG_DISPLAY,
+              fontWeight: 900,
+              fontSize: satzHud[0].text.length > 10 ? 56 : satzHud[0].text.length > 8 ? 64 : 72,
+              letterSpacing: -2,
+              color: satzHud[0].art === 'pct' ? LONG_ROT : LONG_TEXT,
+              fontVariantNumeric: 'tabular-nums',
+              lineHeight: 1,
+              opacity: hudEin,
+            }}
+          >
+            {zaehleText(satzHud[0].text, hudEin)}
+          </div>
         </div>
       ) : null}
     </AbsoluteFill>

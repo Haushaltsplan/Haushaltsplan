@@ -233,6 +233,9 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
           einheit: 'pct',
         }, s)
       }
+      if (x.name === 'Other') {
+        add({ id: 'seg.other', label: 'Revenue share: other businesses', wert: x.anteilPct, text: pct(x.anteilPct), einheit: 'pct' }, s)
+      }
     })
   } else {
     hinweise.push('Kein Umsatzmix im Export (bei EU/CH/UK üblich). Lade ein IR-Dokument hoch, sonst entfällt die Segmentgrafik.')
@@ -319,6 +322,13 @@ function segmenteAus(paket: FundamentaldatenPaket): LongformSegmente | null {
       const top = eintraege.slice(0, 6)
       const rest = eintraege.slice(6).reduce((a, x) => a + x.anteilPct, 0)
       if (rest > 0.5) top.push({ name: 'Other', anteilPct: Math.round(rest * 10) / 10, margePct: null, wachstumPct: null })
+      const summe = top.reduce((a, x) => a + x.anteilPct, 0)
+      const luecke = Math.round((100 - summe) * 10) / 10
+      if (luecke > 0.5) {
+        const other = top.find((x) => x.name === 'Other')
+        if (other) other.anteilPct = Math.round((other.anteilPct + luecke) * 10) / 10
+        else top.push({ name: 'Other', anteilPct: luecke, margePct: null, wachstumPct: null })
+      }
       return { art: k.art, jahr: st.berichtJahr, eintraege: top }
     }
   }

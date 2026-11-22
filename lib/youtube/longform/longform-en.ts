@@ -80,6 +80,25 @@ export function klingtNachDeutsch(text: string): boolean {
   return DEUTSCH_LEAK.test(t)
 }
 
+/** Strenger als der Skript-Check: halb übersetzte Moat-Sätze zählen weiter als Deutsch. */
+const BILD_DEUTSCH =
+  /\b(die|der|das|den|dem|des|ein|eine|einer|eines|ist|sind|wird|werden|für|fuer|mit|von|auf|aus|bei|nach)\b|\b(erfordert|fertigung|investition|fabrik|halbleiter|milliarden|technisch)\w*/i
+
+export function textIstDeutschFuerBild(text: string | null | undefined): boolean {
+  const t = text?.trim() ?? ''
+  if (!t) return false
+  if (klingtNachDeutsch(t)) return true
+  if (/^(die|der|das|den|ein|eine)\b/i.test(t)) return true
+  return BILD_DEUTSCH.test(t)
+}
+
+/** Nur zurückgeben, wenn der Satz wirklich englisch ist. */
+export function englischOderLeer(text: string | null | undefined): string | null {
+  const t = text?.trim()
+  if (!t || textIstDeutschFuerBild(t)) return null
+  return t
+}
+
 /** Segmentnamen, die keine Produkt-/Geo-Labels sind (Jahreszeilen aus Filings). */
 export function istMuellSegmentName(name: string): boolean {
   const t = name.trim()

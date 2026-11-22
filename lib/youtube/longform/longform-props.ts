@@ -77,7 +77,11 @@ export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMus
     reihen: fb.reihen ?? [],
     fakten,
     saetze,
-    musik: { aktiv: z.musik.aktiv, pegel: z.musik.pegel, tracks: waehleMusik(katalog, abschnittIds, z.varianten.kameraSeed) },
+    musik: {
+      aktiv: z.musik.aktiv,
+      pegel: z.musik.pegel,
+      tracks: z.musik.aktiv ? waehleMusik(katalog, abschnittIds, z.varianten.kameraSeed) : [],
+    },
     sfx: opts?.sfx !== false,
     abschnittTitel: LONGFORM_ABSCHNITT_TITEL,
     kanalName: LONGFORM_KANAL_NAME,

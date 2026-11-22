@@ -40,7 +40,8 @@ export function waehleMusik(
   abschnitte: LongformAbschnittId[],
   seed: number,
 ): { abschnittId: LongformAbschnittId; src: string }[] {
-  const liste = katalog.length ? katalog : LONGFORM_MUSIK_FALLBACK
+  if (!katalog.length) return []
+  const liste = katalog
   const out: { abschnittId: LongformAbschnittId; src: string }[] = []
   let vorher: LongformMusikTrack | null = null
   abschnitte.forEach((a, k) => {

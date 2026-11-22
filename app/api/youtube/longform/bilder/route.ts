@@ -75,7 +75,7 @@ export async function POST(req: Request) {
         if (!skript) return { ok: false as const, fehler: 'Kein Skript.' }
         const auftraege = skript.abschnitte.flatMap((a) =>
           a.saetze
-            .filter((s) => (s.visual.szene === 'bild' || s.visual.szene === 'hook_bild') && !p.zustand.bilder[s.id])
+            .filter((s) => s.visual.szene === 'bild' && s.visual.fokus !== 'abo' && !p.zustand.bilder[s.id])
             .map((s) => ({
               satzId: s.id,
               text: s.text,

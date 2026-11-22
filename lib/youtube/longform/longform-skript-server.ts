@@ -211,11 +211,11 @@ begruendung: one German sentence for the creator (studio only) explaining why th
 function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): string {
   switch (id) {
     case 'hook':
-      return 'hook: Keep the chosen opening almost word for word. You may smooth it into 2 to 4 punchy English sentences. First sentence = cold open. Scenes: the given hook scene; optionally end with titel_karte (fokus = short English title on screen, max 6 words).'
+      return 'hook: Keep the chosen opening almost word for word. 2 to 3 spoken English sentences. Every sentence is scene hook_bild. Each needs a concrete English bildWunsch, the same kind of search brief as any other bild sentence: a short query a person can type, naming a product the company sells or its headquarters building. No logo poster, no invented scene, no giant number on screen. The voice carries the words. Do not use hook_zahl or hook_frage. Do not describe an image as if it were already chosen.'
     case 'chart10k':
       return `chart10k (about 70 to 110 seconds, 10 to 16 sentences): ONE continuous chart chapter — do NOT insert scene bild in the middle of chart beats (that redraws the chart). Order: (1) chart_linie while the lines draw — S&P and sector ETF are already on screen; (2) one sentence per core number with matching faktIds: k10.nur_kurs (price only), then k10.dividenden_usd if present, then k10.endwert (total with dividends), then k10.rendite or k10.cagr; (3) chart_drawdown for the worst drop; (4) chart_vergleich for S&P${fb.chart?.endwertSektor != null ? ' and sector ETF (k10.sektor_endwert / k10.sektor_rendite / k10.vs_sektor)' : ''}. ${fb.chart?.endwertSpy != null ? 'You MUST include at least two chart_vergleich sentences using k10.spy_endwert / k10.spy_rendite / k10.vs_spy. ' : ''}OPTIONAL: at most ONE scene bild BEFORE the first chart_linie sentence OR AFTER the last chart sentence — never between chart_linie / endwert / drawdown / vergleich. Each sentence = exactly one core number; faktIds and betonung must point at that number. Scenes allowed: chart_linie, chart_endwert, chart_drawdown${fb.chart?.endwertSpy != null ? ', chart_vergleich (required)' : ''}, and optionally bild only at section edges.`
     case 'geschaeft':
-      return `geschaeft (about 70 to 90 seconds): how the company gets paid, in everyday English a non-investor understands. First 2 sentences: scene moat_geschaeft, who the customer is and what they pay for. Spell an acronym out once (CMBU = the memory chips sold to phone makers), then the short name is fine. No scores, no moat theory.${fb.segmente ? ` Then scene moat_segmente: one overview sentence with no fokus, then 2 or 3 sentences on the largest segments. Each of those carries exactly one faktId (seg.N or seg.N.marge or seg.N.wachstum), fokus set to that same id, betonung on the spoken number. Never three numbers in one sentence.` : ' No revenue mix is available, do not use moat_segmente.'} A bild sentence only before the first line or after the last segment sentence, with a concrete English bildWunsch.`
+      return `geschaeft (about 70 to 90 seconds): how the company gets paid, in everyday English a non-investor understands. First 2 sentences: scene moat_geschaeft, who the customer is and what they pay for. Spell an acronym out once (CMBU = the memory chips sold to phone makers), then the short name is fine. No scores, no moat theory.${fb.segmente ? ` Then scene moat_segmente: one overview sentence with no fokus${fb.fakten.some((f) => f.id === 'seg.other') ? ', and that overview must mention faktId seg.other: the rest of revenue comes from other businesses, without inventing their names' : ''}, then 2 or 3 sentences on the largest segments. Each of those carries exactly one faktId (seg.N or seg.N.marge or seg.N.wachstum), fokus set to that same id, betonung on the spoken number. Never three numbers in one sentence.` : ' No revenue mix is available, do not use moat_segmente.'} A bild sentence only before the first line or after the last segment sentence, with a concrete English bildWunsch.`
     case 'burggraben':
       return `burggraben (about 100 to 140 seconds): the moat, starting at the pillars. Do NOT re-explain how the company makes money. Say "moat", never the German word. Overall score is moat.score, said once. One sentence per pillar, scene moat_pfeiler, fokus = exactly one pillar id (preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte). Put a scene bild with a concrete English bildWunsch BETWEEN pillars so the same card is never on screen for the whole chapter. Then moat_scorecard. ${fb.segmente ? 'At most one moat_segmente callback.' : ''} End on one threat, a single sentence. Somewhere between two finished thoughts, not over a number, insert ONE short sentence: if the viewer likes the video they should like and subscribe. That sentence has fokus "abo", scene bild, no faktIds, and must not cut another sentence in half.`
     case 'zahlen':
@@ -269,6 +269,7 @@ kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks
   })
   if (abschnitte.every((a) => !a.saetze.length)) throw new Error('Gemini hat kein Skript geliefert.')
   stelleChartVergleichSicher(abschnitte, fb)
+  stelleHookBildSicher(abschnitte, fb)
   stelleBrollSicher(abschnitte, fb)
   stelleSegmentFokusSicher(abschnitte)
   stellePfeilerFokusSicher(abschnitte)
@@ -317,13 +318,31 @@ function brollSuchbegriff(fb: LongformFaktenblatt, index: number): string {
   return [`${fb.firmenname} industry`, 'modern office building exterior', 'global supply chain shipping'][index % 3]!
 }
 
+function hookBildWunsch(fb: LongformFaktenblatt, index: number): string {
+  const name = fb.firmenname
+  const pool = [`${name} product close up`, `${name} headquarters building`, `${name} factory exterior`]
+  return pool[index % pool.length]!
+}
+
+function stelleHookBildSicher(abschnitte: LongformAbschnitt[], fb: LongformFaktenblatt) {
+  const hook = abschnitte.find((a) => a.id === 'hook')
+  if (!hook) return
+  let n = 0
+  for (const s of hook.saetze) {
+    if (s.visual.szene === 'titel_karte') continue
+    s.visual.szene = 'hook_bild'
+    if (!s.visual.bildWunsch?.trim()) s.visual.bildWunsch = hookBildWunsch(fb, n)
+    n += 1
+  }
+}
+
 const PFEILER_IDS = ['preissetzungsmacht', 'replikationsbarriere', 'wechselkosten', 'marktdichte']
 
 function stelleSegmentFokusSicher(abschnitte: LongformAbschnitt[]) {
   for (const a of abschnitte) {
     for (const s of a.saetze) {
       if (s.visual.szene !== 'moat_segmente') continue
-      const id = s.faktIds.find((x) => /^seg\.\d+/.test(x))
+      const id = s.faktIds.find((x) => x === 'seg.other' || /^seg\.\d+/.test(x))
       if (id && !s.visual.fokus) s.visual.fokus = id
     }
   }
