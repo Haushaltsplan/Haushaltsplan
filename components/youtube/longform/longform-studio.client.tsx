@@ -520,6 +520,27 @@ export function LongformStudio() {
     void speichereZustand({ ...z, freigegeben: [...(z.freigegeben ?? []), naechstesKapitel] })
   }
 
+  const verwerfeSkript = () => {
+    if (!projekt || !z?.skript || !naechstesKapitel) return
+    const abschnitt = z.skript.abschnitte.find((a) => a.id === naechstesKapitel)
+    if (!abschnitt?.saetze.length) return
+    const titel = LONGFORM_ABSCHNITT_TITEL[naechstesKapitel]
+    if (!window.confirm(`Das Skript von „${titel}“ wird gelöscht. Die anderen Kapitel bleiben. Danach kannst du es neu schreiben lassen.`)) return
+    const weg = new Set(abschnitt.saetze.map((s) => s.id))
+    const saetze = { ...z.stimme.saetze }
+    const bilder = { ...z.bilder }
+    for (const id of weg) {
+      delete saetze[id]
+      delete bilder[id]
+    }
+    void speichereZustand({
+      ...z,
+      skript: { ...z.skript, abschnitte: z.skript.abschnitte.filter((a) => a.id !== naechstesKapitel) },
+      stimme: { ...z.stimme, saetze },
+      bilder,
+    })
+  }
+
   const nimmZurueck = () => {
     if (!projekt || !z || !(z.freigegeben ?? []).length) return
     void speichereZustand({ ...z, freigegeben: (z.freigegeben ?? []).slice(0, -1) })
@@ -641,9 +662,14 @@ export function LongformStudio() {
               {laeuft === 'kapitel' ? 'Schreibt…' : 'Kapitel schreiben'}
             </button>
           ) : naechstesKapitel ? (
-            <button type="button" className={LF_KNOPF_PRIMAER} disabled={laeuft != null} onClick={gibFrei}>
-              Kapitel freigeben
-            </button>
+            <>
+              <button type="button" className={LF_KNOPF_PRIMAER} disabled={laeuft != null} onClick={gibFrei}>
+                Kapitel freigeben
+              </button>
+              <button type="button" className={LF_KNOPF} disabled={laeuft != null} onClick={verwerfeSkript}>
+                Skript entfernen
+              </button>
+            </>
           ) : null}
           {(z.freigegeben ?? []).length ? (
             <button type="button" className={LF_KNOPF} disabled={laeuft != null} onClick={nimmZurueck}>
@@ -824,6 +850,11 @@ export function LongformStudio() {
             </button>
           </div>
           <div className="space-y-6 px-4 py-3 sm:px-5 sm:py-4">
+            {naechstesKapitel && !(sichtZustand?.skript?.abschnitte.length) ? (
+              <p className="text-sm text-[var(--app-text-muted)]">
+                Für {LONGFORM_ABSCHNITT_TITEL[naechstesKapitel]} liegt kein Skript. Oben auf Kapitel schreiben.
+              </p>
+            ) : null}
             {(sichtZustand?.skript?.abschnitte ?? []).map((a) => (
               <AbschnittBlock
                 key={a.id}
