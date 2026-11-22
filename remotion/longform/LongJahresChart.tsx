@@ -174,10 +174,16 @@ export function LongJahresChart(sp: SzeneProps) {
 
   if (!reihe || !geo) return null
 
-  const z = sp.t.saetze[i]
-  const start = z ? z.from - sp.block.from : 0
-  const fort = ein(frame, start, 14)
-  const zeichnen = ein(frame, 8, 32)
+  let startRel = 0
+  for (const si of sp.block.saetze) {
+    if (reiheVon(sp, si)?.id === reihe.id) {
+      startRel = Math.max(0, (sp.t.saetze[si]?.from ?? sp.block.from) - sp.block.from)
+      break
+    }
+  }
+  const fort = ein(frame, startRel, 22)
+  const zeichnen = ein(frame, startRel, 32)
+  const einblend = ein(frame, Math.max(0, startRel - 8), 12)
   const istJahre = reihe.linien.flatMap((l) => l.punkte.filter((p) => !p.schaetzung).map((p) => p.jahr))
   const von = istJahre.length ? Math.min(...istJahre) : geo.jahre[0]!.jahr
   const bis = istJahre.length ? Math.max(...istJahre) : geo.jahre[geo.jahre.length - 1]!.jahr
@@ -186,7 +192,7 @@ export function LongJahresChart(sp: SzeneProps) {
   const jahrSchrift = geo.jahre.length > 24 ? 12 : geo.jahre.length > 16 ? 14 : 16
 
   return (
-    <AbsoluteFill>
+    <AbsoluteFill style={{ opacity: einblend }}>
       <div style={{ position: 'absolute', left: LONG_RAND_X, top: 88 }}>
         <div style={{ fontFamily: LONG_SERIF, fontSize: 68, color: LONG_TEXT }}>{reihe.label}</div>
         <div style={{ fontFamily: LONG_MONO, fontSize: 20, letterSpacing: 2, color: LONG_MUTED, marginTop: 8 }}>
@@ -197,7 +203,7 @@ export function LongJahresChart(sp: SzeneProps) {
       {reihe.gross ? (
         <div style={{ position: 'absolute', right: LONG_RAND_X, top: 88, textAlign: 'right', opacity: fort }}>
           <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 80, color: grossFarbe(reihe.gross), letterSpacing: -2 }}>
-            {zaehleText(reihe.gross.text, fort || 0.01)}
+            {zaehleText(reihe.gross.text, fort)}
           </div>
         </div>
       ) : (

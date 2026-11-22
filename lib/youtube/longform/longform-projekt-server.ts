@@ -11,6 +11,7 @@ import { pct } from '@/lib/youtube/longform/longform-format'
 import { waehleVarianten } from '@/lib/youtube/longform/longform-abwechslung'
 import { ladeHerunter, ladeHoch, ladeVerlauf, legeProjektAn, projektPfad, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
 import { baueFaktenblatt, haengeRisikoUndFazit } from '@/lib/youtube/longform/longform-fakten'
+import { fuelleJahresluecken } from '@/lib/youtube/longform/longform-reihen-luecken'
 import { ladeHookZusatz } from '@/lib/youtube/longform/longform-hook-karten'
 import { moatTexteEnglisch } from '@/lib/youtube/longform/longform-moat-en-server'
 import { ladeChart10k } from '@/lib/youtube/longform/longform-kurse-server'
@@ -142,8 +143,9 @@ export async function ergaenzeKapitelAusExport(id: string, z: LongformProjektZus
     try {
       const gelesen = leseLongformExport(JSON.parse(buf.toString('utf8')))
       if (typeof gelesen !== 'string') {
+        const gelueckt = await fuelleJahresluecken(gelesen.paket)
         const neu = baueFaktenblatt({
-          paket: gelesen.paket,
+          paket: gelueckt.paket,
           isin: z.faktenblatt.isin,
           exportDatum: z.faktenblatt.exportDatum,
           chart: z.faktenblatt.chart,
@@ -151,6 +153,13 @@ export async function ergaenzeKapitelAusExport(id: string, z: LongformProjektZus
           logoUrl: z.faktenblatt.logoUrl,
           imDepot: z.faktenblatt.imDepot,
         })
+        if (gelueckt.gefuellt && gelueckt.quelle) {
+          const zusatz = `missing years ${gelueckt.quelle}`
+          neu.reihen = neu.reihen.map((r) => ({
+            ...r,
+            quelle: r.quelle.includes('missing years') ? r.quelle : `${r.quelle} · ${zusatz}`,
+          }))
+        }
         const ohneReihe = z.faktenblatt.fakten.filter((f) => !f.id.startsWith('reihe.'))
         const ids = new Set(ohneReihe.map((f) => f.id))
         faktenblatt = {

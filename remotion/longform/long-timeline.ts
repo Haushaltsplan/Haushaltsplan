@@ -96,13 +96,15 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
   p.saetze.forEach((s, index) => {
     if (s.abschnittId !== aktuell) {
       if (abschnitte.length) abschnitte[abschnitte.length - 1]!.bis = f
+      const ersterAbschnitt = aktuell == null
       aktuell = s.abschnittId
-      if (s.abschnittId !== 'hook') {
+      // Allein gerendertes Zahlen-Kapitel beginnt auf dem Chart. Die Titelkarte wäre dort der erste Frame.
+      if (s.abschnittId !== 'hook' && !(ersterAbschnitt && s.abschnittId === 'zahlen')) {
         bumper.push({ abschnittId: s.abschnittId, from: f, dauer: BUMPER, nummer: kapitelNummer(s.abschnittId) })
         abschnitte.push({ id: s.abschnittId, from: f, bis: f })
         f += BUMPER
       } else {
-        abschnitte.push({ id: s.abschnittId, from: 0, bis: f })
+        abschnitte.push({ id: s.abschnittId, from: ersterAbschnitt ? 0 : f, bis: f })
       }
     }
     const dauer = satzDauerFrames(s)
@@ -156,10 +158,21 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
     const ende = naechster ? (bumper.find((x) => x.from >= b.from && x.from < naechster.from)?.from ?? naechster.from) : durationInFrames
     b.dauer = Math.max(1, ende - b.from)
   })
-  // Erster Block beginnt bei Frame 0, damit kein Schwarzbild entsteht.
+  // Ohne Kapitelkarte beginnt der erste Block bei Frame 0. Mit Karte bleibt sie der erste Frame,
+  // der Chart beginnt erst in ihrer Ausblendung.
   if (bloecke[0]) {
-    bloecke[0].dauer += bloecke[0].from
-    bloecke[0].from = 0
+    const fuehrend = bumper.filter((b) => b.from <= bloecke[0]!.from).sort((a, b) => a.from - b.from)[0]
+    if (fuehrend) {
+      const versatz = fuehrend.from
+      fuehrend.from = 0
+      fuehrend.dauer += versatz
+      const ziel = Math.max(0, bloecke[0].from - 8)
+      bloecke[0].dauer += bloecke[0].from - ziel
+      bloecke[0].from = ziel
+    } else {
+      bloecke[0].dauer += bloecke[0].from
+      bloecke[0].from = 0
+    }
   }
 
   const like = saetze.find((z) => p.saetze[z.index]?.visual.szene === 'abo_karte')

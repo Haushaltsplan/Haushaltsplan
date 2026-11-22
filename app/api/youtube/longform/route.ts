@@ -6,7 +6,8 @@
 import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { ladeProjekt, listeProjekte, loescheProjekt, mitUrls, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
-import { erstelleProjekt, leseLongformExport } from '@/lib/youtube/longform/longform-projekt-server'
+import { ergaenzeKapitelAusExport, erstelleProjekt, leseLongformExport } from '@/lib/youtube/longform/longform-projekt-server'
+import { hatKalenderluecke } from '@/lib/youtube/longform/longform-reihen'
 import { entferneSchlussVorFazit } from '@/lib/youtube/longform/longform-skript-server'
 import type { LongformProjektZustand } from '@/lib/youtube/longform/longform-types'
 
@@ -21,6 +22,11 @@ export async function GET(req: Request) {
       if (!id) return { ok: true as const, projekte: await listeProjekte() }
       const p = await ladeProjekt(id)
       if (!p) return { ok: false as const, fehler: 'Projekt nicht gefunden.' }
+      const fuellbar = new Set(['umsatz', 'gewinn', 'fcf', 'capex', 'schulden', 'aktien', 'marge', 'roic'])
+      if ((p.zustand.faktenblatt.reihen ?? []).some((r) => fuellbar.has(r.id) && hatKalenderluecke(r))) {
+        p.zustand = await ergaenzeKapitelAusExport(p.id, p.zustand)
+        await speichereProjekt(p.id, p.zustand)
+      }
       const skript = p.zustand.skript
       if (skript && entferneSchlussVorFazit(skript.abschnitte)) {
         const ids = new Set(skript.abschnitte.flatMap((a) => a.saetze.map((s) => s.id)))

@@ -108,18 +108,17 @@ export function LongTitelKarte(sp: SzeneProps) {
 /** Zwischentitel vor jedem Abschnitt: Nummer, Titel, eine Linie, die sich zieht. */
 export function LongBumper({ nummer, titel, akzent, gesamt = 3, dauer = 15 }: { nummer: number; titel: string; akzent: string; gesamt?: number; dauer?: number }) {
   const frame = useCurrentFrame()
-  const rein = ein(frame, 0, 8)
-  const raus = interpolate(frame, [Math.max(8, dauer - 8), dauer], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const o = rein * raus
+  const rein = ein(frame, 0, 10)
+  const raus = interpolate(frame, [Math.max(10, dauer - 10), dauer], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   return (
-    <AbsoluteFill style={{ background: '#0C0C0E', opacity: o }}>
+    <AbsoluteFill style={{ background: '#0C0C0E', opacity: raus }}>
       <AbsoluteFill
         style={{
           background: `radial-gradient(ellipse 50% 40% at 30% 50%, ${mitAlpha(akzent, 0.12)} 0%, rgba(0,0,0,0) 70%)`,
-          opacity: raus,
+          opacity: rein,
         }}
       />
-      <AbsoluteFill style={{ justifyContent: 'center', paddingLeft: LONG_RAND_X, opacity: raus }}>
+      <AbsoluteFill style={{ justifyContent: 'center', paddingLeft: LONG_RAND_X, opacity: rein }}>
         <div style={{ fontFamily: LONG_MONO, fontSize: 28, letterSpacing: 6, color: akzent, opacity: ein(frame, 0, 4) }}>
           CHAPTER {String(nummer).padStart(2, '0')}
         </div>

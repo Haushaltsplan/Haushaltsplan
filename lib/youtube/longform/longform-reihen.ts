@@ -1,6 +1,7 @@
 /**
- * Jahrescharts für das Zahlen-Kapitel. Nur abgeschlossene Geschäftsjahre und
- * Schätzjahre, die in der JSON schon eine Zahl haben. Nichts wird erfunden.
+ * Jahrescharts für das Zahlen-Kapitel. Abgeschlossene Geschäftsjahre und
+ * Schätzjahre, die schon eine Zahl haben. Eine Lücke im Kalender wird nicht erfunden;
+ * die füllt `fuelleJahresluecken` aus Yahoo, wenn die JSON das Jahr nicht hat.
  */
 import type { FundamentaldatenPaket, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { istFundamentalSchaetzungIso } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -130,6 +131,18 @@ function reihe(
   wacc: number | null = null,
 ): LongformJahresreihe {
   return { id, label, einheit, art, linien, wacc, quelle, gross }
+}
+
+/** True, wenn zwischen dem ersten und dem letzten Jahr ein Kalenderjahr ohne Punkt liegt. */
+export function hatKalenderluecke(reihe: { linien?: { punkte: { jahr: number }[] }[] } | null | undefined): boolean {
+  const jahre = new Set<number>()
+  for (const l of reihe?.linien ?? []) for (const p of l.punkte) jahre.add(p.jahr)
+  if (jahre.size < 2) return false
+  const liste = [...jahre]
+  const von = Math.min(...liste)
+  const bis = Math.max(...liste)
+  for (let y = von; y <= bis; y++) if (!jahre.has(y)) return true
+  return false
 }
 
 export function reihenAusZeilen(paket: FundamentaldatenPaket): LongformJahresreihe[] {

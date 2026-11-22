@@ -421,6 +421,23 @@ function einheitenFuerFeld(
   return units[waehrung] ?? []
 }
 
+/** Stichtag ±16 Tage zählt als dasselbe Geschäftsjahr. Sonst fällt z. B. der 30. August weg, wenn das Label auf den 3. September liegt. */
+function endeImLabel(end: string, labels: Map<string, number>): string | null {
+  if (labels.has(end)) return end
+  const ziel = Date.parse(end)
+  if (!Number.isFinite(ziel)) return null
+  let best: string | null = null
+  let bestDiff = 17
+  for (const ende of labels.keys()) {
+    const d = Math.abs(Date.parse(ende) - ziel) / 86_400_000
+    if (d < bestDiff) {
+      bestDiff = d
+      best = ende
+    }
+  }
+  return bestDiff <= 16 ? best : null
+}
+
 function jahresreihe(
   facts: CompanyFactsJson,
   labels: Map<string, number>,
@@ -450,12 +467,13 @@ function jahresreihe(
         } else if (e.start) {
           continue
         }
-        if (labels.get(e.end) == null) continue
+        const kanon = endeImLabel(e.end, labels)
+        if (!kanon) continue
         if (!negOk && e.val < 0) continue
         const filed = e.filed ?? e.end
-        const alt = perEnde.get(e.end)
+        const alt = perEnde.get(kanon)
         if (!alt || filed > alt.filed) {
-          perEnde.set(e.end, { wert: skalieren(feld, e.val), filed, periodenEnde: e.end })
+          perEnde.set(kanon, { wert: skalieren(feld, e.val), filed, periodenEnde: kanon })
         }
       }
     }

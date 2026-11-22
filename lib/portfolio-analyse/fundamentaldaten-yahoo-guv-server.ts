@@ -919,6 +919,11 @@ export async function baueFundamentalRohAusAlternativQuellen(
   return merged
 }
 
+/** Jahres-GuV von Yahoo. Für Lücken, die in der gespeicherten JSON fehlen. */
+export async function ladeYahooJahresGuV(symbol: string): Promise<YahooGuVRoh | null> {
+  return baueYahooGuVRoh(symbol.trim().toUpperCase())
+}
+
 /** Konzern-Umsatz pro Jahr aus Yahoo GuV — Fallback wenn Macrotrends leer (EU/ADR). */
 export async function baueUmsatzProJahrAusYahoo(
   symbolYahoo: string,
