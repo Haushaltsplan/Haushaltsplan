@@ -1,13 +1,11 @@
 /** YouTuber-Style Abo-Karte: DailyMoat-Logo, Like + Subscribe, Cursor-Klick. */
 import { AbsoluteFill, Img, interpolate, spring, useCurrentFrame, useVideoConfig } from 'remotion'
+import { LONGFORM_KANAL_LOGO, LONGFORM_KANAL_NAME, LONGFORM_KANAL_TAGLINE } from '../../lib/youtube/longform/longform-kanal'
 import { oeffentlichSrc } from './long-bausteine'
 import { LONG_MONO, LONG_SANS, LONG_SERIF_KURSIV, LONG_TEXT, mitAlpha } from './long-look'
 
 export const ABO_KLICK_LIKE = 52
 export const ABO_KLICK_ABO = 98
-export const LONGFORM_KANAL_NAME = 'DailyMoat'
-export const LONGFORM_KANAL_LOGO = '/youtube-longform/dailymoat.jpg'
-export const LONGFORM_KANAL_TAGLINE = 'Deep-dive stock analysis'
 
 function Cursor({ x, y, druck }: { x: number; y: number; druck: number }) {
   return (

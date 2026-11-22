@@ -1,6 +1,6 @@
 /** Projektzustand → Props der Composition „AktienAnalyse“. Läuft im Studio (Vorschau) und im Render. */
 import type { AktienAnalyseProps, LongSatzProps } from '@/remotion/longform/long-types'
-import { LONGFORM_KANAL_LOGO, LONGFORM_KANAL_NAME } from '@/remotion/longform/LongAbo'
+import { LONGFORM_KANAL_LOGO, LONGFORM_KANAL_NAME } from '@/lib/youtube/longform/longform-kanal'
 import { industrieZeileEnglisch } from '@/lib/youtube/longform/longform-en'
 import { waehleMusik, type LongformMusikTrack } from '@/lib/youtube/longform/longform-musik'
 import {
