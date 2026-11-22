@@ -62,6 +62,10 @@ export function normalisiereAnalysePropsFuerWeb(props: AktienAnalyseProps): Akti
       ...s,
       audioUrl: absolut(s.audioUrl),
       bildUrl: absolut(s.bildUrl),
+      visual: {
+        ...s.visual,
+        konkurrentLogos: s.visual.konkurrentLogos?.map((l) => ({ ...l, url: absolut(l.url) ?? l.url })),
+      },
     })),
     musik: {
       ...props.musik,
@@ -81,6 +85,12 @@ export async function propsMitBlobMedien(props: AktienAnalyseProps): Promise<Akt
       ...s,
       audioUrl: await alsBlobUrl(s.audioUrl),
       bildUrl: await alsBlobUrl(s.bildUrl),
+      visual: {
+        ...s.visual,
+        konkurrentLogos: await Promise.all(
+          (s.visual.konkurrentLogos ?? []).map(async (l) => ({ ...l, url: (await alsBlobUrl(l.url)) ?? l.url })),
+        ),
+      },
     })),
   )
   if (basis.musik.aktiv && basis.musik.tracks.length === 0) {

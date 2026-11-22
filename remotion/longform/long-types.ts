@@ -54,6 +54,10 @@ export type AktienAnalyseProps = {
   kanalName?: string
   kanalLogoUrl?: string | null
   investiert: boolean | null
+  /** Stumme Karten, eine pro Einstiegsfoto, in dieser Reihenfolge. */
+  hookKarten: { wert: string; label: string }[]
+  /** Dieselbe Basiszeile auf jedem Einstiegsfoto. */
+  hookBasis: { marketCap: string | null; wkn: string | null; isin: string | null }
 }
 
 export const AKTIEN_ANALYSE_DEFAULT_PROPS: AktienAnalyseProps = {
@@ -98,4 +102,6 @@ export const AKTIEN_ANALYSE_DEFAULT_PROPS: AktienAnalyseProps = {
   kanalName: 'DailyMoat',
   kanalLogoUrl: '/youtube-longform/dailymoat.jpg',
   investiert: null,
+  hookKarten: [],
+  hookBasis: { marketCap: null, wkn: null, isin: null },
 }

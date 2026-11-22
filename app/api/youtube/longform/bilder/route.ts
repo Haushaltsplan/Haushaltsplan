@@ -40,8 +40,43 @@ export async function POST(req: Request) {
     if (istForm) {
       const form = await req.formData().catch(() => null)
       const id = String(form?.get('id') ?? '')
-      const satzId = String(form?.get('satzId') ?? '')
+      const konkurrent = String(form?.get('konkurrent') ?? '').replace(/\s+/g, ' ').trim()
       const datei = form?.get('datei')
+      if (konkurrent) {
+        if (!id || !(datei instanceof File)) return { ok: false as const, fehler: 'id oder Datei fehlt.' }
+        const p = await ladeProjekt(id)
+        if (!p?.zustand.skript) return { ok: false as const, fehler: 'Kein Skript.' }
+        const key = konkurrent.toLowerCase()
+        const genannt = p.zustand.skript.abschnitte.some((a) =>
+          a.saetze.some((s) => (s.visual.konkurrenten ?? []).some((n) => n.toLowerCase() === key)),
+        )
+        if (!genannt) return { ok: false as const, fehler: 'Dieser Name steht in keinem Satz.' }
+        const dateiname = datei.name.toLowerCase()
+        const mime =
+          datei.type ||
+          (dateiname.endsWith('.svg')
+            ? 'image/svg+xml'
+            : dateiname.endsWith('.png')
+              ? 'image/png'
+              : dateiname.endsWith('.webp')
+                ? 'image/webp'
+                : dateiname.endsWith('.jpg') || dateiname.endsWith('.jpeg')
+                  ? 'image/jpeg'
+                  : '')
+        const endung = mime === 'image/jpeg' ? 'jpg' : mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : mime === 'image/svg+xml' ? 'svg' : null
+        if (!endung) return { ok: false as const, fehler: 'Nur PNG, JPEG, WebP oder SVG.' }
+        if (datei.size > 2_000_000 || datei.size < 1) return { ok: false as const, fehler: 'Logo muss zwischen 1 Byte und 2 MB liegen.' }
+        const slug = key.replace(/[^a-z0-9]+/g, '').slice(0, 40) || 'logo'
+        const pfad = projektPfad(id, 'logos', `${slug}.${endung}`)
+        await ladeHoch(pfad, Buffer.from(await datei.arrayBuffer()), mime)
+        const z = {
+          ...p.zustand,
+          konkurrentLogos: { ...p.zustand.konkurrentLogos, [key]: { name: konkurrent, pfad } },
+        }
+        await speichereProjekt(id, z)
+        return { ok: true as const, zustand: await mitUrls(z) }
+      }
+      const satzId = String(form?.get('satzId') ?? '')
       if (!id || !satzId || !(datei instanceof File)) return { ok: false as const, fehler: 'id, satzId oder Datei fehlt.' }
       const p = await ladeProjekt(id)
       if (!p || !satzText(p.zustand, satzId)) return { ok: false as const, fehler: 'Satz nicht gefunden.' }

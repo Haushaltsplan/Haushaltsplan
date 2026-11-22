@@ -46,13 +46,6 @@ function logSchritte(boden: number, max: number): number[] {
   return out.length ? out : [boden, max]
 }
 
-function satzBeginn(sp: SzeneProps, szene: string): number | null {
-  for (const i of sp.block.saetze) {
-    if (sp.p.saetze[i]!.visual.szene === szene) return sp.t.saetze[i]!.from - sp.block.from
-  }
-  return null
-}
-
 type HudZeile = { id: string; label: string; text: string; art: 'haupt' | 'neben' | 'pct' }
 
 function hudAusSatz(sp: SzeneProps, satzIndex: number): HudZeile[] {
@@ -145,11 +138,7 @@ export function LongChart(sp: SzeneProps) {
 
   const i = aktiverSatz(sp, frame)
   const szene = sp.p.saetze[i]!.visual.szene
-  const drawdownBeginn = satzBeginn(sp, 'chart_drawdown')
-  const zeichnen =
-    drawdownBeginn != null && drawdownBeginn > 30
-      ? ein(frame, 8, Math.max(90, drawdownBeginn - 8))
-      : ein(frame, 8, Math.max(120, Math.round(sp.block.dauer * 0.65)))
+  const zeichnen = ein(frame, 8, 360)
 
   const fDd = ersterFrame(sp, 'chart_drawdown')
   const fSpy = ersterFrame(sp, 'chart_vergleich')

@@ -9,6 +9,7 @@ import { resolveCoachProviderFromMode, runCoachCompletion, type CoachMessage } f
 import { hookKatalogFuerPrompt } from '@/lib/youtube/longform/longform-abwechslung'
 import { klingtNachDeutsch } from '@/lib/youtube/longform/longform-en'
 import { faktenFuerPrompt } from '@/lib/youtube/longform/longform-fakten'
+import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
 import {
   LONGFORM_ABSCHNITT_TITEL,
   LONGFORM_AKTIVE_ABSCHNITTE,
@@ -114,11 +115,12 @@ const SATZ_SCHEMA = {
     fokus: { type: 'string' },
     betonung: { type: 'string' },
     bildWunsch: { type: 'string' },
+    konkurrenten: { type: 'array', items: { type: 'string' } },
   },
   required: ['text', 'faktIds', 'szene'],
 }
 
-type SatzRoh = { text: string; faktIds?: string[]; szene?: string; fokus?: string; betonung?: string; bildWunsch?: string }
+type SatzRoh = { text: string; faktIds?: string[]; szene?: string; fokus?: string; betonung?: string; bildWunsch?: string; konkurrenten?: string[] }
 
 const SZENEN_JE_ABSCHNITT: Partial<Record<LongformAbschnittId, LongformSzenenTyp[]>> = {
   hook: ['hook_zahl', 'hook_frage', 'hook_bild', 'titel_karte'],
@@ -142,19 +144,72 @@ function satzAusRoh(r: SatzRoh, abschnitt: LongformAbschnittId, fb: LongformFakt
   if (szene === 'chart_drawdown' && !fb.chart?.drawdown) szene = 'chart_linie'
   if (szene === 'chart_vergleich' && fb.chart?.endwertSpy == null) szene = 'chart_endwert'
   if ((szene === 'moat_pfeiler' || szene === 'moat_scorecard') && !fb.moat && !fb.burggraben) szene = 'moat_geschaeft'
-  const faktIds = [...new Set(r.faktIds ?? [])]
+  const text = r.text.replace(/\s+/g, ' ').trim()
+  const faktIds = [...new Set(r.faktIds ?? [])].filter((id) => !id.startsWith('hook.'))
   if (faktIds.some((id) => id.startsWith('km.'))) szene = 'moat_finanzen'
   return {
     id: neueSatzId(abschnitt),
-    text: r.text.replace(/\s+/g, ' ').trim(),
+    text,
     faktIds,
     visual: {
       szene,
       fokus: r.fokus?.trim() || null,
       betonung: r.betonung?.trim() || null,
       bildWunsch: r.bildWunsch?.trim() || null,
+      konkurrenten: konkurrentenAusRoh(r.konkurrenten, text),
+      konkurrentLogos: [],
     },
   }
+}
+
+/** Logos nur für Namen, die der Satz nennt. Ein Fehlschlag lässt den Namen weg. */
+export async function logosFuerKonkurrenten(abschnitte: LongformAbschnitt[]) {
+  const cache = new Map<string, string | null>()
+  for (const a of abschnitte) {
+    for (const s of a.saetze) {
+      const logos: { name: string; url: string }[] = []
+      for (const name of s.visual.konkurrenten ?? []) {
+        const key = name.toLowerCase()
+        if (!cache.has(key)) {
+          const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '')
+          let url: string | null = null
+          if (slug) {
+            try {
+              url = await findeMoatShortLogo({
+                ticker: slug.slice(0, 12).toUpperCase(),
+                firmenname: name,
+                isin: null,
+                website: `https://${slug}.com`,
+                symbolYahoo: null,
+              })
+            } catch {
+              url = null
+            }
+          }
+          cache.set(key, url)
+        }
+        const url = cache.get(key)
+        if (url) logos.push({ name, url })
+      }
+      s.visual.konkurrentLogos = logos
+    }
+  }
+}
+
+/** Nur Namen, die im Satz wirklich stehen. Höchstens vier. */
+function konkurrentenAusRoh(roh: string[] | undefined, text: string): string[] {
+  const low = text.toLowerCase()
+  const gesehen = new Set<string>()
+  const out: string[] = []
+  for (const eintrag of roh ?? []) {
+    const name = eintrag.replace(/\s+/g, ' ').trim()
+    const key = name.toLowerCase()
+    if (name.length < 2 || name.length > 40 || gesehen.has(key) || !low.includes(key)) continue
+    gesehen.add(key)
+    out.push(name)
+    if (out.length >= 4) break
+  }
+  return out
 }
 
 export async function erzeugeHooks(opts: {
@@ -213,9 +268,9 @@ begruendung: one German sentence for the creator (studio only) explaining why th
 function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): string {
   switch (id) {
     case 'hook':
-      return 'hook: Keep the chosen opening almost word for word. 2 to 3 spoken English sentences. Every sentence is scene hook_bild. Each needs a concrete English bildWunsch, the same kind of search brief as any other bild sentence: a short query a person can type, naming a product the company sells or its headquarters building. No logo poster, no invented scene, no giant number on screen. The voice carries the words. Do not use hook_zahl or hook_frage. Do not describe an image as if it were already chosen.'
+      return 'hook: Keep the chosen opening almost word for word. 2 to 3 spoken English sentences. Every sentence is scene hook_bild. Each needs a concrete English bildWunsch, the same kind of search brief as any other bild sentence: a short query a person can type, naming a product the company sells or its headquarters building. No logo poster, no invented scene, no giant number on screen. The voice carries the words. Do not use hook_zahl or hook_frage. Do not describe an image as if it were already chosen. Do not invent a founding year, a headcount, a CEO or any other on-screen card. Those cards are not in the fact sheet and are never spoken.'
     case 'chart10k':
-      return `chart10k (about 70 to 110 seconds, 10 to 16 sentences): ONE continuous chart chapter — do NOT insert scene bild in the middle of chart beats (that redraws the chart). Order: (1) chart_linie while the lines draw — S&P and sector ETF are already on screen; (2) one sentence per core number with matching faktIds: k10.nur_kurs (price only), then k10.dividenden_usd if present, then k10.endwert (total with dividends), then k10.rendite or k10.cagr; (3) chart_drawdown for the drop from the high (k10.drawdown); (4) chart_vergleich for S&P${fb.chart?.endwertSektor != null ? ' and sector ETF (k10.sektor_endwert / k10.sektor_rendite / k10.vs_sektor)' : ''}. ${fb.chart?.endwertSpy != null ? 'You MUST include at least two chart_vergleich sentences using k10.spy_endwert / k10.spy_rendite / k10.vs_spy. ' : ''}OPTIONAL: at most ONE scene bild BEFORE the first chart_linie sentence OR AFTER the last chart sentence — never between chart_linie / endwert / drawdown / vergleich. Each sentence = exactly one core number; faktIds and betonung must point at that number. Scenes allowed: chart_linie, chart_endwert, chart_drawdown${fb.chart?.endwertSpy != null ? ', chart_vergleich (required)' : ''}, and optionally bild only at section edges.`
+      return `chart10k (about 70 to 110 seconds, 10 to 16 sentences): ONE continuous chart chapter — do NOT insert scene bild in the middle of chart beats (that redraws the chart). Order: (1) chart_linie while the lines draw — S&P and sector ETF are already on screen; (2) one sentence per core number with matching faktIds: k10.nur_kurs (price only), then k10.dividenden_usd if present, then k10.endwert (total with dividends), then k10.rendite or k10.cagr; (3) ${fb.chart?.drawdown ? 'chart_drawdown for the last completed correction before the rise (k10.drawdown, k10.drawdown_wert). Say that holding through it was required and that the rise came afterwards. Never call a price a bottom, and do not describe the unfinished drop after the final high.' : 'Do not describe a correction, a crash, or a bottom. k10.drawdown is not available.'} (4) chart_vergleich for S&P${fb.chart?.endwertSektor != null ? ' and sector ETF (k10.sektor_endwert / k10.sektor_rendite / k10.vs_sektor)' : ''}. ${fb.chart?.endwertSpy != null ? 'You MUST include at least two chart_vergleich sentences using k10.spy_endwert / k10.spy_rendite / k10.vs_spy. ' : ''}OPTIONAL: at most ONE scene bild BEFORE the first chart_linie sentence OR AFTER the last chart sentence — never between chart_linie / endwert / drawdown / vergleich. Each sentence = exactly one core number; faktIds and betonung must point at that number. Scenes allowed: chart_linie, chart_endwert, chart_drawdown${fb.chart?.endwertSpy != null ? ', chart_vergleich (required)' : ''}, and optionally bild only at section edges.`
     case 'geschaeft':
       return `geschaeft (about 70 to 90 seconds): how the company gets paid, in everyday English a non-investor understands. First 2 sentences: scene moat_geschaeft, who the customer is and what they pay for. If a segment name is only an acronym, put a short gloss immediately after it, taken from the business description already in the fact sheet, in the form "CMBU, the memory sold to phone makers". If you cannot ground that gloss, keep the acronym and do not invent a long name. No scores, no moat theory.${fb.segmente ? ` Then scene moat_segmente: one overview sentence with no fokus${fb.fakten.some((f) => f.id === 'seg.other') ? ', and that overview must mention faktId seg.other: the rest of revenue comes from other businesses, without inventing their names' : ''}, then 2 or 3 sentences on the largest segments. Each of those carries exactly one faktId (seg.N or seg.N.marge or seg.N.wachstum), fokus set to that same id, betonung on the spoken number. Never three numbers in one sentence.` : ' No revenue mix is available, do not use moat_segmente.'} A bild sentence only before the first line or after the last segment sentence, with a concrete English bildWunsch.`
     case 'burggraben':
@@ -249,6 +304,7 @@ export async function erzeugeSkript(opts: {
     `PREFERRED HOOK SCENE: ${z.varianten.hookSzene}`,
     `TASK: Write these sections of the video, in this order. Every section keeps the guiding question alive without answering it (the answer comes in the final section of the full video, not now).\n${LONGFORM_AKTIVE_ABSCHNITTE.map((a) => `- ${abschnittAuftrag(a, fb)}`).join('\n')}
 For every sentence choose the scene that best shows what is being said. Consecutive sentences may share a scene. For moat: change visuals / insert scene bild about every 20–25 seconds. For chart10k: keep ONE unbroken chart sequence (no mid-chapter bild). One core number per sentence; faktIds + betonung must match that spoken number so on-screen HUD syncs with the voice. Every bild / hook_bild sentence MUST include a concrete English bildWunsch (image brief a human can search or shoot).
+Never cite a hook.* fact in any section. When a sentence names rival companies, set konkurrenten to those exact spoken names, at most four, and repeat that same list on the following sentences while you are still talking about them. Otherwise leave konkurrenten empty. Do not add a company you do not say.
 kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks in later videos).`,
   ].join('\n\n')
   const schema = {
@@ -276,6 +332,7 @@ kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks
   stelleSegmentFokusSicher(abschnitte)
   stellePfeilerFokusSicher(abschnitte)
   haengeSchlussAn(abschnitte, fb, z.investiert)
+  await logosFuerKonkurrenten(abschnitte)
   const deutsch = abschnitte.flatMap((a) => a.saetze).filter((s) => klingtNachDeutsch(s.text))
   if (deutsch.length) {
     throw new Error(

@@ -170,6 +170,18 @@ export function LongformSatzEditor({
     })
   }
 
+  const logoHochladen = (name: string, datei: File | undefined) => {
+    if (!datei) return
+    void aktion('logo', async () => {
+      const form = new FormData()
+      form.set('id', projektId)
+      form.set('konkurrent', name)
+      form.set('datei', datei)
+      const r = await lfApi<ZustandAntwort>('/api/youtube/longform/bilder', { method: 'POST', body: form })
+      onZustand(r.zustand)
+    })
+  }
+
   return (
     <div className="rounded-xl border border-[var(--app-border)] p-3">
       <textarea
@@ -209,6 +221,46 @@ export function LongformSatzEditor({
           Satz per Chat ändern
         </button>
       </div>
+
+      {(satz.visual.konkurrenten ?? []).length ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(satz.visual.konkurrenten ?? []).map((name) => {
+            const key = name.toLowerCase()
+            const auto = (satz.visual.konkurrentLogos ?? []).find((l) => l.name.toLowerCase() === key && l.url)
+            const upload = zustand.konkurrentLogos?.[key]
+            const url = auto?.url ?? upload?.url ?? null
+            const src = url ? (url.startsWith('http') || url.startsWith('/') ? url : `/${url}`) : null
+            return (
+              <div key={key} className="flex items-center gap-2 rounded-lg border border-[var(--app-border)] px-2 py-1">
+                {src ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={src} alt="" className="h-8 w-8 object-contain" />
+                ) : (
+                  <span className="text-xs text-amber-300">Logo fehlt</span>
+                )}
+                <span className="text-xs text-[var(--app-text)]">{name}</span>
+                {auto ? null : (
+                  <label className={`${LF_KNOPF} cursor-pointer px-2 py-1 text-xs`}>
+                    {src ? 'Logo ersetzen' : 'Logo einfügen'}
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        e.target.value = ''
+                        if (!f) return
+                        if (!window.confirm('Ich bestätige, dass ich die Rechte an dieser Datei habe (eigene Aufnahme, Lizenz oder Press Kit).')) return
+                        logoHochladen(name, f)
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
 
       {satz.hinweise?.length ? (
         <ul className="mt-2 space-y-1">

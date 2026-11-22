@@ -123,13 +123,23 @@ function HookRuhe({ sp }: { sp: SzeneProps }) {
   )
 }
 
-function HookBild({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
+function basisZeile(sp: SzeneProps): string | null {
+  const b = sp.p.hookBasis
+  const teile = [b?.marketCap ? `Market cap ${b.marketCap}` : null, b?.wkn ? `WKN ${b.wkn}` : null, b?.isin ? `ISIN ${b.isin}` : null].filter(
+    (t): t is string => !!t,
+  )
+  return teile.length ? teile.join('   ·   ') : null
+}
+
+function HookBild({ sp, lauf, karte }: { sp: SzeneProps; lauf: SatzLauf; karte: { wert: string; label: string } | null }) {
   const frame = useCurrentFrame()
   const s = sp.p.saetze[lauf.saetze[0]!]
   if (!s?.bildUrl) return <HookRuhe sp={sp} />
   const dauer = Math.max(1, lauf.bis - lauf.from)
   const zoom = interpolate(frame, [0, dauer], [1.06, 1], { extrapolateRight: 'clamp' })
   const src = oeffentlichSrc(s.bildUrl)
+  const basis = basisZeile(sp)
+  const wertGroesse = !karte ? 64 : karte.wert.length > 22 ? 36 : karte.wert.length > 14 ? 48 : 64
   return (
     <AbsoluteFill>
       <AbsoluteFill style={{ transform: `scale(${zoom})` }}>
@@ -140,6 +150,42 @@ function HookBild({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
         )}
       </AbsoluteFill>
       <AbsoluteFill style={{ background: 'linear-gradient(to top, rgba(12,12,14,0.82) 0%, rgba(12,12,14,0.05) 42%, rgba(12,12,14,0) 70%)' }} />
+      {karte ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: 80,
+            top: 64,
+            maxWidth: 560,
+            padding: '18px 24px',
+            borderRadius: 18,
+            background: 'rgba(12,12,14,0.78)',
+            opacity: ein(frame, 8, 12),
+          }}
+        >
+          <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 3, color: LONG_MUTED }}>{karte.label.toUpperCase()}</div>
+          <div style={{ marginTop: 6, fontFamily: LONG_DISPLAY, fontWeight: 800, fontSize: wertGroesse, lineHeight: 1.05, color: LONG_TEXT }}>{karte.wert}</div>
+        </div>
+      ) : null}
+      {basis ? (
+        <div
+          style={{
+            position: 'absolute',
+            right: 48,
+            bottom: 36,
+            maxWidth: 980,
+            textAlign: 'right',
+            fontFamily: LONG_MONO,
+            fontSize: 18,
+            letterSpacing: 0.4,
+            color: 'rgba(243,241,236,0.88)',
+            textShadow: '0 1px 8px rgba(0,0,0,0.85)',
+            opacity: ein(frame, 12, 14),
+          }}
+        >
+          {basis}
+        </div>
+      ) : null}
       <div style={{ position: 'absolute', left: 80, bottom: 72, display: 'flex', alignItems: 'center', gap: 18, opacity: ein(frame, 8, 12) }}>
         <Logo url={sp.p.logoUrl} groesse={64} ticker={sp.p.ticker} />
         <div style={{ fontFamily: LONG_SERIF, fontSize: 36, color: LONG_TEXT }}>{sp.p.firmenname}</div>
@@ -152,13 +198,17 @@ export function LongHook(sp: SzeneProps) {
   const laeufe = satzLaeufe(sp)
   return (
     <AbsoluteFill>
-      {laeufe.map((l, k) => (
-        <Blende key={k} von={l.from} bis={l.bis + (k < laeufe.length - 1 ? 3 : 0)}>
-          <Sequence from={l.from} layout="none" durationInFrames={Math.max(1, l.bis - l.from + 4)}>
-            {l.szene === 'hook_zahl' ? <HookZahl sp={sp} lauf={l} /> : l.szene === 'hook_bild' ? <HookBild sp={sp} lauf={l} /> : <HookFrage sp={sp} lauf={l} />}
-          </Sequence>
-        </Blende>
-      ))}
+      {laeufe.map((l, k) => {
+        const fotoIndex = laeufe.slice(0, k).filter((x) => x.szene === 'hook_bild' && sp.p.saetze[x.saetze[0]!]?.bildUrl).length
+        const karte = l.szene === 'hook_bild' ? (sp.p.hookKarten?.[fotoIndex] ?? null) : null
+        return (
+          <Blende key={k} von={l.from} bis={l.bis + (k < laeufe.length - 1 ? 3 : 0)}>
+            <Sequence from={l.from} layout="none" durationInFrames={Math.max(1, l.bis - l.from + 4)}>
+              {l.szene === 'hook_zahl' ? <HookZahl sp={sp} lauf={l} /> : l.szene === 'hook_bild' ? <HookBild sp={sp} lauf={l} karte={karte} /> : <HookFrage sp={sp} lauf={l} />}
+            </Sequence>
+          </Blende>
+        )
+      })}
     </AbsoluteFill>
   )
 }

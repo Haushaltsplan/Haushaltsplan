@@ -1,7 +1,7 @@
 /** Long-Form-Aktienanalyse 16:9: Szenenblöcke, satzweise Stimme, Musik mit Ducking, Abo-Einblendung. */
 import { Audio } from '@remotion/media'
 import { useMemo } from 'react'
-import { AbsoluteFill, Sequence, interpolate, useCurrentFrame } from 'remotion'
+import { AbsoluteFill, Img, Sequence, interpolate, useCurrentFrame } from 'remotion'
 import { Hintergrund, Korn, oeffentlichSrc, type SzeneProps } from './long-bausteine'
 import { LONG_MUSIK_FREI, LONG_MUSIK_UNTER_STIMME } from './long-look'
 import { berechneLongTimeline, type LongBlock, type LongTimeline } from './long-timeline'
@@ -77,13 +77,30 @@ function musikVolumen(f: number, t: LongTimeline, basis: number, von: number, bi
   return Math.max(0, pegel * basis * Math.max(0, kante))
 }
 
-/** Kurzes Ein- und Ausblenden, damit der Schnitt zwischen zwei Sprachdateien nicht knackt. */
-function SatzTon({ src, dauer }: { src: string; dauer: number }) {
+const UEBERLAPP = 5
+
+function logoKey(logos: { url: string }[] | null | undefined): string {
+  return (logos ?? []).map((l) => l.url).join('|')
+}
+
+/** Überlapp nur zwischen zwei Sätzen desselben Kapitels. Die Kapitelkarte bleibt eine Pause. */
+function satzFenster(p: AktienAnalyseProps, t: LongTimeline, i: number) {
+  const z = t.saetze[i]!
+  const vor = i > 0 ? t.saetze[i - 1] : null
+  const nach = t.saetze[i + 1]
+  const gleichesVor = vor != null && p.saetze[i]!.abschnittId === p.saetze[i - 1]!.abschnittId && z.from - (vor.from + vor.dauer) <= 2
+  const gleichesNach = nach != null && p.saetze[i]!.abschnittId === p.saetze[i + 1]!.abschnittId && nach.from - (z.from + z.dauer) <= 2
+  const start = gleichesVor ? Math.max(0, z.from - UEBERLAPP) : z.from
+  const ende = gleichesNach ? z.from + z.dauer + UEBERLAPP : z.from + z.dauer
+  return { start, laenge: Math.max(1, ende - start), ein: gleichesVor ? UEBERLAPP : 2, aus: gleichesNach ? UEBERLAPP : 4 }
+}
+
+/** Im Überlapp fällt der vorige Satz und der nächste kommt. Dazwischen bleibt Stimme. */
+function SatzTon({ src, laenge, einblende, ausblende }: { src: string; laenge: number; einblende: number; ausblende: number }) {
   const frame = useCurrentFrame()
-  const einblende = interpolate(frame, [0, 2], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const aus = Math.max(2, dauer - 4)
-  const ausblende = interpolate(frame, [aus, dauer], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  return <Audio src={src} volume={einblende * ausblende} />
+  const rein = interpolate(frame, [0, einblende], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const raus = interpolate(frame, [Math.max(einblende, laenge - ausblende), laenge], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  return <Audio src={src} volume={rein * raus} />
 }
 
 function Ton({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
@@ -107,9 +124,10 @@ function Ton({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
       {p.saetze.map((s, i) => {
         const z = t.saetze[i]!
         if (!s.audioUrl) return null
+        const fenster = satzFenster(p, t, i)
         return (
-          <Sequence key={s.id} from={z.from} durationInFrames={z.dauer} layout="none">
-            <SatzTon src={s.audioUrl} dauer={z.dauer} />
+          <Sequence key={s.id} from={fenster.start} durationInFrames={fenster.laenge} layout="none">
+            <SatzTon src={s.audioUrl} laenge={fenster.laenge} einblende={fenster.ein} ausblende={fenster.aus} />
           </Sequence>
         )
       })}
@@ -124,6 +142,43 @@ function Ton({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
         </Sequence>
       ))}
     </>
+  )
+}
+
+/** Kleine Logoleiste, solange derselbe Konkurrenten-Satzblock läuft. */
+function KonkurrentenLeiste({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
+  const frame = useCurrentFrame()
+  let pos = 0
+  for (let i = 0; i < t.saetze.length; i++) if (t.saetze[i]!.from <= frame) pos = i
+  const logos = p.saetze[pos]?.visual.konkurrentLogos ?? []
+  if (!logos.length) return null
+  const key = logoKey(logos)
+  let start = t.saetze[pos]!.from
+  for (let i = pos - 1; i >= 0; i--) {
+    if (logoKey(p.saetze[i]?.visual.konkurrentLogos) !== key) break
+    start = t.saetze[i]!.from
+  }
+  const o = interpolate(frame, [start, start + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  return (
+    <div style={{ position: 'absolute', left: 120, top: 36, zIndex: 4, display: 'flex', gap: 16, opacity: o }}>
+      {logos.map((l) => (
+        <div
+          key={l.url}
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 16,
+            background: 'rgba(12,12,14,0.78)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 10,
+          }}
+        >
+          <Img src={oeffentlichSrc(l.url)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -151,6 +206,7 @@ export function AktienAnalyse(p: AktienAnalyseProps) {
         </Sequence>
       ))}
       <KornAbSekunde />
+      <KonkurrentenLeiste p={p} t={t} />
       <Ton p={p} t={t} />
     </AbsoluteFill>
   )

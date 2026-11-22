@@ -7,6 +7,7 @@ import {
   LONGFORM_ABSCHNITT_TITEL,
   type LongformChart10k,
   type LongformProjektZustand,
+  type LongformVisual,
 } from '@/lib/youtube/longform/longform-types'
 
 /** Alte Projekte ohne Sektor-/Price-only-Felder bleiben renderbar. */
@@ -24,6 +25,27 @@ function normalisiereChart(c: LongformChart10k | null): LongformChart10k | null 
   }
 }
 
+/** Automatisches Logo bleibt. Ein Upload füllt nur den Namen, den die Suche nicht getroffen hat. */
+function logosMitNachreichung(visual: LongformVisual, manuell: LongformProjektZustand['konkurrentLogos']): LongformVisual['konkurrentLogos'] {
+  const auto = new Map((visual.konkurrentLogos ?? []).filter((l) => l.url).map((l) => [l.name.toLowerCase(), l]))
+  const namen = visual.konkurrenten?.length ? visual.konkurrenten : [...auto.values()].map((l) => l.name)
+  const out: { name: string; url: string }[] = []
+  const gesehen = new Set<string>()
+  for (const name of namen) {
+    const key = name.toLowerCase()
+    if (gesehen.has(key)) continue
+    gesehen.add(key)
+    const gefunden = auto.get(key)
+    if (gefunden?.url) {
+      out.push({ name: gefunden.name, url: gefunden.url })
+      continue
+    }
+    const upload = manuell?.[key]
+    if (upload?.url) out.push({ name, url: upload.url })
+  }
+  return out
+}
+
 export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMusikTrack[], opts?: { sfx?: boolean }): AktienAnalyseProps | null {
   const fb = z.faktenblatt
   const skript = z.skript
@@ -38,7 +60,7 @@ export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMus
         id: s.id,
         abschnittId: a.id,
         text: s.text,
-        visual: s.visual,
+        visual: { ...s.visual, konkurrentLogos: logosMitNachreichung(s.visual, z.konkurrentLogos) },
         faktIds: s.faktIds,
         audioUrl: take?.url ?? null,
         dauerMs: take?.dauerMs ?? 0,
@@ -51,7 +73,10 @@ export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMus
   )
 
   const fakten: AktienAnalyseProps['fakten'] = {}
-  for (const f of fb.fakten) fakten[f.id] = { text: f.text, label: f.label, wert: f.wert }
+  for (const f of fb.fakten) {
+    if (f.id.startsWith('hook.')) continue
+    fakten[f.id] = { text: f.text, label: f.label, wert: f.wert }
+  }
 
   const abschnittIds = skript.abschnitte.map((a) => a.id)
   return {
@@ -87,6 +112,8 @@ export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMus
     kanalName: LONGFORM_KANAL_NAME,
     kanalLogoUrl: LONGFORM_KANAL_LOGO,
     investiert: z.investiert ?? null,
+    hookKarten: fb.hookKarten ?? [],
+    hookBasis: fb.hookBasis ?? { marketCap: null, wkn: null, isin: fb.isin },
   }
 }
 

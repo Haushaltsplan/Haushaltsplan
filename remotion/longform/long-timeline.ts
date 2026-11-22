@@ -109,7 +109,8 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
       woerter: s.woerter.map((w) => ({ text: w.text, from: f + Math.round((w.startMs / 1000) * LONG_FPS) })),
     })
     sprechen.push([f, f + dauer])
-    f += dauer + LUECKE
+    const naechster = p.saetze[index + 1]
+    f += dauer + (naechster && naechster.abschnittId === s.abschnittId ? 0 : LUECKE)
   })
   if (abschnitte.length) abschnitte[abschnitte.length - 1]!.bis = f
   const disclosure = null

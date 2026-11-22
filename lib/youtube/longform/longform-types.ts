@@ -147,6 +147,18 @@ export type LongformFaktenblatt = {
   /** true/false aus dem Cloud-Depot, null = unbekannt. */
   imDepot: boolean | null
   hinweise: string[]
+  /** Stumme Karten nur für Einstiegsfotos. Nicht im Skript-Prompt. */
+  hookKarten?: LongformHookKarte[]
+  /** Market cap, WKN, ISIN — dieselbe Zeile auf jedem Einstiegsfoto. */
+  hookBasis?: LongformHookBasis
+}
+
+export type LongformHookKarte = { wert: string; label: string; quelle: string }
+
+export type LongformHookBasis = {
+  marketCap: string | null
+  wkn: string | null
+  isin: string | null
 }
 
 export const LONGFORM_HOOK_TYPEN = [
@@ -200,6 +212,10 @@ export type LongformVisual = {
   betonung?: string | null
   /** Englischer Suchbegriff für Fotos, nur bei szene „bild“ oder „hook_bild“. */
   bildWunsch?: string | null
+  /** Firmennamen, die dieser Satz wirklich nennt. Höchstens vier. */
+  konkurrenten?: string[] | null
+  /** Gefundene Logos dazu. Ein Name ohne Logo fehlt. */
+  konkurrentLogos?: { name: string; url: string }[] | null
 }
 
 export type LongformPruefHinweis = {
@@ -314,6 +330,8 @@ export type LongformProjektZustand = {
   denkstufe: 'low' | 'medium' | 'high'
   /** null = noch nicht gewählt. true = investiert, false = nicht investiert. */
   investiert: boolean | null
+  /** Nachgereichte Konkurrenten-Logos. Schlüssel ist der Firmenname in Kleinbuchstaben. */
+  konkurrentLogos?: Record<string, { name: string; pfad: string; url?: string }>
 }
 
 export type LongformProjektKurz = {

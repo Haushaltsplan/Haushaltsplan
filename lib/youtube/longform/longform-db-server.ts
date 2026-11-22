@@ -137,10 +137,13 @@ function ohneLaufzeitUrls(z: LongformProjektZustand): LongformProjektZustand {
   const bilder = Object.fromEntries(
     Object.entries(z.bilder).map(([k, b]) => [k, b ? (({ url: _u, ...rest }) => rest)(b) : null]),
   )
-  return { ...z, stimme: { ...z.stimme, saetze }, bilder }
+  const konkurrentLogos = z.konkurrentLogos
+    ? Object.fromEntries(Object.entries(z.konkurrentLogos).map(([k, v]) => [k, { name: v.name, pfad: v.pfad }]))
+    : undefined
+  return { ...z, stimme: { ...z.stimme, saetze }, bilder, konkurrentLogos }
 }
 
-export function projektPfad(projektId: string, ordner: 'stimme' | 'quellen' | 'bilder' | 'export', datei: string): string {
+export function projektPfad(projektId: string, ordner: 'stimme' | 'quellen' | 'bilder' | 'export' | 'logos', datei: string): string {
   const owner = requireOwnerUserId()
   return `${owner}/${projektId}/${ordner}/${datei}`
 }
@@ -175,11 +178,15 @@ export async function mitUrls(z: LongformProjektZustand): Promise<LongformProjek
   const pfade = [
     ...Object.values(z.stimme.saetze).flatMap((s) => s.takes.map((t) => t.pfad)),
     ...Object.values(z.bilder).flatMap((b) => (b ? [b.pfad] : [])),
+    ...Object.values(z.konkurrentLogos ?? {}).map((l) => l.pfad),
   ]
   const urls = await signiereUrls(pfade)
   const saetze = Object.fromEntries(
     Object.entries(z.stimme.saetze).map(([k, v]) => [k, { ...v, takes: v.takes.map((t) => ({ ...t, url: urls[t.pfad] })) }]),
   )
   const bilder = Object.fromEntries(Object.entries(z.bilder).map(([k, b]) => [k, b ? { ...b, url: urls[b.pfad] } : null]))
-  return { ...z, stimme: { ...z.stimme, saetze }, bilder }
+  const konkurrentLogos = z.konkurrentLogos
+    ? Object.fromEntries(Object.entries(z.konkurrentLogos).map(([k, l]) => [k, { ...l, url: urls[l.pfad] }]))
+    : undefined
+  return { ...z, stimme: { ...z.stimme, saetze }, bilder, konkurrentLogos }
 }

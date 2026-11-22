@@ -9,6 +9,7 @@ import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
 import { waehleVarianten } from '@/lib/youtube/longform/longform-abwechslung'
 import { ladeHerunter, ladeHoch, ladeVerlauf, legeProjektAn, projektPfad, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
 import { baueFaktenblatt } from '@/lib/youtube/longform/longform-fakten'
+import { ladeHookZusatz } from '@/lib/youtube/longform/longform-hook-karten'
 import { moatTexteEnglisch } from '@/lib/youtube/longform/longform-moat-en-server'
 import { ladeChart10k } from '@/lib/youtube/longform/longform-kurse-server'
 import type { LongformDokument } from '@/lib/youtube/longform/longform-skript-server'
@@ -64,7 +65,7 @@ async function imDepot(isin: string | null): Promise<boolean | null> {
 export async function erstelleProjekt(eingabe: LongformExportEingabe, thema: string): Promise<LongformProjekt> {
   const { paket, isin } = eingabe
   const ticker = (paket.symbolYahoo?.split('.')[0] || paket.ticker).trim().toUpperCase()
-  const [chart, moatKi, logoUrl, depot, verlauf] = await Promise.all([
+  const [chart, moatKi, logoUrl, depot, verlauf, hook] = await Promise.all([
     paket.symbolYahoo
       ? ladeChart10k(paket.symbolYahoo, 10, paket.sektor).catch(() => null)
       : Promise.resolve(null),
@@ -72,10 +73,16 @@ export async function erstelleProjekt(eingabe: LongformExportEingabe, thema: str
     findeMoatShortLogo({ ticker, firmenname: paket.firmenname, isin, website: paket.website, symbolYahoo: paket.symbolYahoo }).catch(() => null),
     imDepot(isin),
     ladeVerlauf(),
+    ladeHookZusatz(paket, isin).catch((e) => {
+      console.warn('[longform] Hook-Karten:', e)
+      return { karten: [], basis: { marketCap: null, wkn: null, isin } }
+    }),
   ])
   const faktenblatt = await moatTexteEnglisch(
     baueFaktenblatt({ paket, isin, exportDatum: eingabe.exportDatum, chart, moatKi, logoUrl, imDepot: depot }),
   )
+  faktenblatt.hookKarten = hook.karten
+  faktenblatt.hookBasis = hook.basis
   const zustand: LongformProjektZustand = {
     version: 1,
     thema: thema.trim(),

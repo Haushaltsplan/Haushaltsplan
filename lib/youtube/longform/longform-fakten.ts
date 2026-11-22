@@ -135,11 +135,11 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
       }, s)
     }
     if (c.drawdown) {
-      add({ id: 'k10.drawdown', label: 'Drop from the high', wert: c.drawdown.pct, text: pct(c.drawdown.pct), einheit: 'pct' }, s)
-      add({ id: 'k10.drawdown_hoch', label: 'Drop started', wert: null, text: monatJahr(c.drawdown.hochDatum), einheit: 'text' }, s)
-      add({ id: 'k10.drawdown_tief', label: 'Bottom', wert: null, text: monatJahr(c.drawdown.tiefDatum), einheit: 'text' }, s)
+      add({ id: 'k10.drawdown', label: 'Last correction before the rise', wert: c.drawdown.pct, text: pct(c.drawdown.pct), einheit: 'pct' }, s)
+      add({ id: 'k10.drawdown_hoch', label: 'Correction started', wert: null, text: monatJahr(c.drawdown.hochDatum), einheit: 'text' }, s)
+      add({ id: 'k10.drawdown_tief', label: 'Low of that correction', wert: null, text: monatJahr(c.drawdown.tiefDatum), einheit: 'text' }, s)
       const tiefWert = c.punkte.reduce((m, p) => (p.d <= c.drawdown!.tiefDatum ? p.aktie : m), c.punkte[0]?.aktie ?? 0)
-      add({ id: 'k10.drawdown_wert', label: 'Your $10,000 at the bottom', wert: tiefWert, text: usd(tiefWert), einheit: 'usd' }, s)
+      add({ id: 'k10.drawdown_wert', label: 'Your $10,000 at that low', wert: tiefWert, text: usd(tiefWert), einheit: 'usd' }, s)
     }
     if (c.waehrung !== 'USD') hinweise.push(`Kurse in ${c.waehrung}, für die 10.000-$-Rechnung tagesgenau in USD umgerechnet.`)
   } else {
@@ -353,5 +353,8 @@ function reihenAus(paket: FundamentaldatenPaket): LongformJahresreihe[] {
 
 /** Kompakte Textform fürs KI-Prompt: nur Kennung, Bezeichnung, erlaubter Text. */
 export function faktenFuerPrompt(fb: LongformFaktenblatt): string {
-  return fb.fakten.map((f) => `${f.id} | ${f.label} | ${f.text} | as of ${f.stichtag}`).join('\n')
+  return fb.fakten
+    .filter((f) => !f.id.startsWith('hook.'))
+    .map((f) => `${f.id} | ${f.label} | ${f.text} | as of ${f.stichtag}`)
+    .join('\n')
 }

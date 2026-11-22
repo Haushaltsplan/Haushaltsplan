@@ -177,9 +177,6 @@ export async function ladeChart10k(
   const sekt0 = sektSort.length ? wertBis(sektSort, start, { i: 0 }) ?? sektSort[0]![1] : null
 
   const punkte: LongformChartPunkt[] = []
-  let hoch = -Infinity
-  let hochDatum = start
-  let dd: LongformChart10k['drawdown'] = null
   let letzteWoche = ''
   for (let i = 0; i < tage.length; i++) {
     const d = tage[i]!
@@ -187,12 +184,6 @@ export async function ladeChart10k(
     const kursWert = kursUsd.has(d) ? (kursUsd.get(d)! / k0) * LONGFORM_INVEST_USD : null
     const spyWert = spy0 ? wertBis(spySort, d, spyZeiger) : null
     const sektWert = sekt0 ? wertBis(sektSort, d, sektZeiger) : null
-    if (wert > hoch) {
-      hoch = wert
-      hochDatum = d
-    }
-    const fall = (wert / hoch - 1) * 100
-    if (!dd || fall < dd.pct) dd = { hochDatum, tiefDatum: d, pct: fall }
     const woche = isoWoche(d)
     if (woche !== letzteWoche || i === tage.length - 1) {
       letzteWoche = woche
@@ -207,8 +198,6 @@ export async function ladeChart10k(
   }
   const letzter = punkte[punkte.length - 1]!
   const jahreIst = (Date.parse(ende) - Date.parse(start)) / (365.25 * 86_400_000)
-  const vomHoch = fallNachHoch(punkte)
-  const maxDd = dd && dd.pct < -5 ? { ...dd, pct: Math.round(dd.pct * 10) / 10 } : null
   return {
     startDatum: start,
     endDatum: ende,
@@ -218,23 +207,45 @@ export async function ladeChart10k(
     endwertSpy: letzter.spy,
     endwertSektor: letzter.sektor,
     sektorEtf: sektorSym && letzter.sektor != null ? sektorSym : null,
-    drawdown: vomHoch ?? maxDd,
+    drawdown: korrekturVorAnstieg(punkte),
     waehrung: aktie.waehrung,
     jahre: Math.round(jahreIst * 10) / 10,
   }
 }
 
-/** Fall vom Hoch der gezeichneten Reihe zum tiefsten Punkt danach. Unter 12 % bleibt der maximale Drawdown. */
-function fallNachHoch(punkte: { d: string; aktie: number }[]): { hochDatum: string; tiefDatum: string; pct: number } | null {
-  if (punkte.length < 2) return null
-  let hi = 0
-  for (let i = 1; i < punkte.length; i++) if (punkte[i]!.aktie > punkte[hi]!.aktie) hi = i
-  let lo = hi
-  for (let i = hi + 1; i < punkte.length; i++) if (punkte[i]!.aktie < punkte[lo]!.aktie) lo = i
-  if (lo <= hi || punkte[hi]!.aktie <= 0) return null
-  const prozent = (punkte[lo]!.aktie / punkte[hi]!.aktie - 1) * 100
-  if (prozent > -12) return null
-  return { hochDatum: punkte[hi]!.d, tiefDatum: punkte[lo]!.d, pct: Math.round(prozent * 10) / 10 }
+/**
+ * Letzte abgeschlossene Korrektur vor dem Hoch der Reihe.
+ * Mindestens 30 % unter dem Hoch davor, danach ein deutlicher Anstieg.
+ * Der noch offene Fall nach dem Hoch zählt nicht.
+ */
+function korrekturVorAnstieg(punkte: { d: string; aktie: number }[]): { hochDatum: string; tiefDatum: string; pct: number } | null {
+  if (punkte.length < 3) return null
+  let H = 0
+  for (let i = 1; i < punkte.length; i++) if (punkte[i]!.aktie > punkte[H]!.aktie) H = i
+  let peakI = 0
+  let troughI = 0
+  let letzte: { hoch: number; tief: number } | null = null
+  for (let i = 1; i <= H; i++) {
+    const wert = punkte[i]!.aktie
+    if (wert >= punkte[peakI]!.aktie) {
+      const peak = punkte[peakI]!.aktie
+      const tief = punkte[troughI]!.aktie
+      if (troughI > peakI && peak > 0 && tief <= peak * 0.7 && wert >= tief * 1.2) letzte = { hoch: peakI, tief: troughI }
+      peakI = i
+      troughI = i
+    } else if (wert < punkte[troughI]!.aktie) {
+      troughI = i
+    }
+  }
+  if (!letzte) return null
+  const peak = punkte[letzte.hoch]!.aktie
+  const tief = punkte[letzte.tief]!.aktie
+  if (peak <= 0) return null
+  return {
+    hochDatum: punkte[letzte.hoch]!.d,
+    tiefDatum: punkte[letzte.tief]!.d,
+    pct: Math.round((tief / peak - 1) * 1000) / 10,
+  }
 }
 
 function isoWoche(d: string): string {
