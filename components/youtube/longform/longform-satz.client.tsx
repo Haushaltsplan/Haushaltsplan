@@ -26,7 +26,7 @@ const SZENE_LABEL: Record<(typeof LONGFORM_SZENEN)[number], string> = {
   moat_finanzen: 'Finanzen',
   moat_segmente: 'Moat · Umsatzmix',
   zahl_reihe: 'Zahlen · Jahresreihe',
-  inhaber_anteile: 'Inhaber · Anteil',
+  inhaber_anteile: 'Inhaber · Torte',
   bewertung_zahl: 'Bewertung · Zahl',
   risiko_karte: 'Risiko · Karte',
   scorecard_spalten: 'Scorecard',
@@ -414,6 +414,81 @@ export function LongformSatzEditor({
           ) : null}
         </div>
       ) : null}
+    </div>
+  )
+}
+
+/** Logos der namentlichen Großaktionäre. Dieselbe Ablage wie die Konkurrenten-Logos. */
+export function HalterLogos({
+  projektId,
+  zustand,
+  onZustand,
+  vorAktion,
+}: {
+  projektId: string
+  zustand: LongformProjektZustand
+  onZustand: (z: LongformProjektZustand) => void
+  vorAktion: () => Promise<void>
+}) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const halter = zustand.faktenblatt.fakten.filter((f) => /^own\.inst\d+$/.test(f.id) && f.label.trim())
+  if (!halter.length) return null
+  const hochladen = async (name: string, datei: File) => {
+    setBusy(name)
+    try {
+      await vorAktion()
+      const form = new FormData()
+      form.set('id', projektId)
+      form.set('konkurrent', name)
+      form.set('datei', datei)
+      const r = await lfApi<ZustandAntwort>('/api/youtube/longform/bilder', { method: 'POST', body: form })
+      onZustand(r.zustand)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Logo fehlgeschlagen.')
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <div className="rounded-xl border border-[var(--app-border)] p-3">
+      <div className="mb-2 text-xs text-[var(--app-text-muted)]">Logos für die Torte. PNG mit transparentem Hintergrund sitzt am saubersten.</div>
+      <div className="flex flex-wrap gap-2">
+        {halter.map((f) => {
+          const key = f.label.toLowerCase()
+          const url = zustand.konkurrentLogos?.[key]?.url ?? null
+          const src = url ? (url.startsWith('http') || url.startsWith('/') ? url : `/${url}`) : null
+          return (
+            <div key={f.id} className="flex items-center gap-2 rounded-lg border border-[var(--app-border)] px-2 py-1">
+              {src ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={src} alt="" className="h-8 w-8 object-contain" />
+              ) : (
+                <span className="text-xs text-amber-300">Logo fehlt</span>
+              )}
+              <span className="text-xs text-[var(--app-text)]">
+                {f.label}
+                {f.text ? ` · ${f.text}` : ''}
+              </span>
+              <label className={`${LF_KNOPF} cursor-pointer px-2 py-1 text-xs`}>
+                {busy === f.label ? '…' : src ? 'Logo ersetzen' : 'Logo einfügen'}
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                  className="hidden"
+                  disabled={busy != null}
+                  onChange={(e) => {
+                    const datei = e.target.files?.[0]
+                    e.target.value = ''
+                    if (!datei) return
+                    if (!window.confirm('Ich bestätige, dass ich die Rechte an dieser Datei habe (eigene Aufnahme, Lizenz oder Press Kit).')) return
+                    void hochladen(f.label, datei)
+                  }}
+                />
+              </label>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

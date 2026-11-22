@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { AbsoluteFill, Img, Sequence, interpolate, useCurrentFrame } from 'remotion'
 import { Hintergrund, Korn, oeffentlichSrc, type SzeneProps } from './long-bausteine'
 import { LONG_MUSIK_FREI, LONG_MUSIK_UNTER_STIMME } from './long-look'
-import { berechneLongTimeline, type LongBlock, type LongTimeline } from './long-timeline'
+import { berechneLongTimeline, LONG_KAPITEL_REIHE, type LongBlock, type LongTimeline } from './long-timeline'
 import type { AktienAnalyseProps } from './long-types'
 import { LongAbo } from './LongAbo'
 import { LongBild, LongBumper, LongTitelKarte } from './LongBild'
@@ -230,7 +230,7 @@ export function AktienAnalyse(p: AktienAnalyseProps) {
             nummer={b.nummer}
             titel={p.abschnittTitel[b.abschnittId] ?? ''}
             akzent={p.varianten.akzent}
-            gesamt={Math.max(1, t.bumper.length)}
+            gesamt={LONG_KAPITEL_REIHE.length}
             dauer={b.dauer}
           />
         </Sequence>

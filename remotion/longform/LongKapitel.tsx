@@ -1,6 +1,7 @@
-/** Who owns it, Valuation, Risiken, Scorecard, Would I buy. Eine Zahl pro Satz. */
+/** Who owns it, Valuation, Risiken, Scorecard, Would I buy. Eine Zahl pro Satz, Besitz als Torte. */
 import { AbsoluteFill, Sequence, useCurrentFrame } from 'remotion'
 import { Blende, ein, satzLaeufe, type SatzLauf, type SzeneProps } from './long-bausteine'
+import { besitzBereit, LongBesitz } from './LongBesitz'
 import { LONG_DISPLAY, LONG_GRUEN, LONG_MONO, LONG_MUTED, LONG_RAND_X, LONG_ROT, LONG_SERIF, LONG_TEXT } from './long-look'
 
 function faktDesSatzes(sp: SzeneProps, index: number) {
@@ -113,6 +114,8 @@ function Karte({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
 }
 
 export function LongKapitel(sp: SzeneProps) {
+  const besitz = sp.block.saetze.length > 0 && sp.block.saetze.every((i) => sp.p.saetze[i]?.visual.szene === 'inhaber_anteile')
+  if (besitz && besitzBereit(sp)) return <LongBesitz {...sp} />
   const laeufe = satzLaeufe(sp)
   return (
     <AbsoluteFill>

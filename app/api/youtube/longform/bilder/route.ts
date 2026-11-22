@@ -50,7 +50,8 @@ export async function POST(req: Request) {
         const genannt = p.zustand.skript.abschnitte.some((a) =>
           a.saetze.some((s) => (s.visual.konkurrenten ?? []).some((n) => n.toLowerCase() === key)),
         )
-        if (!genannt) return { ok: false as const, fehler: 'Dieser Name steht in keinem Satz.' }
+        const halter = p.zustand.faktenblatt.fakten.some((f) => f.id.startsWith('own.inst') && f.label.toLowerCase() === key)
+        if (!genannt && !halter) return { ok: false as const, fehler: 'Dieser Name steht in keinem Satz.' }
         const dateiname = datei.name.toLowerCase()
         const mime =
           datei.type ||

@@ -75,7 +75,8 @@ export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMus
   const fakten: AktienAnalyseProps['fakten'] = {}
   for (const f of fb.fakten) {
     if (f.id.startsWith('hook.')) continue
-    fakten[f.id] = { text: f.text, label: f.label, wert: f.wert }
+    const logo = f.id.startsWith('own.inst') ? z.konkurrentLogos?.[f.label.toLowerCase()]?.url : null
+    fakten[f.id] = { text: f.text, label: f.label, wert: f.wert, logoUrl: logo || null }
   }
 
   const abschnittIds = skript.abschnitte.map((a) => a.id)

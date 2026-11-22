@@ -22,7 +22,7 @@ import {
 import { berechneLongTimeline } from '@/remotion/longform/long-timeline'
 import { LONG_FPS } from '@/remotion/longform/long-types'
 import { LF_FELD, LF_KNOPF, LF_KNOPF_PRIMAER, lfApi, type ZustandAntwort } from './longform-api'
-import { LongformSatzEditor, StimmRegler } from './longform-satz.client'
+import { HalterLogos, LongformSatzEditor, StimmRegler } from './longform-satz.client'
 
 const LongformVorschau = dynamic(() => import('./longform-vorschau.client'), { ssr: false })
 
@@ -1125,6 +1125,9 @@ function AbschnittBlock({
           {chatBusy ? '…' : 'Umschreiben'}
         </button>
       </div>
+      {abschnitt.id === 'inhaber' ? (
+        <HalterLogos projektId={projektId} zustand={zustand} onZustand={onZustand} vorAktion={vorAktion} />
+      ) : null}
       {abschnitt.saetze.map((s) => (
         <LongformSatzEditor
           key={s.id}

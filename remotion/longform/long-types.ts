@@ -46,8 +46,8 @@ export type AktienAnalyseProps = {
   scorecard: LongformScorecardSpalte[]
   segmente: LongformSegmente | null
   reihen: LongformJahresreihe[]
-  /** faktId → englischer Text und Label. */
-  fakten: Record<string, { text: string; label: string; wert: number | null }>
+  /** faktId → englischer Text und Label. logoUrl nur bei namentlichen Großaktionären. */
+  fakten: Record<string, { text: string; label: string; wert: number | null; logoUrl?: string | null }>
   saetze: LongSatzProps[]
   musik: { aktiv: boolean; pegel: number; tracks: LongMusikTrack[] }
   sfx: boolean

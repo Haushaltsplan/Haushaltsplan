@@ -1,5 +1,5 @@
 /** Sätze mit Audio-Dauern → Frames, Szenenblöcke, Zwischentitel, Sprechpausen, Abo-Einblendung. */
-import type { LongformAbschnittId } from '../../lib/youtube/longform/longform-types'
+import { LONGFORM_ABSCHNITTE, type LongformAbschnittId } from '../../lib/youtube/longform/longform-types'
 import { LONG_FPS, type AktienAnalyseProps, type LongSatzProps } from './long-types'
 
 export type LongFamilie = 'hook' | 'chart' | 'moat' | 'bild' | 'titel' | 'reihe' | 'karte' | 'kapitel'
@@ -33,6 +33,14 @@ export type LongTimeline = {
   sprechen: [number, number][]
   abo: { from: number; dauer: number } | null
   disclosure: { from: number; dauer: number } | null
+}
+
+/** Kapitelkarten ohne den Hook. Die Nummer bleibt die feste Stelle, auch wenn nur ein Kapitel gerendert wird. */
+export const LONG_KAPITEL_REIHE = LONGFORM_ABSCHNITTE.filter((id) => id !== 'hook')
+
+function kapitelNummer(id: LongformAbschnittId): number {
+  const i = LONG_KAPITEL_REIHE.indexOf(id)
+  return i < 0 ? 1 : i + 1
 }
 
 /** Wenig Luft vor dem ersten Wort — Cold Open soll sofort sitzen. */
@@ -84,15 +92,13 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
   const sprechen: [number, number][] = []
   let f = VORLAUF
   let aktuell: LongformAbschnittId | null = null
-  let nummer = 0
 
   p.saetze.forEach((s, index) => {
     if (s.abschnittId !== aktuell) {
       if (abschnitte.length) abschnitte[abschnitte.length - 1]!.bis = f
       aktuell = s.abschnittId
       if (s.abschnittId !== 'hook') {
-        nummer += 1
-        bumper.push({ abschnittId: s.abschnittId, from: f, dauer: BUMPER, nummer })
+        bumper.push({ abschnittId: s.abschnittId, from: f, dauer: BUMPER, nummer: kapitelNummer(s.abschnittId) })
         abschnitte.push({ id: s.abschnittId, from: f, bis: f })
         f += BUMPER
       } else {
