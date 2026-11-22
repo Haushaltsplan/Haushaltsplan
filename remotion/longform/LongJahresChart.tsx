@@ -1,15 +1,15 @@
 /** Jahreschart des Zahlen-Kapitels. Balken, Linien oder zwei Reihen, Schätzjahre blasser. */
 import { useMemo } from 'react'
 import { AbsoluteFill, useCurrentFrame } from 'remotion'
-import { pct } from '../../lib/youtube/longform/longform-format'
+import { pct, usd } from '../../lib/youtube/longform/longform-format'
 import type { LongformJahresGross, LongformJahreslinie, LongformJahrespunkt, LongformJahresreihe } from '../../lib/youtube/longform/longform-types'
 import { aktiverSatz, ein, zaehleText, type SzeneProps } from './long-bausteine'
 import { LONG_DISPLAY, LONG_GRUEN, LONG_LINIE, LONG_MONO, LONG_MUTED, LONG_RAND_X, LONG_ROT, LONG_SERIF, LONG_TEXT, mitAlpha } from './long-look'
 
-const X0 = 150
-const X1 = 1780
-const Y0 = 310
-const Y1 = 820
+const X0 = 228
+const X1 = 1840
+const Y0 = 268
+const Y1 = 860
 
 const GOLD = '#E8C36A'
 const GOLD_EST = 'rgba(232, 195, 106, 0.4)'
@@ -19,6 +19,7 @@ const BLAU = '#8EB6F2'
 const LILA = '#D7B4F5'
 const ROT_EST = 'rgba(239, 106, 90, 0.42)'
 const LINIEN_FARBEN = [GOLD, BLAU, LILA]
+const ACHSE = 'rgba(243, 241, 236, 0.82)'
 
 const FOKUS = ['umsatz', 'gewinn', 'fcf', 'marge', 'roic', 'capex', 'schulden', 'aktien']
 
@@ -44,7 +45,10 @@ function reiheVon(sp: SzeneProps, index: number): LongformJahresreihe | null {
   }
 }
 
-function jahreAus(linien: LongformJahreslinie[]): { jahr: number; schaetzung: boolean }[] {
+type JahrSlot = { jahr: number; schaetzung: boolean; hatWert: boolean }
+
+/** Jedes Kalenderjahr vom ersten bis zum letzten Punkt. Eine Lücke bleibt leer, kein Jahr wird übersprungen. */
+function jahreAus(linien: LongformJahreslinie[]): JahrSlot[] {
   const map = new Map<number, boolean>()
   for (const l of linien) {
     for (const p of l.punkte) {
@@ -52,14 +56,58 @@ function jahreAus(linien: LongformJahreslinie[]): { jahr: number; schaetzung: bo
       map.set(p.jahr, alt == null ? p.schaetzung : alt && p.schaetzung)
     }
   }
-  return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([jahr, schaetzung]) => ({ jahr, schaetzung }))
+  const vorhanden = [...map.keys()]
+  if (!vorhanden.length) return []
+  const von = Math.min(...vorhanden)
+  const bis = Math.max(...vorhanden)
+  const out: JahrSlot[] = []
+  for (let jahr = von; jahr <= bis; jahr++) {
+    out.push({ jahr, schaetzung: map.get(jahr) ?? false, hatWert: map.has(jahr) })
+  }
+  return out
 }
 
-function zeigeJahr(jahre: { schaetzung: boolean }[], index: number): boolean {
-  if (jahre.length <= 14) return true
-  const p = jahre[index]
-  if (!p) return false
-  return p.schaetzung || index === 0 || index === jahre.length - 1 || index % 2 === 0
+function schoenerSchritt(rough: number): number {
+  if (!(rough > 0) || !Number.isFinite(rough)) return 1
+  const mag = Math.pow(10, Math.floor(Math.log10(rough)))
+  const n = rough / mag
+  const nice = n >= 5 ? 5 : n >= 2 ? 2 : 1
+  return nice * mag
+}
+
+function achsenTicks(min: number, max: number): { ticks: number[]; oben: number } {
+  if (!(max > min)) return { ticks: [min], oben: min + 1 }
+  const schritt = schoenerSchritt((max - min) / 4)
+  const start = Math.ceil(min / schritt - 1e-9) * schritt
+  const out: number[] = []
+  for (let v = start; v <= max + schritt * 1.01; v += schritt) {
+    const rund = Math.round(v / schritt) * schritt
+    if (rund < min - schritt * 0.01) continue
+    out.push(Number(rund.toPrecision(12)))
+    if (out[out.length - 1]! >= max - schritt * 0.05 || out.length > 6) break
+  }
+  if (!out.length) return { ticks: [min, max], oben: max }
+  const oben = Math.max(max, out[out.length - 1]!)
+  return { ticks: out, oben }
+}
+
+function achseText(wert: number, einheit: LongformJahresreihe['einheit']): string {
+  if (Object.is(wert, -0)) wert = 0
+  if (einheit === 'pct') {
+    const r = Math.abs(wert) >= 100 ? Math.round(wert) : Math.round(wert * 10) / 10
+    return `${r}%`
+  }
+  if (einheit === 'aktien') {
+    const r = Math.abs(wert) >= 100 ? Math.round(wert) : Math.round(wert * 10) / 10
+    return String(r)
+  }
+  return usd(wert * 1_000_000)
+}
+
+function einheitTitel(einheit: LongformJahresreihe['einheit']): string {
+  if (einheit === 'pct') return 'Percent'
+  if (einheit === 'aktien') return 'Million shares'
+  return 'USD'
 }
 
 function balkenFarbe(wert: number, schaetzung: boolean, basis: string, basisEst: string): string {
@@ -112,17 +160,16 @@ export function LongJahresChart(sp: SzeneProps) {
     const werte = reihe.linien.flatMap((l) => l.punkte.map((p) => p.wert))
     if (reihe.wacc != null) werte.push(reihe.wacc)
     const min = Math.min(0, ...werte)
-    const max = Math.max(0, ...werte)
-    const span = (max - min) * 1.12 || 1
-    const oben = max + (span - (max - min))
+    const maxRoh = Math.max(0, ...werte)
+    const { ticks, oben } = achsenTicks(min, maxRoh)
     const n = jahre.length
-    const inset = 36
+    const band = (X1 - X0) / n
     const x = (jahr: number) => {
       const k = jahre.findIndex((j) => j.jahr === jahr)
-      return X0 + inset + ((X1 - X0 - inset * 2) * k) / (n - 1)
+      return X0 + band * k + band / 2
     }
     const y = (v: number) => Y1 - ((Y1 - Y0) * (v - min)) / (oben - min || 1)
-    return { jahre, x, y, nullLinie: y(0) }
+    return { jahre, x, y, band, nullLinie: y(0), ticks }
   }, [reihe])
 
   if (!reihe || !geo) return null
@@ -135,8 +182,8 @@ export function LongJahresChart(sp: SzeneProps) {
   const von = istJahre.length ? Math.min(...istJahre) : geo.jahre[0]!.jahr
   const bis = istJahre.length ? Math.max(...istJahre) : geo.jahre[geo.jahre.length - 1]!.jahr
   const hatSchaetzung = reihe.linien.some((l) => l.punkte.some((p) => p.schaetzung))
-  const slot = geo.jahre.length > 1 ? (X1 - X0) / (geo.jahre.length - 1) : 80
-  const balkenBreite = Math.max(8, Math.min(reihe.art === 'doppel' ? 22 : 36, slot * (reihe.art === 'doppel' ? 0.34 : 0.62)))
+  const balkenBreite = Math.max(6, Math.min(reihe.art === 'doppel' ? 18 : 28, geo.band * (reihe.art === 'doppel' ? 0.32 : 0.52)))
+  const jahrSchrift = geo.jahre.length > 24 ? 12 : geo.jahre.length > 16 ? 14 : 16
 
   return (
     <AbsoluteFill>
@@ -162,21 +209,29 @@ export function LongJahresChart(sp: SzeneProps) {
             <rect x={0} y={0} width={X0 + (X1 - X0) * zeichnen} height={1080} />
           </clipPath>
         </defs>
-        <line x1={X0} x2={X1} y1={geo.nullLinie} y2={geo.nullLinie} stroke={LONG_LINIE} strokeWidth={1.5} />
-        {geo.jahre.map((j, k) =>
-          zeigeJahr(geo.jahre, k) ? (
-            <g key={j.jahr}>
-              <text x={geo.x(j.jahr)} y={Y1 + 36} textAnchor="middle" fill={j.schaetzung ? GOLD : LONG_MUTED} fontFamily={LONG_MONO} fontSize={geo.jahre.length > 18 ? 15 : 18}>
-                {j.jahr}
-              </text>
-              {j.schaetzung ? (
-                <text x={geo.x(j.jahr)} y={Y1 + 56} textAnchor="middle" fill={GOLD_EST} fontFamily={LONG_MONO} fontSize={12}>
-                  estimate
-                </text>
-              ) : null}
-            </g>
-          ) : null,
-        )}
+        <rect x={X0} y={Y0} width={X1 - X0} height={Y1 - Y0} fill="rgba(243, 241, 236, 0.025)" />
+        <text x={X0} y={Y0 - 16} fill={ACHSE} fontFamily={LONG_MONO} fontSize={14} letterSpacing={1.5}>
+          {einheitTitel(reihe.einheit)}
+        </text>
+        {geo.ticks.map((t) => (
+          <g key={t}>
+            <line x1={X0} x2={X1} y1={geo.y(t)} y2={geo.y(t)} stroke={t === 0 ? 'rgba(243, 241, 236, 0.28)' : LONG_LINIE} strokeWidth={t === 0 ? 1.5 : 1} />
+            <text x={X0 - 14} y={geo.y(t) + 5} textAnchor="end" fill={ACHSE} fontFamily={LONG_MONO} fontSize={15}>
+              {achseText(t, reihe.einheit)}
+            </text>
+          </g>
+        ))}
+        {geo.jahre.map((j) => (
+          <g key={j.jahr}>
+            {j.schaetzung ? (
+              <rect x={geo.x(j.jahr) - geo.band / 2} y={Y0} width={geo.band} height={Y1 - Y0} fill="rgba(232, 195, 106, 0.06)" />
+            ) : null}
+            <line x1={geo.x(j.jahr)} x2={geo.x(j.jahr)} y1={Y1} y2={Y1 + 7} stroke={j.schaetzung ? GOLD : 'rgba(243, 241, 236, 0.2)'} strokeWidth={1} />
+            <text x={geo.x(j.jahr)} y={Y1 + 28} textAnchor="middle" fill={j.schaetzung ? GOLD : j.hatWert ? ACHSE : 'rgba(243, 241, 236, 0.35)'} fontFamily={LONG_MONO} fontSize={jahrSchrift}>
+              {j.schaetzung ? `${j.jahr}e` : j.jahr}
+            </text>
+          </g>
+        ))}
         {reihe.art === 'balken' || reihe.art === 'doppel'
           ? reihe.linien.map((linie, li) => (
               <g key={linie.id}>
@@ -203,9 +258,7 @@ export function LongJahresChart(sp: SzeneProps) {
               return (
                 <g key={linie.id}>
                   {linienStuecke(linie.punkte).map((st, si) =>
-                    st.punkte.length < 2 ? (
-                      <circle key={`${linie.id}-${si}`} cx={geo.x(st.punkte[0]!.jahr)} cy={geo.y(st.punkte[0]!.wert)} r={5} fill={farbe} opacity={st.schaetzung ? 0.55 : 1} />
-                    ) : (
+                    st.punkte.length < 2 ? null : (
                       <path
                         key={`${linie.id}-${si}`}
                         d={pfad(st.punkte, geo.x, geo.y)}
@@ -214,10 +267,21 @@ export function LongJahresChart(sp: SzeneProps) {
                         strokeWidth={3}
                         strokeLinejoin="round"
                         strokeDasharray={st.schaetzung ? '7 6' : undefined}
-                        opacity={st.schaetzung ? 0.7 : 1}
+                        opacity={st.schaetzung ? 0.75 : 1}
                       />
                     ),
                   )}
+                  {linie.punkte.map((p) => (
+                    <circle
+                      key={`${linie.id}-punkt-${p.jahr}`}
+                      cx={geo.x(p.jahr)}
+                      cy={geo.y(p.wert)}
+                      r={4.5}
+                      fill={p.schaetzung ? '#0C0C0E' : farbe}
+                      stroke={farbe}
+                      strokeWidth={2}
+                    />
+                  ))}
                 </g>
               )
             })}

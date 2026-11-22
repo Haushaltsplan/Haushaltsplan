@@ -49,7 +49,7 @@ type Punkt = LongformJahrespunkt
 function jahrVonPeriode(p: FundamentalPeriode): { jahr: number; schaetzung: boolean } | null {
   if (p.istLtm || p.istNtm) return null
   if (/^__\d{4}q[1-4]e__$/.test(p.iso)) return null
-  const isoJahr = p.iso.match(/^(\d{4})-\d{2}-\d{2}$/)
+  const isoJahr = p.iso.match(/^(\d{4})-\d{2}-\d{2}/)
   const schaetzung = Boolean(p.istSchaetzung) || istFundamentalSchaetzungIso(p.iso)
   if (isoJahr && !schaetzung) return { jahr: Number(isoJahr[1]), schaetzung: false }
   if (!schaetzung) return null
@@ -67,20 +67,32 @@ function quellenZeile(paket: FundamentaldatenPaket, hatSchaetzung: boolean): str
   return name ? `${basis} · estimates ${name}` : basis
 }
 
+function metaAusSchluessel(iso: string, periode: FundamentalPeriode | undefined): { jahr: number; schaetzung: boolean } | null {
+  if (periode) return jahrVonPeriode(periode)
+  if (iso === '__ttm__' || iso === '__ntm__' || /^__\d{4}q[1-4]e__$/.test(iso)) return null
+  if (istFundamentalSchaetzungIso(iso)) {
+    const ausIso = iso.match(/^__fy(\d{4})e__$/)
+    return ausIso ? { jahr: Number(ausIso[1]), schaetzung: true } : null
+  }
+  const isoJahr = iso.match(/^(\d{4})-\d{2}-\d{2}/)
+  return isoJahr ? { jahr: Number(isoJahr[1]), schaetzung: false } : null
+}
+
 /** Ein Punkt je Jahr. Ist schlägt Schätzung, wenn beide dasselbe Jahr haben. */
 function punkteAus(paket: FundamentaldatenPaket, zeileId: string, betrag = false): Punkt[] | null {
   const z = paket.zeilen.find((r) => r.id === zeileId)
   if (!z) return null
+  const periodeNachIso = new Map(paket.perioden.map((p) => [p.iso, p]))
   const byJahr = new Map<number, { punkt: Punkt; iso: string }>()
-  for (const p of paket.perioden) {
-    const meta = jahrVonPeriode(p)
+  for (const iso of new Set([...periodeNachIso.keys(), ...Object.keys(z.werte)])) {
+    const meta = metaAusSchluessel(iso, periodeNachIso.get(iso))
     if (!meta) continue
-    const roh = z.werte[p.iso]
+    const roh = z.werte[iso]
     if (roh == null || !Number.isFinite(roh)) continue
     const punkt: Punkt = { jahr: meta.jahr, wert: betrag ? Math.abs(roh) : roh, schaetzung: meta.schaetzung }
     const alt = byJahr.get(meta.jahr)
-    if (!alt || (alt.punkt.schaetzung && !punkt.schaetzung) || (!punkt.schaetzung && !alt.punkt.schaetzung && p.iso > alt.iso)) {
-      byJahr.set(meta.jahr, { punkt, iso: p.iso })
+    if (!alt || (alt.punkt.schaetzung && !punkt.schaetzung) || (!punkt.schaetzung && !alt.punkt.schaetzung && iso > alt.iso)) {
+      byJahr.set(meta.jahr, { punkt, iso })
     }
   }
   const punkte = [...byJahr.values()].map((x) => x.punkt).sort((a, b) => a.jahr - b.jahr)
