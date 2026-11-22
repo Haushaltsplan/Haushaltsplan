@@ -9,12 +9,12 @@ import { istMuellSegmentName, sektorBrancheEnglisch } from '@/lib/youtube/longfo
 import { monatJahr, moatTextEnglisch, multiple, pct, scorecardTextEnglisch, usd } from '@/lib/youtube/longform/longform-format'
 import { metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import { pfeilerAufZielScore, urteilAusMoatScore } from '@/lib/youtube/moat-short-urteil'
+import { faktenAusReihen, reihenAusZeilen } from '@/lib/youtube/longform/longform-reihen'
 import {
   LONGFORM_INVEST_USD,
   type LongformChart10k,
   type LongformFakt,
   type LongformFaktenblatt,
-  type LongformJahresreihe,
   type LongformMoat,
   type LongformScorecardSpalte,
   type LongformSegmentEintrag,
@@ -244,21 +244,14 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
     hinweise.push('Kein Umsatzmix im Export (bei EU/CH/UK üblich). Lade ein IR-Dokument hoch, sonst entfällt die Segmentgrafik.')
   }
 
-  const reihen = reihenAus(paket)
-  for (const reihe of reihen) {
-    const letzter = reihe.punkte[reihe.punkte.length - 1]!
-    const text = reihe.einheit === 'pct' ? pct(letzter.wert) : usd(letzter.wert * 1_000_000)
+  const reihen = reihenAusZeilen(paket)
+  for (const f of faktenAusReihen(reihen, paket)) {
     add(
-      {
-        id: `reihe.${reihe.id}`,
-        label: `${reihe.label}, latest year`,
-        wert: letzter.wert,
-        text,
-        einheit: reihe.einheit === 'pct' ? 'pct' : 'usd',
-      },
-      { stichtag: exportTag, quelle: `SEC 10-K Kennzahlen FY${letzter.jahr}` },
+      { id: f.id, label: f.label, wert: f.wert, text: f.text, einheit: f.einheit },
+      { stichtag: exportTag, quelle: f.quelle },
     )
   }
+  if (!reihen.length) hinweise.push('Keine Jahresreihen mit mindestens drei abgeschlossenen Jahren im Export.')
 
   return {
     ticker: (paket.symbolYahoo?.split('.')[0] || paket.ticker).toUpperCase(),
@@ -466,22 +459,6 @@ function segmenteAus(paket: FundamentaldatenPaket): LongformSegmente | null {
     }
   }
   return null
-}
-
-function reihenAus(paket: FundamentaldatenPaket): LongformJahresreihe[] {
-  const k = paket.erweitert?.secSegmentHistorie?.kennzahlen
-  if (!k) return []
-  const bau = (id: LongformJahresreihe['id'], label: string, einheit: LongformJahresreihe['einheit'], roh: { jahr: number; wert: number }[] | undefined): LongformJahresreihe | null => {
-    const punkte = (roh ?? []).filter((p) => Number.isFinite(p.wert)).sort((a, b) => a.jahr - b.jahr)
-    if (punkte.length < 2) return null
-    return { id, label, einheit, punkte }
-  }
-  return [
-    bau('umsatz', 'Revenue', 'usd', k.umsatzMio),
-    bau('marge', 'Operating margin', 'pct', k.ebitMargePct),
-    bau('gewinn', 'Net income', 'usd', k.nettogewinnMio),
-    bau('fcf', 'Free cash flow', 'usd', k.fcfMio),
-  ].filter((x): x is LongformJahresreihe => x != null)
 }
 
 /** Kompakte Textform fürs KI-Prompt: nur Kennung, Bezeichnung, erlaubter Text. */

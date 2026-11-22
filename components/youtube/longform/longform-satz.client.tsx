@@ -217,7 +217,7 @@ export function LongformSatzEditor({
           <input
             value={satz.visual.fokus ?? ''}
             onChange={(e) => onLokal({ ...satz, visual: { ...satz.visual, fokus: e.target.value || null } })}
-            placeholder={satz.visual.szene === 'moat_segmente' ? 'seg.0 / seg.0.marge / seg.0.wachstum' : satz.visual.szene === 'zahl_reihe' ? 'umsatz / marge / gewinn / fcf' : 'Pfeiler-ID'}
+            placeholder={satz.visual.szene === 'moat_segmente' ? 'seg.0 / seg.0.marge / seg.0.wachstum' : satz.visual.szene === 'zahl_reihe' ? 'umsatz / gewinn / fcf / marge / roic / capex / schulden / aktien' : 'Pfeiler-ID'}
             className="w-64 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1 text-[var(--app-text)]"
           />
         ) : null}

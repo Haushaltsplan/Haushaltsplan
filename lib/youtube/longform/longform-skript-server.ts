@@ -281,6 +281,79 @@ begruendung: one German sentence for the creator (studio only) explaining why th
     .map((h) => ({ ...h, saetze: h.saetze.map((s) => ({ text: s.text.trim(), faktIds: s.faktIds ?? [] })) }))
 }
 
+const ZAHLEN_FOKUS = ['marge', 'roic', 'schulden', 'aktien', 'umsatz', 'gewinn', 'fcf', 'capex'] as const
+
+function zahlenFokus(ids: string[]): string | null {
+  for (const id of ids) {
+    if (!id.startsWith('reihe.')) continue
+    const rest = id.slice('reihe.'.length)
+    const hit = ZAHLEN_FOKUS.find((f) => rest === f || rest.startsWith(`${f}.`))
+    if (hit) return hit
+  }
+  return null
+}
+
+function stelleZahlenFokusSicher(abschnitte: LongformAbschnitt[]) {
+  const zahlen = abschnitte.find((a) => a.id === 'zahlen')
+  if (!zahlen) return
+  for (const s of zahlen.saetze) {
+    if (s.visual.szene !== 'zahl_reihe') continue
+    const ausFakt = zahlenFokus(s.faktIds)
+    if (ausFakt) s.visual.fokus = ausFakt
+  }
+}
+
+function zahlenAuftrag(fb: LongformFaktenblatt): string {
+  const ids = new Set((fb.reihen ?? []).map((r) => r.id))
+  const hat = (id: (typeof fb.reihen)[number]['id']) => ids.has(id)
+  const schritte: string[] = []
+  const nr = () => String(schritte.length + 1)
+  if (hat('umsatz')) {
+    schritte.push(
+      `${nr()}. fokus umsatz. Revenue bars. Several sentences, every one with this same fokus. First year is reihe.umsatz.anfang_jahr, last finished year is reihe.umsatz.ende_jahr, the big number is reihe.umsatz. Low and high are reihe.umsatz.tief and reihe.umsatz.hoch. A fact whose label says estimate (reihe.umsatz.e.<year>) must be spoken as an estimate. If that fact is missing, do not mention a forecast.`,
+    )
+  }
+  if (hat('gewinn')) {
+    schritte.push(
+      `${nr()}. fokus gewinn. Net income bars, same rules. Negative years are losses. Facts: reihe.gewinn, reihe.gewinn.anfang, reihe.gewinn.anfang_jahr, reihe.gewinn.ende_jahr, reihe.gewinn.tief, reihe.gewinn.hoch, and reihe.gewinn.e.<year> only when that estimate exists.`,
+    )
+  }
+  if (hat('fcf')) {
+    schritte.push(
+      `${nr()}. fokus fcf. Free cash flow bars. Say that this is what is left after the factories. Same estimate rule, ids reihe.fcf and reihe.fcf.e.<year>.`,
+    )
+  }
+  if (hat('marge')) {
+    schritte.push(
+      `${nr()}. fokus marge. One chart, up to three lines: gross reihe.marge.brutto, operating reihe.marge.ebit, net reihe.marge.netto. Skip a line that has no fact. Explain in plain English that a margin is the share left after costs. Dashed years are estimates and must be named as estimates, using only reihe.marge.<line>.e.<year>.`,
+    )
+  }
+  if (hat('roic')) {
+    schritte.push(
+      `${nr()}. fokus roic. ROIC is what the company earns on the capital it uses (reihe.roic). WACC (reihe.roic.wacc) is one current estimate of what that capital costs, a single horizontal line, not a history. The gap is that year's ROIC minus this one WACC (reihe.roic.spread, reihe.roic.spread.anfang, reihe.roic.spread.tief, reihe.roic.spread.hoch). Do not describe a historical cost of capital. reihe.roic.spread.ltm is the published latest spread and may differ from the last finished year. An estimate ROIC exists only as reihe.roic.e.<year>.`,
+    )
+  }
+  if (hat('capex')) {
+    schritte.push(
+      `${nr()}. fokus capex. Capital-spending bars. The height is the amount spent. Do not call a bar a loss because the cash left the company. Same estimate rule, ids reihe.capex and reihe.capex.e.<year>.`,
+    )
+  }
+  if (hat('schulden')) {
+    schritte.push(
+      `${nr()}. fokus schulden. Two bars per year, debt (reihe.schulden) and cash and equivalents (reihe.schulden.bargeld). The big number is reihe.schulden.deckung, cash divided by debt in the last finished year. Say only whether that cash covers the debt. Do not mention factories or securities. Cash means cash and equivalents.`,
+    )
+  }
+  if (hat('aktien')) {
+    schritte.push(
+      `${nr()}. fokus aktien. Share count in millions, a line. reihe.aktien.aenderung already says whether the count rose, fell, or stayed roughly flat, and what that does to one shareholder's slice. Say that and nothing beyond it. Do not invent a buyback or an issuance.`,
+    )
+  }
+  if (!schritte.length) {
+    return 'zahlen: no yearly series is in the fact sheet. Write one sentence that says the yearly figures are not in the filing export. Scene zahl_reihe. Do not invent a chart or a number.'
+  }
+  return `zahlen: this chapter may run past a minute. Scene zahl_reihe. One idea per sentence. Every number needs its fact id. Do not invent a year, a figure, or an estimate. The same fokus keeps one chart on screen. The next fokus cuts hard to the next chart. A scene bild may sit between two charts, never on top of one. No valuation multiples. Order:\n${schritte.join('\n')}`
+}
+
 function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): string {
   switch (id) {
     case 'hook':
@@ -293,7 +366,7 @@ function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): str
       return `burggraben (about 100 to 140 seconds): ONLY the moat. The previous chapter already explained how the company gets paid. Do not repeat it. Forbidden here: customers, what they buy, a product tour, revenue mix, segments, seg.* facts, scene moat_geschaeft, scene moat_segmente. Do not open with the business. Start at the first pillar.
 Say "moat", never the German word. Overall score is moat.score, said once. One sentence per pillar, scene moat_pfeiler, fokus = exactly one pillar id (preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte). A pillar sentence names the advantage, not the product line. Put a scene bild with a concrete English bildWunsch BETWEEN pillars so the same card is never on screen for the whole chapter. Then one moat_scorecard sentence for the overall score. If you cite a km.* fact (operating margin, ROIC, net cash, interest coverage), that sentence is scene moat_finanzen with exactly one km.* id, and it must support the moat, not describe a division. Never leave those numbers on moat_scorecard. End on one threat, a single sentence. Do not add a like or subscribe sentence.`
     case 'zahlen':
-      return `zahlen (about 45 to 75 seconds): one chart per series, never combined. Scenes zahl_reihe with fokus umsatz, marge, gewinn, fcf — only for series that exist as reihe.* facts. One sentence per chart, faktIds = reihe.<id>, betonung on the latest figure. If a year is an outlier, say so only when a fact gives the company's own reason; otherwise just name the year. A bild sentence with bildWunsch may sit between two charts, never on top of the number.`
+      return zahlenAuftrag(fb)
     case 'inhaber':
       return `inhaber (about 45 to 75 seconds): who owns the shares. Scene inhaber_anteile. One sentence per fact that exists: own.insider, own.institutionen, then own.inst1, own.inst2, own.inst3, then own.insider_netto. Skip any id that is not in the fact sheet. fokus = that fact id. A bild sentence may sit between two cards. Do not invent a holder.`
     case 'bewertung':
@@ -366,6 +439,7 @@ kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks
   stelleBrollSicher(abschnitte, fb)
   stelleSegmentFokusSicher(abschnitte)
   stellePfeilerFokusSicher(abschnitte)
+  stelleZahlenFokusSicher(abschnitte)
   bereinigeBurggraben(abschnitte)
   if (nur === 'fazit') {
     setzeFazit(abschnitte, fb)
@@ -711,6 +785,12 @@ export async function ueberarbeite(opts: {
   })
   const neu = (daten.saetze ?? []).filter((s) => s.text?.trim()).map((s) => satzAusRoh(s, opts.abschnittId, fb))
   const fertig = opts.abschnittId === 'burggraben' ? ohneGeschaeftImMoat(neu) : neu
+  if (opts.abschnittId === 'zahlen') {
+    const huelle: LongformAbschnitt[] = [{ id: 'zahlen', titel: LONGFORM_ABSCHNITT_TITEL.zahlen, saetze: fertig }]
+    stelleZahlenFokusSicher(huelle)
+    if (!huelle[0]!.saetze.length) throw new Error('Gemini hat keinen Text geliefert.')
+    return huelle[0]!.saetze
+  }
   if (!fertig.length) throw new Error('Gemini hat keinen Text geliefert.')
   return fertig
 }

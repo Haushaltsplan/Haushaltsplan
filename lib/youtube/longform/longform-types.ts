@@ -107,13 +107,38 @@ export type LongformSegmente = {
   eintraege: LongformSegmentEintrag[]
 }
 
-export type LongformJahresreiheId = 'umsatz' | 'marge' | 'gewinn' | 'fcf'
+export type LongformJahresreiheId = 'umsatz' | 'gewinn' | 'fcf' | 'marge' | 'roic' | 'capex' | 'schulden' | 'aktien'
+
+export type LongformJahrespunkt = {
+  jahr: number
+  wert: number
+  schaetzung: boolean
+}
+
+export type LongformJahreslinie = {
+  id: string
+  label: string
+  punkte: LongformJahrespunkt[]
+}
+
+/** Große Zahl rechts oben. Dollar bleibt hell, nur ein Minus wird rot. */
+export type LongformJahresGross = {
+  text: string
+  wert: number
+  farbig: 'vorzeichen' | 'deckung' | 'neutral' | 'hell'
+}
 
 export type LongformJahresreihe = {
   id: LongformJahresreiheId
   label: string
-  einheit: 'usd' | 'pct'
-  punkte: { jahr: number; wert: number }[]
+  einheit: 'usd' | 'pct' | 'aktien'
+  /** balken: eine Geldreihe. linien: Margen oder Aktienzahl. doppel: Schulden und Bargeld. roic: Linie plus eine WACC-Linie. */
+  art: 'balken' | 'linien' | 'doppel' | 'roic'
+  linien: LongformJahreslinie[]
+  /** Aktuelle WACC-Schätzung in Prozent. Nur beim ROIC-Chart, keine Jahresreihe. */
+  wacc: number | null
+  quelle: string
+  gross: LongformJahresGross | null
 }
 
 export type LongformQuelle = {
@@ -143,7 +168,7 @@ export type LongformFaktenblatt = {
   /** Alle vier Scorecard-Spalten. Leer bei alten Projekten. */
   scorecard?: LongformScorecardSpalte[]
   segmente: LongformSegmente | null
-  /** Jahresreihen aus dem 10-K. Leer, wenn der Export sie nicht hat. */
+  /** Jahresreihen aus paket.zeilen. Leer, wenn der Export sie nicht hat. */
   reihen: LongformJahresreihe[]
   logoUrl: string | null
   /** true/false aus dem Cloud-Depot, null = unbekannt. */

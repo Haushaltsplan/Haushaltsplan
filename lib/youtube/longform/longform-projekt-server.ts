@@ -151,10 +151,12 @@ export async function ergaenzeKapitelAusExport(id: string, z: LongformProjektZus
           logoUrl: z.faktenblatt.logoUrl,
           imDepot: z.faktenblatt.imDepot,
         })
-        const ids = new Set(z.faktenblatt.fakten.map((f) => f.id))
+        const ohneReihe = z.faktenblatt.fakten.filter((f) => !f.id.startsWith('reihe.'))
+        const ids = new Set(ohneReihe.map((f) => f.id))
         faktenblatt = {
           ...z.faktenblatt,
-          fakten: [...z.faktenblatt.fakten, ...neu.fakten.filter((f) => !ids.has(f.id))],
+          fakten: [...ohneReihe, ...neu.fakten.filter((f) => f.id.startsWith('reihe.') || !ids.has(f.id))],
+          reihen: neu.reihen,
           scorecard: neu.scorecard?.length ? neu.scorecard : z.faktenblatt.scorecard,
         }
       }
