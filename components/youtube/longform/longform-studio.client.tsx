@@ -198,7 +198,7 @@ export function LongformStudio() {
     aktion('hooks', async () => {
       await speichereLokal()
       const r = await lfApi<ZustandAntwort>('/api/youtube/longform/skript', {
-        json: { id: projekt!.id, aktion: 'hooks', thema, denkstufe: z!.denkstufe },
+        json: { id: projekt!.id, aktion: 'hooks', thema, hookHinweis: z!.hookHinweis ?? '', denkstufe: z!.denkstufe },
       })
       setProjekt({ ...projekt!, zustand: r.zustand })
       setDirty(false)
@@ -225,7 +225,7 @@ export function LongformStudio() {
     aktion('skript', async () => {
       await speichereLokal()
       const r = await lfApi<ZustandAntwort>('/api/youtube/longform/skript', {
-        json: { id: projekt!.id, aktion: 'skript', hookIndex, thema, denkstufe: z!.denkstufe },
+        json: { id: projekt!.id, aktion: 'skript', hookIndex, thema, hookHinweis: z!.hookHinweis ?? '', denkstufe: z!.denkstufe },
       })
       setProjekt({ ...projekt!, zustand: r.zustand })
       setDirty(false)
@@ -722,6 +722,13 @@ export function LongformStudio() {
                 className={`${LF_FELD} mt-1`}
               />
             </label>
+            <HookHinweisFeld
+              wert={z.hookHinweis ?? ''}
+              onChange={(hookHinweis) => {
+                setProjekt({ ...projekt, zustand: { ...z, hookHinweis } })
+                setDirty(true)
+              }}
+            />
           </div>
         </section>
       ) : null}
@@ -735,6 +742,13 @@ export function LongformStudio() {
             </button>
           </div>
           <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
+            <HookHinweisFeld
+              wert={z.hookHinweis ?? ''}
+              onChange={(hookHinweis) => {
+                setProjekt({ ...projekt, zustand: { ...z, hookHinweis } })
+                setDirty(true)
+              }}
+            />
             {!z.hooks?.length ? (
               <p className="text-sm text-[var(--app-text-muted)]">Noch keine Hooks. Zurück zu Fakten und erzeugen.</p>
             ) : (
@@ -962,6 +976,22 @@ export function LongformStudio() {
         </section>
       ) : null}
     </div>
+  )
+}
+
+function HookHinweisFeld({ wert, onChange }: { wert: string; onChange: (wert: string) => void }) {
+  return (
+    <label className="block text-sm text-[var(--app-text-muted)]">
+      So soll der Hook sein
+      <textarea
+        value={wert}
+        onChange={(e) => onChange(e.target.value.slice(0, 2000))}
+        rows={3}
+        maxLength={2000}
+        placeholder="z. B. kalt mit der Rendite starten, keine Frage, maximal drei Sätze, Micron gegen den Speicherzyklus."
+        className={`${LF_FELD} mt-1`}
+      />
+    </label>
   )
 }
 

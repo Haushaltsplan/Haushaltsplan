@@ -322,6 +322,8 @@ export type LongformVarianten = {
 export type LongformProjektZustand = {
   version: 1
   thema: string
+  /** Freitext, wie der Hook klingen soll. Geht in die Hook-Vorschläge und in den Hook-Abschnitt. */
+  hookHinweis?: string
   faktenblatt: LongformFaktenblatt
   quellen: LongformQuelle[]
   hooks: LongformHookVorschlag[] | null

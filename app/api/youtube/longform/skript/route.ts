@@ -60,6 +60,7 @@ export async function POST(req: Request) {
     if (!p) return { ok: false as const, fehler: 'Projekt nicht gefunden.' }
     let z = p.zustand
     if (typeof body.thema === 'string') z = { ...z, thema: body.thema }
+    if (typeof body.hookHinweis === 'string') z = { ...z, hookHinweis: body.hookHinweis.slice(0, 2000) }
     if (body.denkstufe === 'low' || body.denkstufe === 'medium' || body.denkstufe === 'high') z = { ...z, denkstufe: body.denkstufe }
 
     try {

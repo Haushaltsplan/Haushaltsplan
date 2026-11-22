@@ -227,6 +227,9 @@ export async function erzeugeHooks(opts: {
     kontext(fb, opts.zustand.thema),
     `ALLOWED HOOK TYPES (pick three different ones that the data genuinely supports):\n${hookKatalogFuerPrompt(opts.gesperrt)}`,
     opts.fruehereLeitfragen.length ? `GUIDING QUESTIONS OF RECENT VIDEOS (do not reuse their angle or wording):\n${opts.fruehereLeitfragen.map((q) => `- ${q}`).join('\n')}` : '',
+    opts.zustand.hookHinweis?.trim()
+      ? `CREATOR NOTES FOR THE OPENING (follow these for angle, tone and shape. They do not add facts. If a note asks for a number that is not in the fact sheet, leave that number out):\n${opts.zustand.hookHinweis.trim()}`
+      : '',
     `TASK: Propose exactly 3 openings for this video. Each has a guiding question (leitfrage, ENGLISH) that the whole video will answer at the end, and 2 to 4 spoken ENGLISH sentences (about 20 to 30 seconds).
 The opening must feel like a cold open / trailer: first line hits hard, create an open loop, never reveal the final verdict. No greeting, no channel name, no "in this video". Spoken text and leitfrage: English only.
 begruendung: one German sentence for the creator (studio only) explaining why this angle fits the data.`,
@@ -320,7 +323,10 @@ export async function erzeugeSkript(opts: {
     kontext(fb, z.thema),
     `CHOSEN OPENING (type ${opts.hook.typ}):\nGuiding question: ${opts.hook.leitfrage}\n${opts.hook.saetze.map((s) => `- ${s.text} [${s.faktIds.join(', ')}]`).join('\n')}`,
     `PREFERRED HOOK SCENE: ${z.varianten.hookSzene}`,
-    `TASK: Write only this section. ${opts.nur && opts.nur !== 'fazit' ? 'Keep the guiding question alive without answering it.' : opts.nur === 'fazit' ? 'This is the final section. Do not write the verdict sentence.' : 'Keep the guiding question alive without answering it.'}\n- ${abschnittAuftrag(opts.nur ?? 'hook', fb)}
+    (opts.nur ?? 'hook') === 'hook' && z.hookHinweis?.trim()
+      ? `CREATOR NOTES FOR THIS OPENING (shape the spoken lines to these notes. Every number still needs a fact id. Leave out any number the notes ask for that is not in the fact sheet):\n${z.hookHinweis.trim()}`
+      : '',
+    `TASK: Write only this section. ${opts.nur && opts.nur !== 'fazit' ? 'Keep the guiding question alive without answering it.' : opts.nur === 'fazit' ? 'This is the final section. Do not write the verdict sentence.' : 'Keep the guiding question alive without answering it.'}\n- ${abschnittAuftrag(opts.nur ?? 'hook', fb)}${(opts.nur ?? 'hook') === 'hook' && z.hookHinweis?.trim() ? ' The creator notes outrank keeping the opening word for word: keep its angle, change the lines so the notes are met.' : ''}
 For every sentence choose the scene that best shows what is being said. Consecutive sentences may share a scene. For moat: change visuals / insert scene bild about every 20–25 seconds. For chart10k: keep ONE unbroken chart sequence (no mid-chapter bild). One core number per sentence; faktIds + betonung must match that spoken number so on-screen HUD syncs with the voice. Every bild / hook_bild sentence MUST include a concrete English bildWunsch (image brief a human can search or shoot).
 Never cite a hook.* fact in any section. When a sentence names rival companies, set konkurrenten to those exact spoken names, at most four, and repeat that same list on the following sentences while you are still talking about them. Otherwise leave konkurrenten empty. Do not add a company you do not say.
 kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks in later videos).`,
