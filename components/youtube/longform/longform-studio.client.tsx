@@ -7,7 +7,6 @@ import { HOOK_KATALOG } from '@/lib/youtube/longform/longform-abwechslung'
 import type { LongformMusikTrack } from '@/lib/youtube/longform/longform-musik'
 import { baueAnalyseProps } from '@/lib/youtube/longform/longform-props'
 import { rendereAktienAnalyseImBrowser, rendereZusammenschnittImBrowser } from '@/lib/youtube/longform/longform-render-web'
-import { aboStartMs } from '@/lib/youtube/longform/longform-zusammenschnitt'
 import {
   LONGFORM_ABSCHNITTE,
   LONGFORM_ABSCHNITT_TITEL,
@@ -78,6 +77,27 @@ function videoDauerMs(file: File): Promise<number> {
     }
     v.src = url
   })
+}
+
+/** Frames im fertigen Film vor diesem Kapitel. Hochgeladene Datei zählt, sonst die Länge, die der Export hätte. */
+function filmStartFuerKapitel(zustand: LongformProjektZustand, abschnittId: LongformAbschnittId, katalog: LongformMusikTrack[]): number | null {
+  const skript = zustand.skript
+  if (!skript) return null
+  let frames = 0
+  for (const id of LONGFORM_ABSCHNITTE) {
+    if (id === abschnittId) return frames
+    const datei = zustand.kapitelDateien?.[id]
+    if (datei?.dauerMs) {
+      frames += Math.round((datei.dauerMs / 1000) * LONG_FPS)
+      continue
+    }
+    const abschnitt = skript.abschnitte.find((a) => a.id === id)
+    if (!abschnitt?.saetze.length) return null
+    const props = baueAnalyseProps({ ...zustand, skript: { ...skript, abschnitte: [abschnitt] } }, katalog)
+    if (!props) return null
+    frames += berechneLongTimeline(props).durationInFrames
+  }
+  return frames
 }
 
 function formatDauer(ms: number): string {
@@ -364,8 +384,11 @@ export function LongformStudio() {
       if (abschnitt.saetze.some((s) => !frisch.projekt.zustand.stimme.saetze[s.id]?.aktiv)) {
         throw new Error('Erst alle Sätze dieses Kapitels sprechen.')
       }
-      const props = baueAnalyseProps({ ...frisch.projekt.zustand, skript: { ...skript, abschnitte: [abschnitt] } }, katalog)
-      if (!props) throw new Error('Kapitel lässt sich nicht bauen.')
+      const roh = baueAnalyseProps({ ...frisch.projekt.zustand, skript: { ...skript, abschnitte: [abschnitt] } }, katalog)
+      if (!roh) throw new Error('Kapitel lässt sich nicht bauen.')
+      const start = filmStartFuerKapitel(frisch.projekt.zustand, abschnittId, katalog)
+      const props = { ...roh, filmStartFrame: start ?? -1 }
+      const hatAbo = berechneLongTimeline(props).abo != null
       const ticker = frisch.projekt.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'LF'
       const dateiname = `${ticker}-${abschnittId}.mp4`
       setRenderId(abschnittId)
@@ -376,7 +399,13 @@ export function LongformStudio() {
         })
         speichereDatei(blob, dateiname)
         setRenderProzent(100)
-        toast.success(`${dateiname} heruntergeladen. Prüf die Datei, dann lad sie hier hoch.`)
+        toast.success(
+          hatAbo
+            ? `${dateiname} heruntergeladen. Die Like-und-Abo-Animation steckt in dieser Datei.`
+            : start == null
+              ? `${dateiname} heruntergeladen. Die Abo-Animation fehlt, weil ein früheres Kapitel noch keine Länge hat.`
+              : `${dateiname} heruntergeladen. Prüf die Datei, dann lad sie hier hoch.`,
+        )
       } finally {
         setRenderId(null)
       }
@@ -429,36 +458,17 @@ export function LongformStudio() {
       if (fehlt.length) throw new Error(`Es fehlt noch: ${fehlt.map((id) => LONGFORM_ABSCHNITT_TITEL[id]).join(', ')}.`)
       const teile = LONGFORM_ABSCHNITTE.map((id) => {
         const datei = stand.kapitelDateien?.[id]
-        const abschnitt = stand.skript?.abschnitte.find((a) => a.id === id)
-        if (!datei?.url || !abschnitt || !stand.skript) throw new Error('Kapiteldatei fehlt.')
-        const props = baueAnalyseProps({ ...stand, skript: { ...stand.skript, abschnitte: [abschnitt] } }, katalog)
-        const timeline = props ? berechneLongTimeline(props) : null
-        const sollMs = timeline ? (timeline.durationInFrames / LONG_FPS) * 1000 : 0
-        const passt = timeline != null && Math.abs(datei.dauerMs - sollMs) < 800
-        return {
-          src: datei.url,
-          dauerMs: datei.dauerMs,
-          schnitteMs: passt ? timeline.saetze.map((s) => (s.from / LONG_FPS) * 1000) : [0],
-        }
+        if (!datei?.url) throw new Error('Kapiteldatei fehlt.')
+        return { src: datei.url, dauerMs: datei.dauerMs }
       })
-      const start = aboStartMs(teile)
       const ticker = frisch.projekt.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'LF'
       setRenderProzent(0)
-      const blob = await rendereZusammenschnittImBrowser(
-        {
-          teile: teile.map(({ src, dauerMs }) => ({ src, dauerMs })),
-          aboFromMs: start,
-          aboText: stand.varianten.aboText,
-          akzent: stand.varianten.akzent,
-        },
-        (p) => {
-          if (Number.isFinite(p)) setRenderProzent(Math.max(0, Math.min(100, Math.round(p * 100))))
-        },
-      )
+      const blob = await rendereZusammenschnittImBrowser({ teile }, (p) => {
+        if (Number.isFinite(p)) setRenderProzent(Math.max(0, Math.min(100, Math.round(p * 100))))
+      })
       speichereDatei(blob, `${ticker}-LF.mp4`)
       setRenderProzent(100)
-      if (start == null) toast('Zwischen Minute 4 und 5 liegt keine Satzgrenze. Der Film hat keine Abo-Karte.')
-      else toast.success(`${ticker}-LF.mp4 heruntergeladen.`)
+      toast.success(`${ticker}-LF.mp4 heruntergeladen.`)
     })
 
   const loeschen = () =>
@@ -475,7 +485,10 @@ export function LongformStudio() {
     if (!z?.skript || !naechstesKapitel) return null
     const abschnitt = z.skript.abschnitte.find((a) => a.id === naechstesKapitel)
     if (!abschnitt?.saetze.length) return null
-    return baueAnalyseProps({ ...z, skript: { ...z.skript, abschnitte: [abschnitt] } }, katalog)
+    const props = baueAnalyseProps({ ...z, skript: { ...z.skript, abschnitte: [abschnitt] } }, katalog)
+    if (!props) return null
+    const start = filmStartFuerKapitel(z, naechstesKapitel, katalog)
+    return { ...props, filmStartFrame: start ?? -1 }
   }, [z, naechstesKapitel, katalog])
 
   const kapitelSchreiben = () =>
@@ -936,7 +949,7 @@ export function LongformStudio() {
           </div>
           <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
             <p className="text-sm text-[var(--app-text-muted)]">
-              Lade jedes Kapitel als MP4, prüf die Datei, und lad sie danach hier hoch. Der Schlussfilm legt nur diese Dateien aneinander. Stimme und Bilder werden nicht neu erzeugt. Zwischen Minute 4 und 5 kommt die Abo-Karte auf eine Satzgrenze, die Stimme läuft weiter.
+              Lade jedes Kapitel als MP4, prüf die Datei, und lad sie danach hier hoch. Der Schlussfilm legt nur diese Dateien aneinander. Stimme und Bilder werden nicht neu erzeugt. Die Like-und-Abo-Animation steckt in dem Kapitel, durch das Minute 4 bis 5 des ganzen Films läuft.
             </p>
             <p className="text-sm text-[var(--app-text-muted)]">
               Musik und Disclosure stecken in der Kapiteldatei. Stell sie ein, bevor du das Kapitel lädst. Das Fazit erst laden, wenn die Disclosure gewählt ist.

@@ -164,7 +164,7 @@ export async function rendereAktienAnalyseImBrowser(
   }
 }
 
-/** Schlussfilm aus den Kapiteldateien. Die Kapitel werden nicht neu gezeichnet, nur abgespielt und die Abo-Karte darübergelegt. */
+/** Schlussfilm aus den Kapiteldateien. Die Dateien werden nur aneinandergelegt. */
 export async function rendereZusammenschnittImBrowser(
   eingabe: ZusammenschnittProps,
   onProgress?: (fortschritt: number) => void,
@@ -186,7 +186,7 @@ export async function rendereZusammenschnittImBrowser(
     eingabe.teile.map(async (t) => ({ ...t, src: (await alsBlobUrl(t.src)) ?? t.src })),
   )
   const props: ZusammenschnittProps = { ...eingabe, teile }
-  const dauer = zusammenschnittDauer(teile, eingabe.aboFromMs)
+  const dauer = zusammenschnittDauer(teile)
   try {
     const { getBlob } = await renderMediaOnWeb({
       composition: {

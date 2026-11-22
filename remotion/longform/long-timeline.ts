@@ -158,7 +158,15 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
     bloecke[0].from = 0
   }
 
-  const grenze = saetze.find((z, i) => i > 0 && z.from >= MINUTE_4 && z.from < MINUTE_5)
+  const versatz = p.filmStartFrame
+  const grenze =
+    versatz != null && versatz < 0
+      ? undefined
+      : saetze.find((z, i) => {
+          if (versatz == null && i === 0) return false
+          const abs = z.from + (versatz ?? 0)
+          return abs >= MINUTE_4 && abs < MINUTE_5
+        })
   const abo = grenze ? { from: grenze.from, dauer: LONG_ABO_DAUER } : null
 
   return { durationInFrames, saetze, bloecke, bumper, abschnitte, sprechen, abo, disclosure }

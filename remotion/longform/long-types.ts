@@ -59,6 +59,11 @@ export type AktienAnalyseProps = {
   hookKarten: { wert: string; label: string }[]
   /** Dieselbe Basiszeile auf jedem Einstiegsfoto. */
   hookBasis: { marketCap: string | null; wkn: string | null; isin: string | null }
+  /**
+   * Frames, die im fertigen Film vor diesem Kapitel liegen.
+   * null = die Sätze sind schon der ganze Film. −1 = Position unbekannt, keine Abo-Karte.
+   */
+  filmStartFrame?: number | null
 }
 
 export const AKTIEN_ANALYSE_DEFAULT_PROPS: AktienAnalyseProps = {
