@@ -96,15 +96,13 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
   p.saetze.forEach((s, index) => {
     if (s.abschnittId !== aktuell) {
       if (abschnitte.length) abschnitte[abschnitte.length - 1]!.bis = f
-      const ersterAbschnitt = aktuell == null
       aktuell = s.abschnittId
-      // Allein gerendertes Zahlen-Kapitel beginnt auf dem Chart. Die Titelkarte wäre dort der erste Frame.
-      if (s.abschnittId !== 'hook' && !(ersterAbschnitt && s.abschnittId === 'zahlen')) {
+      if (s.abschnittId !== 'hook') {
         bumper.push({ abschnittId: s.abschnittId, from: f, dauer: BUMPER, nummer: kapitelNummer(s.abschnittId) })
         abschnitte.push({ id: s.abschnittId, from: f, bis: f })
         f += BUMPER
       } else {
-        abschnitte.push({ id: s.abschnittId, from: ersterAbschnitt ? 0 : f, bis: f })
+        abschnitte.push({ id: s.abschnittId, from: 0, bis: f })
       }
     }
     const dauer = satzDauerFrames(s)

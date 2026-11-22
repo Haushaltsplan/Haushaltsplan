@@ -52,7 +52,46 @@ export function fundamentaldatenFingerprint(p: FundamentaldatenPaket): string {
     ek: serie('eigenkapital'),
     zeilen: p.zeilen.length,
     roiic: p.keyMetrics.find((m) => m.id === 'incremental_roic')?.zahl ?? null,
+    innenluecke: umsatzHatInnenluecke(p),
   })
+}
+
+/**
+ * Kalenderjahr zwischen dem ersten und letzten Umsatzjahr ohne Zahl.
+ * Randjahre ohne Umsatz zählen nicht — ein leeres Startjahr ist kein Loch.
+ * Quartalsreihen bleiben außen vor: dort ist jedes Jahr mehrfach belegt.
+ */
+export function umsatzHatInnenluecke(p: Pick<FundamentaldatenPaket, 'perioden' | 'zeilen' | 'frequenz'>): boolean {
+  if (p.frequenz === 'quartal') return false
+  const z = p.zeilen.find((r) => r.id === 'umsatz')
+  if (!z) return false
+  const jahre = new Map<number, number | null>()
+  for (const per of p.perioden) {
+    if (per.istLtm || per.istNtm || per.istSchaetzung) continue
+    const m = /^(\d{4})-\d{2}-\d{2}$/.exec(per.iso)
+    if (!m) continue
+    const jahr = Number(m[1])
+    const v = z.werte[per.iso]
+    const prev = jahre.get(jahr)
+    if (v != null && Number.isFinite(v)) jahre.set(jahr, v)
+    else if (prev == null) jahre.set(jahr, null)
+  }
+  const mitZahl = [...jahre.entries()].filter(([, v]) => v != null).map(([y]) => y)
+  if (mitZahl.length < 2) return false
+  const von = Math.min(...mitZahl)
+  const bis = Math.max(...mitZahl)
+  for (let y = von; y <= bis; y++) {
+    const v = jahre.get(y)
+    if (v == null || !Number.isFinite(v)) return true
+  }
+  return false
+}
+
+/** Caches vor dem ±16-Tage-Stichtag können ein Geschäftsjahr verlieren (MU FY2018/FY2019). */
+const UMSATZ_STICHTAG_FIX_MS = Date.parse('2026-11-22T20:53:00Z')
+
+export function cacheBrauchtUmsatzLueckenNachzug(treffer: PaketCacheTreffer): boolean {
+  return treffer.aktualisiertAm < UMSATZ_STICHTAG_FIX_MS && umsatzHatInnenluecke(treffer.paket)
 }
 
 /** Anzahl historischer Werte einer Zeile (ohne TTM/Schätzung). */

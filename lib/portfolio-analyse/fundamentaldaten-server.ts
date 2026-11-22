@@ -75,6 +75,7 @@ import { ergaenzeWorkingCapitalTageZeilen } from '@/lib/portfolio-analyse/fundam
 import { ladeIncrementalRoic } from '@/lib/portfolio-analyse/incremental-roic-server'
 import { ergaenzeHistorischeMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-historische-multiples-server'
 import {
+  cacheBrauchtUmsatzLueckenNachzug,
   fundamentaldatenCacheKey,
   fundamentaldatenFingerprint,
   ladeFundamentaldatenPaketCacheFuerAnfrage,
@@ -973,8 +974,10 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   const cached = await ladeFundamentaldatenPaketCacheFuerAnfrage(anfrage)
 
   if (cached && modus === 'nur-lesen') return paketMitKorrigiertemFwdWachstum(cached.paket)
+  // Alte Pakete mit Loch in der Umsatzhistorie (Stichtag driftet um ein paar Tage, z. B. MU 2018/2019) einmal neu laden.
+  const lueckeNachziehen = cached != null && modus !== 'nur-lesen' && cacheBrauchtUmsatzLueckenNachzug(cached)
   // Seite/Coach: gespeichertes Paket sofort — nicht erst scrapen.
-  if (cached && modus !== 'erneuern') {
+  if (cached && modus !== 'erneuern' && !lueckeNachziehen) {
     console.info(
       `[fundamental-cache] hit ${cacheKey || anfrage.isin} alter=${Math.round((Date.now() - cached.aktualisiertAm) / 60000)}min`,
     )

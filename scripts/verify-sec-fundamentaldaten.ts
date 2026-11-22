@@ -13,6 +13,7 @@ import {
 import { baueKontextWerte } from '../lib/portfolio-analyse/fundamentaldaten-kontext-werte'
 import { historischeWerteAusZeile, werteGleicherStichtag } from '../lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import { FUNDAMENTAL_TTM_KEY } from '../lib/portfolio-analyse/fundamentaldaten-types'
+import { umsatzHatInnenluecke } from '../lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
 import {
   ladeMacrotrendsFundamentaldaten,
   loeseMacrotrendsIdent,
@@ -35,6 +36,7 @@ const TICKER = [
   { t: 'MA', name: 'Mastercard', erwartetSec: true },
   { t: 'MSFT', name: 'Microsoft', erwartetSec: true },
   { t: 'ASML', name: 'ASML', erwartetSec: true },
+  { t: 'MU', name: 'Micron', erwartetSec: true },
 ]
 
 function zaehle(zeile: { werte: Record<string, number | null> } | undefined): number {
@@ -71,6 +73,47 @@ function pruefeUmsatzNettoHelfer(): number {
     console.log('FAIL EBIT-Glaettung Jahr 3 bleibt brutto', serie[2])
     fail++
   }
+  const luecke = umsatzHatInnenluecke({
+    frequenz: 'jahr',
+    perioden: [
+      { iso: '2017-08-31', label: '2017' },
+      { iso: '2018-08-31', label: '2018' },
+      { iso: '2020-09-03', label: '2020' },
+    ],
+    zeilen: [
+      {
+        id: 'umsatz',
+        label: 'Umsatz',
+        gruppe: 'finanzdaten',
+        einheit: 'waehrung_usd_mio',
+        werte: { '2017-08-31': 20322, '2018-08-31': null, '2020-09-03': 21435 },
+      },
+    ],
+  })
+  if (!luecke) {
+    console.log('FAIL Innenlücke 2018/2019 nicht erkannt')
+    fail++
+  }
+  const dicht = umsatzHatInnenluecke({
+    frequenz: 'jahr',
+    perioden: [
+      { iso: '2018-08-31', label: '2018' },
+      { iso: '2019-08-30', label: '2019' },
+    ],
+    zeilen: [
+      {
+        id: 'umsatz',
+        label: 'Umsatz',
+        gruppe: 'finanzdaten',
+        einheit: 'waehrung_usd_mio',
+        werte: { '2018-08-31': 30391, '2019-08-30': 23406 },
+      },
+    ],
+  })
+  if (dicht) {
+    console.log('FAIL dichte Jahre als Lücke gemeldet')
+    fail++
+  }
   return fail
 }
 
@@ -99,6 +142,17 @@ async function main() {
     if (x.t === 'MA' && u2017 != null && u2018 != null && u2018 / u2017 > 1.35) {
       console.log('FAIL MA 2018/2017 Umsatz-Sprung', u2017, u2018)
       fail++
+    }
+    const u2019 = fyWerte.find(([k]) => k.startsWith('2019'))?.[1]
+    if (x.t === 'MU') {
+      if (u2018 == null || u2018 < 28_000 || u2018 > 33_000) {
+        console.log('FAIL MU 2018 Umsatz fehlt oder falsch', u2018)
+        fail++
+      }
+      if (u2019 == null || u2019 < 21_000 || u2019 > 26_000) {
+        console.log('FAIL MU 2019 Umsatz fehlt oder falsch', u2019)
+        fail++
+      }
     }
     const eps = roh?.zeilen.find((z) => z.id === 'eps')
     const ek = roh?.zeilen.find((z) => z.id === 'eigenkapital')
