@@ -41,8 +41,6 @@ const VORLAUF = 3
 const LUECKE = 0
 /** Kapitelkarte 1,5 Sekunden, mit Ein- und Ausblendung und Standzeit dazwischen. */
 const BUMPER = 45
-const MINUTE_4 = 4 * 60 * LONG_FPS
-const MINUTE_5 = 5 * 60 * LONG_FPS
 export const LONG_ABSPANN = 75
 export const LONG_ABO_DAUER = 150
 
@@ -158,16 +156,8 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
     bloecke[0].from = 0
   }
 
-  const versatz = p.filmStartFrame
-  const grenze =
-    versatz != null && versatz < 0
-      ? undefined
-      : saetze.find((z, i) => {
-          if (versatz == null && i === 0) return false
-          const abs = z.from + (versatz ?? 0)
-          return abs >= MINUTE_4 && abs < MINUTE_5
-        })
-  const abo = grenze ? { from: grenze.from, dauer: LONG_ABO_DAUER } : null
+  const like = saetze.find((z) => p.saetze[z.index]?.visual.szene === 'abo_karte')
+  const abo = like ? { from: like.from, dauer: Math.max(like.dauer, LONG_ABO_DAUER) } : null
 
   return { durationInFrames, saetze, bloecke, bumper, abschnitte, sprechen, abo, disclosure }
 }

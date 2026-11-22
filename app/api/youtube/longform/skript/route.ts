@@ -11,7 +11,7 @@ import { gesperrteHookTypen } from '@/lib/youtube/longform/longform-abwechslung'
 import { ladeProjekt, ladeVerlauf, mitUrls, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
 import { ergaenzeKapitelAusExport, ladeDokumente } from '@/lib/youtube/longform/longform-projekt-server'
 import { pruefeSkript } from '@/lib/youtube/longform/longform-pruefung'
-import { erzeugeHooks, erzeugeSkript, haengeSchlussAn, logosFuerKonkurrenten, pruefeBehauptungen, setzeFazit, ueberarbeite } from '@/lib/youtube/longform/longform-skript-server'
+import { erzeugeHooks, erzeugeSkript, haengeLikeAnMoat, haengeSchlussAn, logosFuerKonkurrenten, pruefeBehauptungen, setzeFazit, ueberarbeite } from '@/lib/youtube/longform/longform-skript-server'
 import {
   LONGFORM_ABSCHNITTE,
   type LongformAbschnittId,
@@ -161,6 +161,7 @@ export async function POST(req: Request) {
         default:
           return { ok: false as const, fehler: 'Unbekannte Aktion.' }
       }
+      if (z.skript) haengeLikeAnMoat(z.skript.abschnitte)
       await speichereProjekt(id, z)
       return { ok: true as const, zustand: await mitUrls(z) }
     } catch (e) {

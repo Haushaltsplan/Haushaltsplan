@@ -488,16 +488,41 @@ export function setzeFazit(abschnitte: LongformAbschnitt[], fb: LongformFaktenbl
 
 const SCHLUSS_SZENEN = new Set(['abo_karte', 'disclaimer', 'schluss'])
 
-/** Like, Disclaimer und Cheers gehören nur ans Fazit. An jedem früheren Kapitel fliegen sie raus. */
+export const LIKE_AM_MOAT = "If you've liked this so far, leave a like and subscribe for more stock analyses."
+
+function istSchlussSatz(abschnittId: LongformAbschnittId, szene: string, fokus: string | null | undefined): boolean {
+  if (abschnittId === 'burggraben' && szene === 'abo_karte') return false
+  return fokus === 'abo' || SCHLUSS_SZENEN.has(szene)
+}
+
+/** Like am Ende vom Moat bleibt. Disclaimer, Cheers und ein Like an anderen Kapiteln fliegen raus. */
 export function entferneSchlussVorFazit(abschnitte: LongformAbschnitt[]): boolean {
   let weg = false
   for (const a of abschnitte) {
     if (a.id === 'fazit') continue
     const vorher = a.saetze.length
-    a.saetze = a.saetze.filter((s) => s.visual.fokus !== 'abo' && !SCHLUSS_SZENEN.has(s.visual.szene))
+    a.saetze = a.saetze.filter((s) => !istSchlussSatz(a.id, s.visual.szene, s.visual.fokus))
     if (a.saetze.length !== vorher) weg = true
   }
   return weg
+}
+
+/** Gesprochener Like-Hinweis ans Ende vom Moat, solange das Fazit noch nicht existiert. */
+export function haengeLikeAnMoat(abschnitte: LongformAbschnitt[]) {
+  const moat = abschnitte.find((a) => a.id === 'burggraben')
+  if (!moat?.saetze.length) return
+  const fazitFertig = abschnitte.some((a) => a.id === 'fazit' && a.saetze.some((s) => s.visual.szene !== 'abo_karte'))
+  const alt = moat.saetze.find((s) => s.visual.szene === 'abo_karte' && s.text === LIKE_AM_MOAT)
+  moat.saetze = moat.saetze.filter((s) => s.visual.szene !== 'abo_karte')
+  if (fazitFertig) return
+  moat.saetze.push(
+    alt ?? {
+      id: neueSatzId('burggraben'),
+      text: LIKE_AM_MOAT,
+      faktIds: [],
+      visual: { szene: 'abo_karte', fokus: null, betonung: null, bildWunsch: null },
+    },
+  )
 }
 
 /** Like, gesprochener Disclaimer und Cheers ans Fazit. Solange das Fazit fehlt, nur entfernen. */

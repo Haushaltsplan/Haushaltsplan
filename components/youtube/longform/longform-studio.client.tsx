@@ -39,13 +39,15 @@ const SCHRITTE: { id: Schritt; label: string }[] = [
 
 const SCHLUSS_SZENEN = new Set(['abo_karte', 'disclaimer', 'schluss'])
 
-/** Like, Disclaimer und Cheers nur am Fazit. Am Moat und davor haben sie nichts zu suchen. */
+/** Disclaimer und Cheers nur am Fazit. Der Like-Satz am Ende vom Moat bleibt. */
 function ohneSchlussVorFazit(z: LongformProjektZustand): LongformProjektZustand {
   if (!z.skript) return z
   let weg = false
   const abschnitte = z.skript.abschnitte.map((a) => {
     if (a.id === 'fazit') return a
-    const saetze = a.saetze.filter((s) => s.visual.fokus !== 'abo' && !SCHLUSS_SZENEN.has(s.visual.szene))
+    const saetze = a.saetze.filter(
+      (s) => (a.id === 'burggraben' && s.visual.szene === 'abo_karte') || (s.visual.fokus !== 'abo' && !SCHLUSS_SZENEN.has(s.visual.szene)),
+    )
     if (saetze.length === a.saetze.length) return a
     weg = true
     return { ...a, saetze }
@@ -949,7 +951,7 @@ export function LongformStudio() {
           </div>
           <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
             <p className="text-sm text-[var(--app-text-muted)]">
-              Lade jedes Kapitel als MP4, prüf die Datei, und lad sie danach hier hoch. Der Schlussfilm legt nur diese Dateien aneinander. Stimme und Bilder werden nicht neu erzeugt. Die Like-und-Abo-Animation steckt in dem Kapitel, durch das Minute 4 bis 5 des ganzen Films läuft.
+              Lade jedes Kapitel als MP4, prüf die Datei, und lad sie danach hier hoch. Der Schlussfilm legt nur diese Dateien aneinander. Stimme und Bilder werden nicht neu erzeugt. Die Like-und-Abo-Animation liegt am Ende von The moat, zusammen mit dem gesprochenen Satz.
             </p>
             <p className="text-sm text-[var(--app-text-muted)]">
               Musik und Disclosure stecken in der Kapiteldatei. Stell sie ein, bevor du das Kapitel lädst. Das Fazit erst laden, wenn die Disclosure gewählt ist.
