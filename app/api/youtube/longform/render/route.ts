@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     )
   }
   const out = await jsonMitOwner(req, async () => {
-    let body: { id?: unknown; sfx?: unknown }
+    let body: { id?: unknown }
     try {
       body = (await req.json()) as typeof body
     } catch {
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     const p = typeof body.id === 'string' ? await ladeProjekt(body.id) : null
     if (!p) return { ok: false as const, fehler: 'Projekt nicht gefunden.' }
     const zustand = await mitUrls(p.zustand)
-    const props = baueAnalyseProps(zustand, await ladeMusikKatalog(), { sfx: body.sfx !== false })
+    const props = baueAnalyseProps(zustand, await ladeMusikKatalog(), { sfx: false })
     if (!props) return { ok: false as const, fehler: 'Noch kein Skript.' }
     const ohneStimme = props.saetze.filter((s) => !s.audioUrl).length
     if (ohneStimme) return { ok: false as const, fehler: `${ohneStimme} Sätze haben noch keine Stimme.` }

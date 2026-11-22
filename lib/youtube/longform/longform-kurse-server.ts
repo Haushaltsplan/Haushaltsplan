@@ -207,6 +207,8 @@ export async function ladeChart10k(
   }
   const letzter = punkte[punkte.length - 1]!
   const jahreIst = (Date.parse(ende) - Date.parse(start)) / (365.25 * 86_400_000)
+  const vomHoch = fallNachHoch(punkte)
+  const maxDd = dd && dd.pct < -5 ? { ...dd, pct: Math.round(dd.pct * 10) / 10 } : null
   return {
     startDatum: start,
     endDatum: ende,
@@ -216,10 +218,23 @@ export async function ladeChart10k(
     endwertSpy: letzter.spy,
     endwertSektor: letzter.sektor,
     sektorEtf: sektorSym && letzter.sektor != null ? sektorSym : null,
-    drawdown: dd && dd.pct < -5 ? { ...dd, pct: Math.round(dd.pct * 10) / 10 } : null,
+    drawdown: vomHoch ?? maxDd,
     waehrung: aktie.waehrung,
     jahre: Math.round(jahreIst * 10) / 10,
   }
+}
+
+/** Fall vom Hoch der gezeichneten Reihe zum tiefsten Punkt danach. Unter 12 % bleibt der maximale Drawdown. */
+function fallNachHoch(punkte: { d: string; aktie: number }[]): { hochDatum: string; tiefDatum: string; pct: number } | null {
+  if (punkte.length < 2) return null
+  let hi = 0
+  for (let i = 1; i < punkte.length; i++) if (punkte[i]!.aktie > punkte[hi]!.aktie) hi = i
+  let lo = hi
+  for (let i = hi + 1; i < punkte.length; i++) if (punkte[i]!.aktie < punkte[lo]!.aktie) lo = i
+  if (lo <= hi || punkte[hi]!.aktie <= 0) return null
+  const prozent = (punkte[lo]!.aktie / punkte[hi]!.aktie - 1) * 100
+  if (prozent > -12) return null
+  return { hochDatum: punkte[hi]!.d, tiefDatum: punkte[lo]!.d, pct: Math.round(prozent * 10) / 10 }
 }
 
 function isoWoche(d: string): string {

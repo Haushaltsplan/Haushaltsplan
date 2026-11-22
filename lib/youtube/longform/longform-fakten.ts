@@ -135,7 +135,7 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
       }, s)
     }
     if (c.drawdown) {
-      add({ id: 'k10.drawdown', label: 'Worst drop from a high', wert: c.drawdown.pct, text: pct(c.drawdown.pct), einheit: 'pct' }, s)
+      add({ id: 'k10.drawdown', label: 'Drop from the high', wert: c.drawdown.pct, text: pct(c.drawdown.pct), einheit: 'pct' }, s)
       add({ id: 'k10.drawdown_hoch', label: 'Drop started', wert: null, text: monatJahr(c.drawdown.hochDatum), einheit: 'text' }, s)
       add({ id: 'k10.drawdown_tief', label: 'Bottom', wert: null, text: monatJahr(c.drawdown.tiefDatum), einheit: 'text' }, s)
       const tiefWert = c.punkte.reduce((m, p) => (p.d <= c.drawdown!.tiefDatum ? p.aktie : m), c.punkte[0]?.aktie ?? 0)

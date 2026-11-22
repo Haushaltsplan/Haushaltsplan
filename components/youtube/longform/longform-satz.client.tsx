@@ -23,10 +23,14 @@ const SZENE_LABEL: Record<(typeof LONGFORM_SZENEN)[number], string> = {
   moat_geschaeft: 'Moat · Geschäft',
   moat_pfeiler: 'Moat · Pfeiler',
   moat_scorecard: 'Moat · Scorecard',
+  moat_finanzen: 'Finanzen',
   moat_segmente: 'Moat · Umsatzmix',
   zahl_reihe: 'Zahlen · Jahresreihe',
   bild: 'Foto / Clip',
   titel_karte: 'Titelkarte',
+  abo_karte: 'Like und Abo',
+  disclaimer: 'Disclaimer',
+  schluss: 'Cheers',
 }
 
 const HINWEIS_FARBE: Record<string, string> = {

@@ -181,10 +181,14 @@ export const LONGFORM_SZENEN = [
   'moat_geschaeft',
   'moat_pfeiler',
   'moat_scorecard',
+  'moat_finanzen',
   'moat_segmente',
   'zahl_reihe',
   'bild',
   'titel_karte',
+  'abo_karte',
+  'disclaimer',
+  'schluss',
 ] as const
 export type LongformSzenenTyp = (typeof LONGFORM_SZENEN)[number]
 

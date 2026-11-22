@@ -93,7 +93,7 @@ export const AKTIEN_ANALYSE_DEFAULT_PROPS: AktienAnalyseProps = {
     },
   ],
   musik: { aktiv: false, pegel: 50, tracks: [] },
-  sfx: true,
+  sfx: false,
   abschnittTitel: {},
   kanalName: 'DailyMoat',
   kanalLogoUrl: '/youtube-longform/dailymoat.jpg',

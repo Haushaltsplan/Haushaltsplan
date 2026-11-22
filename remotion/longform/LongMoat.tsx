@@ -19,6 +19,37 @@ import {
   mitAlpha,
 } from './long-look'
 
+function stichpunkte(begruendung: string, risiko: string): string[] {
+  const teile = [begruendung, risiko]
+    .map((t) => englischOderLeer(t))
+    .filter((t): t is string => Boolean(t))
+    .flatMap((t) => t.split(/(?<=[,.;])\s+/))
+    .map((t) => t.replace(/[.,;]+$/g, '').trim())
+    .filter((t) => t.length > 8)
+  return teile.slice(0, 3).map((t) => (t.length > 72 ? `${t.slice(0, 69).trim()}…` : t))
+}
+
+function istKuerzel(name: string): boolean {
+  return /^[A-Z][A-Z0-9]{1,7}$/.test(name.trim())
+}
+
+function beifuegung(name: string, satz: string): string | null {
+  if (!istKuerzel(name)) return null
+  const re = new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b\\s*,\\s*([^.]{8,90})`, 'i')
+  const m = satz.match(re)
+  const g = m?.[1]?.trim().replace(/[.,;]+$/g, '')
+  if (!g || /\d/.test(g)) return null
+  return g.length > 64 ? `${g.slice(0, 61).trim()}…` : g
+}
+
+function glossAusSkript(sp: SzeneProps, name: string): string | null {
+  for (const s of sp.p.saetze) {
+    const g = beifuegung(name, s.text)
+    if (g) return g
+  }
+  return null
+}
+
 function farbeFuerScore(score: number, akzent: string): string {
   if (score >= 7) return LONG_GRUEN
   if (score <= 4) return LONG_ROT
@@ -74,6 +105,9 @@ function Geschaeft({ sp }: { sp: SzeneProps }) {
             <div key={s.name} style={{ flex: 1, borderTop: `3px solid ${k === 0 ? p.varianten.akzent : LONG_LINIE}`, paddingTop: 22, opacity: ein(frame, 24 + k * 8, 14) }}>
               <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 800, fontSize: 64, color: LONG_TEXT }}>{pct(s.anteilPct)}</div>
               <div style={{ fontFamily: LONG_SANS, fontWeight: 600, fontSize: 28, color: LONG_MUTED, marginTop: 6 }}>{s.name}</div>
+              {glossAusSkript(sp, s.name) ? (
+                <div style={{ fontFamily: LONG_SERIF_KURSIV, fontSize: 22, color: LONG_MUTED, marginTop: 8, lineHeight: 1.3 }}>{glossAusSkript(sp, s.name)}</div>
+              ) : null}
             </div>
           ))}
         </div>
@@ -92,33 +126,32 @@ function Pfeiler({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   if (nur) {
     const farbe = farbeFuerScore(nur.score, akzent)
     const f = ein(frame, 8, 18)
+    const punkte = stichpunkte(nur.begruendung, nur.risiko)
     return (
       <AbsoluteFill style={{ justifyContent: 'center', paddingLeft: LONG_RAND_X, paddingRight: LONG_RAND_X }}>
-        <div style={{ fontFamily: LONG_MONO, fontSize: 22, letterSpacing: 4, color: LONG_MUTED, opacity: ein(frame, 0, 12) }}>THE MOAT</div>
-        <div style={{ fontFamily: LONG_SERIF, fontSize: 92, color: LONG_TEXT, marginTop: 12, opacity: ein(frame, 4, 14) }}>{nur.label}</div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginTop: 28 }}>
-          <span style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 180, color: LONG_TEXT, lineHeight: 0.9 }}>{nur.score}</span>
-          <span style={{ fontFamily: LONG_MONO, fontSize: 36, color: LONG_MUTED }}>/ 10</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 80 }}>
+          <div style={{ flex: '0 0 820px' }}>
+            <div style={{ fontFamily: LONG_MONO, fontSize: 22, letterSpacing: 4, color: LONG_MUTED, opacity: ein(frame, 0, 12) }}>THE MOAT</div>
+            <div style={{ fontFamily: LONG_SERIF, fontSize: 84, color: LONG_TEXT, marginTop: 12, opacity: ein(frame, 4, 14) }}>{nur.label}</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 16, marginTop: 24 }}>
+              <span style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 160, color: LONG_TEXT, lineHeight: 0.9 }}>{nur.score}</span>
+              <span style={{ fontFamily: LONG_MONO, fontSize: 36, color: LONG_MUTED }}>/ 10</span>
+            </div>
+            <div style={{ marginTop: 32, height: 10, width: 640, borderRadius: 5, background: 'rgba(243,241,236,0.08)' }}>
+              <div style={{ width: `${nur.score * 10 * f}%`, height: '100%', borderRadius: 5, background: farbe }} />
+            </div>
+          </div>
+          {punkte.length ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 28, opacity: ein(frame, 14, 16) }}>
+              {punkte.map((zeile) => (
+                <div key={zeile} style={{ display: 'flex', gap: 18, alignItems: 'flex-start' }}>
+                  <div style={{ width: 10, height: 10, borderRadius: 5, background: farbe, marginTop: 14, flexShrink: 0 }} />
+                  <div style={{ fontFamily: LONG_SERIF, fontSize: 36, lineHeight: 1.25, color: LONG_TEXT }}>{zeile}</div>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
-        <div style={{ marginTop: 36, height: 10, width: 720, borderRadius: 5, background: 'rgba(243,241,236,0.08)' }}>
-          <div style={{ width: `${nur.score * 10 * f}%`, height: '100%', borderRadius: 5, background: farbe }} />
-        </div>
-        {(() => {
-          const zeile = englischOderLeer(nur.begruendung)
-          const risiko = englischOderLeer(nur.risiko)
-          const kurz = zeile && zeile.length > 140 ? `${zeile.slice(0, 137).trim()}…` : zeile
-          const risikoKurz = risiko && risiko.length > 140 ? `${risiko.slice(0, 137).trim()}…` : risiko
-          return (
-            <>
-              {kurz ? (
-                <div style={{ marginTop: 32, maxWidth: 980, fontFamily: LONG_SERIF_KURSIV, fontSize: 32, lineHeight: 1.35, color: LONG_MUTED }}>{kurz}</div>
-              ) : null}
-              {risikoKurz ? (
-                <div style={{ marginTop: 16, maxWidth: 980, fontFamily: LONG_SANS, fontWeight: 600, fontSize: 26, lineHeight: 1.35, color: LONG_MUTED }}>{risikoKurz}</div>
-              ) : null}
-            </>
-          )
-        })()}
       </AbsoluteFill>
     )
   }
@@ -126,9 +159,14 @@ function Pfeiler({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
 
   if (sp.p.varianten.moatLayout === 'balken') {
     return (
-      <AbsoluteFill>
-        <Ueberschrift titel="The moat, pillar by pillar" unter={`OVERALL ${m.score} / 10${englischOderLeer(m.urteil) ? ` · ${englischOderLeer(m.urteil)!.toUpperCase()}` : ''}`} frame={frame} />
-        <div style={{ position: 'absolute', left: LONG_RAND_X, right: LONG_RAND_X, top: 300, display: 'flex', flexDirection: 'column', gap: 34 }}>
+      <AbsoluteFill style={{ justifyContent: 'center', paddingLeft: LONG_RAND_X, paddingRight: LONG_RAND_X }}>
+        <div style={{ marginBottom: 48 }}>
+          <div style={{ fontFamily: LONG_SERIF, fontSize: 72, color: LONG_TEXT, opacity: ein(frame, 0, 16) }}>The moat, pillar by pillar</div>
+          <div style={{ fontFamily: LONG_MONO, fontSize: 24, letterSpacing: 1, color: LONG_MUTED, marginTop: 10, opacity: ein(frame, 6, 16) }}>
+            {`OVERALL ${m.score} / 10${englischOderLeer(m.urteil) ? ` · ${englischOderLeer(m.urteil)!.toUpperCase()}` : ''}`}
+          </div>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 34 }}>
           {m.pfeiler.map((x, k) => {
             const f = ein(frame, 14 + k * 9, 22)
             const dim = hatFokus && x.id !== fokus ? 0.35 : 1
@@ -149,19 +187,14 @@ function Pfeiler({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
 
   const spalten = m.pfeiler.length > 4 ? 3 : 2
   return (
-    <AbsoluteFill>
-      <Ueberschrift titel="Where the moat comes from" unter={`OVERALL ${m.score} / 10${englischOderLeer(m.urteil) ? ` · ${englischOderLeer(m.urteil)!.toUpperCase()}` : ''}`} frame={frame} />
-      <div
-        style={{
-          position: 'absolute',
-          left: LONG_RAND_X,
-          right: LONG_RAND_X,
-          top: 290,
-          display: 'grid',
-          gridTemplateColumns: `repeat(${spalten}, 1fr)`,
-          gap: 28,
-        }}
-      >
+    <AbsoluteFill style={{ justifyContent: 'center', paddingLeft: LONG_RAND_X, paddingRight: LONG_RAND_X }}>
+      <div style={{ marginBottom: 40 }}>
+        <div style={{ fontFamily: LONG_SERIF, fontSize: 72, color: LONG_TEXT, opacity: ein(frame, 0, 16) }}>Where the moat comes from</div>
+        <div style={{ fontFamily: LONG_MONO, fontSize: 24, letterSpacing: 1, color: LONG_MUTED, marginTop: 10, opacity: ein(frame, 6, 16) }}>
+          {`OVERALL ${m.score} / 10${englischOderLeer(m.urteil) ? ` · ${englischOderLeer(m.urteil)!.toUpperCase()}` : ''}`}
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${spalten}, 1fr)`, gap: 28 }}>
         {m.pfeiler.map((x, k) => {
           const o = ein(frame, 12 + k * 7, 14)
           const aktiv = hatFokus && x.id === fokus
@@ -196,69 +229,48 @@ function Pfeiler({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   )
 }
 
-/** Aufbau wie die Scorecard der App: Kopf mit Note, darunter Balken mit Marker und Wert. */
+/** Dieselben vier Pfeiler wie die Einzelkarte, Note von 10. Keine Rohkennzahl daneben. */
 function Scorecard({ sp }: { sp: SzeneProps }) {
   const frame = useCurrentFrame()
-  const sc = sp.p.burggraben
-  if (!sc) return null
+  const m = sp.p.moat
+  if (!m?.pfeiler.length) return null
   const akzent = sp.p.varianten.akzent
-  const balken = sc.balken
-    .filter((b) => englischOderLeer(b.label))
-    .map((b) => ({ ...b, wertText: englischOderLeer(b.wertText) ?? '–' }))
-    .filter((b) => b.position != null || b.wertText !== '–')
-    .slice(0, 8)
   return (
     <AbsoluteFill style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 980, background: LONG_PANEL, borderRadius: 28, padding: '44px 56px', border: `1px solid ${LONG_LINIE}`, opacity: ein(frame, 0, 16), transform: `scale(${0.96 + 0.04 * ein(frame, 0, 18)})` }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 34 }}>
+      <div style={{ width: 1080, background: LONG_PANEL, borderRadius: 28, padding: '44px 56px', border: `1px solid ${LONG_LINIE}`, opacity: ein(frame, 0, 16), transform: `scale(${0.96 + 0.04 * ein(frame, 0, 18)})` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 36 }}>
           <div>
-            <div style={{ fontFamily: LONG_SERIF, fontSize: 64, color: LONG_TEXT }}>{sc.titel}</div>
-            <div style={{ fontFamily: LONG_MONO, fontSize: 22, color: LONG_MUTED, letterSpacing: 1 }}>QUALITY SCORE 1–10</div>
+            <div style={{ fontFamily: LONG_SERIF, fontSize: 64, color: LONG_TEXT }}>Moat</div>
+            <div style={{ fontFamily: LONG_MONO, fontSize: 22, color: LONG_MUTED, letterSpacing: 1 }}>PILLARS OUT OF 10</div>
           </div>
-          {sc.score != null ? (
-            <div
-              style={{
-                width: 132,
-                height: 132,
-                borderRadius: 66,
-                border: `5px solid ${farbeFuerScore(sc.score, akzent)}`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontFamily: LONG_DISPLAY,
-                fontWeight: 900,
-                fontSize: 64,
-                color: LONG_TEXT,
-                opacity: ein(frame, 10 + balken.length * 6, 12),
-              }}
-            >
-              {sc.score}
-            </div>
-          ) : null}
+          <div
+            style={{
+              width: 132,
+              height: 132,
+              borderRadius: 66,
+              border: `5px solid ${farbeFuerScore(m.score, akzent)}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontFamily: LONG_DISPLAY,
+              fontWeight: 900,
+              fontSize: 64,
+              color: LONG_TEXT,
+            }}
+          >
+            {m.score}
+          </div>
         </div>
-        {balken.map((b, k) => {
+        {m.pfeiler.map((p, k) => {
           const f = ein(frame, 8 + k * 6, 18)
           return (
-            <div key={b.label} style={{ marginBottom: 24, opacity: ein(frame, 6 + k * 6, 10) }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: LONG_SANS, fontWeight: 600, fontSize: 26, color: LONG_TEXT, marginBottom: 10 }}>
-                <span>{b.label}</span>
-                <span style={{ fontFamily: LONG_MONO, color: LONG_MUTED }}>{b.wertText}</span>
+            <div key={p.id} style={{ marginBottom: 26, opacity: ein(frame, 6 + k * 6, 10) }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: LONG_SANS, fontWeight: 600, fontSize: 28, color: LONG_TEXT, marginBottom: 10 }}>
+                <span>{p.label}</span>
+                <span style={{ fontFamily: LONG_MONO, color: LONG_MUTED }}>{p.score} / 10</span>
               </div>
-              <div style={{ position: 'relative', height: 10, borderRadius: 5, background: `linear-gradient(to right, ${mitAlpha(LONG_ROT, 0.5)}, ${mitAlpha(akzent, 0.5)}, ${mitAlpha(LONG_GRUEN, 0.5)})` }}>
-                {b.position != null ? (
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: `calc(${b.position * 100 * f}% - 9px)`,
-                      top: -6,
-                      width: 18,
-                      height: 22,
-                      borderRadius: 5,
-                      background: LONG_TEXT,
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
-                    }}
-                  />
-                ) : null}
+              <div style={{ height: 12, borderRadius: 6, background: 'rgba(243,241,236,0.08)' }}>
+                <div style={{ width: `${p.score * 10 * f}%`, height: '100%', borderRadius: 6, background: farbeFuerScore(p.score, akzent) }} />
               </div>
             </div>
           )
@@ -268,14 +280,56 @@ function Scorecard({ sp }: { sp: SzeneProps }) {
   )
 }
 
+function Finanzen({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
+  const local = useCurrentFrame()
+  const frame = local + lauf.from
+  const i = aktiverSatz(sp, frame)
+  const satz = sp.p.saetze[i]!
+  const id = satz.faktIds.find((x) => x.startsWith('km.'))
+  const fakt = id ? sp.p.fakten[id] : null
+  const z = sp.t.saetze[i]!
+  const beton = (z.betonungFrame ?? z.from + 8) - sp.block.from
+  const fort = frame >= beton ? ein(frame, beton, 16) : 0
+  const bisher = lauf.saetze
+    .filter((k) => sp.t.saetze[k]!.from - sp.block.from <= frame)
+    .flatMap((k) => {
+      const fid = sp.p.saetze[k]!.faktIds.find((x) => x.startsWith('km.'))
+      const f = fid ? sp.p.fakten[fid] : null
+      return fid && f && fid !== id ? [{ id: fid, ...f }] : []
+    })
+  if (!fakt) return null
+  return (
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', paddingLeft: LONG_RAND_X, paddingRight: LONG_RAND_X }}>
+      <div style={{ width: 1200, textAlign: 'center' }}>
+        <div style={{ fontFamily: LONG_MONO, fontSize: 22, letterSpacing: 4, color: LONG_MUTED }}>{fakt.label.toUpperCase()}</div>
+        <div style={{ marginTop: 18, fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 168, lineHeight: 0.9, color: LONG_TEXT, fontVariantNumeric: 'tabular-nums' }}>
+          {zaehleText(fakt.text, fort)}
+        </div>
+        {bisher.length ? (
+          <div style={{ marginTop: 64, display: 'flex', justifyContent: 'center', gap: 48, flexWrap: 'wrap' }}>
+            {bisher.map((f) => (
+              <div key={f.id} style={{ minWidth: 180 }}>
+                <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 2, color: LONG_MUTED }}>{f.label.toUpperCase()}</div>
+                <div style={{ marginTop: 8, fontFamily: LONG_DISPLAY, fontWeight: 800, fontSize: 36, color: LONG_TEXT }}>{f.text}</div>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </AbsoluteFill>
+  )
+}
+
 function SegmentKarte({
   eintrag,
+  gloss,
   menge,
   modus,
   fort,
   akzent,
 }: {
   eintrag: { name: string; anteilPct: number; margePct: number | null; wachstumPct: number | null }
+  gloss: string | null
   menge: number
   modus: 'share' | 'marge' | 'wachstum'
   fort: number
@@ -299,6 +353,7 @@ function SegmentKarte({
       }}
     >
       <div style={{ fontFamily: LONG_MONO, fontSize: 18, letterSpacing: 3, color: LONG_MUTED }}>{eintrag.name.toUpperCase()}</div>
+      {gloss ? <div style={{ marginTop: 8, fontFamily: LONG_SERIF_KURSIV, fontSize: 26, lineHeight: 1.3, color: LONG_TEXT }}>{gloss}</div> : null}
       <SegmentZeile label="Share" text={pct(eintrag.anteilPct)} breite={eintrag.anteilPct} laut={modus === 'share'} fort={fort} akzent={akzent} />
       {eintrag.margePct != null ? (
         <SegmentZeile
@@ -415,16 +470,23 @@ function Segmente({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
           return (
             <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 16, opacity: aktiv && !an ? 0.35 : ein(frame, 12 + k * 4, 10) }}>
               <div style={{ width: 14, height: 14, borderRadius: 4, background: mitAlpha(akzent, stufen[k] ?? 0.1), boxShadow: an ? `0 0 0 2px ${akzent}` : undefined }} />
-              <div style={{ flex: 1, fontFamily: LONG_SANS, fontWeight: 600, fontSize: an ? 32 : 24, color: LONG_TEXT }}>{s.name}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontFamily: LONG_SANS, fontWeight: 600, fontSize: an ? 32 : 24, color: LONG_TEXT }}>{s.name}</div>
+                {glossAusSkript(sp, s.name) ? (
+                  <div style={{ fontFamily: LONG_SERIF_KURSIV, fontSize: an ? 22 : 18, color: LONG_MUTED, marginTop: 2 }}>{glossAusSkript(sp, s.name)}</div>
+                ) : null}
+              </div>
               <div style={{ fontFamily: LONG_MONO, fontSize: an ? 28 : 22, color: LONG_TEXT }}>{pct(s.anteilPct)}</div>
             </div>
           )
         })}
       </div>
       {vorgaenger != null && seg.eintraege[vorgaenger] ? (
-        <SegmentKarte eintrag={seg.eintraege[vorgaenger]!} menge={1 - flug} modus="share" fort={1} akzent={akzent} />
+        <SegmentKarte eintrag={seg.eintraege[vorgaenger]!} gloss={glossAusSkript(sp, seg.eintraege[vorgaenger]!.name)} menge={1 - flug} modus="share" fort={1} akzent={akzent} />
       ) : null}
-      {aktiv && modus ? <SegmentKarte eintrag={aktiv} menge={flug} modus={modus} fort={fort} akzent={akzent} /> : null}
+      {aktiv && modus ? (
+        <SegmentKarte eintrag={aktiv} gloss={glossAusSkript(sp, aktiv.name)} menge={flug} modus={modus} fort={fort} akzent={akzent} />
+      ) : null}
     </AbsoluteFill>
   )
 }
@@ -470,6 +532,8 @@ export function LongMoat(sp: SzeneProps) {
               <Pfeiler sp={sp} lauf={l} />
             ) : l.szene === 'moat_scorecard' ? (
               <Scorecard sp={sp} />
+            ) : l.szene === 'moat_finanzen' ? (
+              <Finanzen sp={sp} lauf={l} />
             ) : l.szene === 'moat_segmente' ? (
               <Segmente sp={sp} lauf={l} />
             ) : (

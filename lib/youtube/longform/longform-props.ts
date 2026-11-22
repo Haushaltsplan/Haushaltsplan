@@ -82,7 +82,7 @@ export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMus
       pegel: z.musik.pegel,
       tracks: z.musik.aktiv ? waehleMusik(katalog, abschnittIds, z.varianten.kameraSeed) : [],
     },
-    sfx: opts?.sfx !== false,
+    sfx: opts?.sfx === true,
     abschnittTitel: LONGFORM_ABSCHNITT_TITEL,
     kanalName: LONGFORM_KANAL_NAME,
     kanalLogoUrl: LONGFORM_KANAL_LOGO,

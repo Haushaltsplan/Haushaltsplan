@@ -34,13 +34,23 @@ function ersterFrame(sp: SzeneProps, szene: string): number | null {
   return null
 }
 
-function schoeneSchritte(max: number): number[] {
-  const roh = max / 4
-  const p = Math.pow(10, Math.floor(Math.log10(roh || 1)))
-  const schritt = [1, 2, 2.5, 5, 10].map((m) => m * p).find((s) => s >= roh) ?? roh
+function logSchritte(boden: number, max: number): number[] {
   const out: number[] = []
-  for (let v = 0; v <= max * 1.001; v += schritt) out.push(v)
-  return out
+  const start = Math.pow(10, Math.floor(Math.log10(Math.max(boden, 1))))
+  for (let v = start; v <= max * 1.05; v *= 10) {
+    for (const m of [1, 2, 5]) {
+      const t = v * m
+      if (t >= boden * 0.98 && t <= max * 1.02) out.push(t)
+    }
+  }
+  return out.length ? out : [boden, max]
+}
+
+function satzBeginn(sp: SzeneProps, szene: string): number | null {
+  for (const i of sp.block.saetze) {
+    if (sp.p.saetze[i]!.visual.szene === szene) return sp.t.saetze[i]!.from - sp.block.from
+  }
+  return null
 }
 
 type HudZeile = { id: string; label: string; text: string; art: 'haupt' | 'neben' | 'pct' }
@@ -83,12 +93,14 @@ export function LongChart(sp: SzeneProps) {
 
   const geo = useMemo(() => {
     if (!c || c.punkte.length < 2) return null
-    const max = Math.max(
-      ...c.punkte.map((q) => Math.max(q.aktie, q.kursOhneDiv ?? 0, q.spy ?? 0, q.sektor ?? 0)),
-    ) * 1.08
+    const werte = c.punkte.flatMap((q) => [q.aktie, q.kursOhneDiv, q.spy, q.sektor].filter((v): v is number => v != null && v > 0))
+    const max = Math.max(...werte, LONGFORM_INVEST_USD) * 1.08
+    const kleinst = Math.min(...werte, LONGFORM_INVEST_USD)
+    const boden = Math.max(100, kleinst * 0.72)
+    const log = (v: number) => Math.log(Math.max(v, boden))
     const n = c.punkte.length
     const x = (i: number) => X0 + ((X1 - X0) * i) / (n - 1)
-    const y = (v: number) => Y1 - ((Y1 - Y0) * v) / max
+    const y = (v: number) => Y1 - ((Y1 - Y0) * (log(v) - log(boden))) / (log(max) - log(boden))
     const pfad = (wert: (i: number) => number | null) => {
       let d = ''
       c.punkte.forEach((_, i) => {
@@ -118,7 +130,7 @@ export function LongChart(sp: SzeneProps) {
       spy: c.punkte.some((q) => q.spy != null) ? pfad((i) => c.punkte[i]!.spy) : null,
       sektor: c.punkte.some((q) => q.sektor != null) ? pfad((i) => c.punkte[i]!.sektor) : null,
       jahre: jahre.filter((_, k) => jahre.length <= 12 || k % 2 === 0),
-      schritte: schoeneSchritte(max),
+      schritte: logSchritte(boden, max),
       dd: c.drawdown ? { a: idx(c.drawdown.hochDatum), b: idx(c.drawdown.tiefDatum) } : null,
     }
   }, [c])
@@ -133,9 +145,11 @@ export function LongChart(sp: SzeneProps) {
 
   const i = aktiverSatz(sp, frame)
   const szene = sp.p.saetze[i]!.visual.szene
-  const ersterSatz = sp.t.saetze[sp.block.saetze[0]!]!
-  const zeichenDauer = Math.max(75, Math.min(200, ersterSatz.dauer))
-  const zeichnen = ein(frame, 12, zeichenDauer)
+  const drawdownBeginn = satzBeginn(sp, 'chart_drawdown')
+  const zeichnen =
+    drawdownBeginn != null && drawdownBeginn > 30
+      ? ein(frame, 8, Math.max(90, drawdownBeginn - 8))
+      : ein(frame, 8, Math.max(120, Math.round(sp.block.dauer * 0.65)))
 
   const fDd = ersterFrame(sp, 'chart_drawdown')
   const fSpy = ersterFrame(sp, 'chart_vergleich')
@@ -295,6 +309,9 @@ export function LongChart(sp: SzeneProps) {
               pointerEvents: 'none',
             }}
           >
+            <span style={{ display: 'block', marginBottom: 4, fontFamily: LONG_MONO, fontWeight: 500, fontSize: 14, letterSpacing: 2, color: LONG_MUTED }}>
+              {(sp.p.fakten['k10.drawdown']?.label ?? 'Drop from the high').toUpperCase()}
+            </span>
             {pct(c.drawdown.pct, { vorzeichen: true })}
             <span style={{ marginLeft: 12, fontFamily: LONG_MONO, fontWeight: 500, fontSize: 16, color: LONG_MUTED }}>
               {monatJahr(c.drawdown.hochDatum)} → {monatJahr(c.drawdown.tiefDatum)}

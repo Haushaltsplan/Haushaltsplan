@@ -1,17 +1,14 @@
 /** Long-Form-Aktienanalyse 16:9: Szenenblöcke, satzweise Stimme, Musik mit Ducking, Abo-Einblendung. */
 import { Audio } from '@remotion/media'
-import { mouseClick, whoosh } from '@remotion/sfx'
 import { useMemo } from 'react'
 import { AbsoluteFill, Sequence, interpolate, useCurrentFrame } from 'remotion'
-import { SFX_CONFIG } from '../sfx-config'
 import { Hintergrund, Korn, oeffentlichSrc, type SzeneProps } from './long-bausteine'
-import { LONG_MUSIK_FREI, LONG_MUSIK_UNTER_STIMME, LONG_SFX_PEGEL } from './long-look'
-import { LONG_ABSPANN, berechneLongTimeline, type LongBlock, type LongTimeline } from './long-timeline'
+import { LONG_MUSIK_FREI, LONG_MUSIK_UNTER_STIMME } from './long-look'
+import { berechneLongTimeline, type LongBlock, type LongTimeline } from './long-timeline'
 import type { AktienAnalyseProps } from './long-types'
-import { ABO_KLICK_ABO, ABO_KLICK_LIKE, LongAbo } from './LongAbo'
 import { LongBild, LongBumper, LongTitelKarte } from './LongBild'
 import { LongChart } from './LongChart'
-import { LongDisclosure, LongSchluss } from './LongDisclosure'
+import { LongEnde } from './LongEnde'
 import { LongHook } from './LongHook'
 import { LongJahresChart } from './LongJahresChart'
 import { LongMoat } from './LongMoat'
@@ -34,6 +31,8 @@ function Szene(sp: SzeneProps) {
       return <LongJahresChart {...sp} />
     case 'titel':
       return <LongTitelKarte {...sp} />
+    case 'karte':
+      return <LongEnde {...sp} />
     default:
       return <LongBild {...sp} />
   }
@@ -78,6 +77,15 @@ function musikVolumen(f: number, t: LongTimeline, basis: number, von: number, bi
   return Math.max(0, pegel * basis * Math.max(0, kante))
 }
 
+/** Kurzes Ein- und Ausblenden, damit der Schnitt zwischen zwei Sprachdateien nicht knackt. */
+function SatzTon({ src, dauer }: { src: string; dauer: number }) {
+  const frame = useCurrentFrame()
+  const einblende = interpolate(frame, [0, 2], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const aus = Math.max(2, dauer - 4)
+  const ausblende = interpolate(frame, [aus, dauer], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  return <Audio src={src} volume={einblende * ausblende} />
+}
+
 function Ton({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
   const basis = Math.max(0, p.musik.pegel) / 50
   const musikTeile = useMemo(() => {
@@ -100,8 +108,8 @@ function Ton({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
         const z = t.saetze[i]!
         if (!s.audioUrl) return null
         return (
-          <Sequence key={s.id} from={z.from} durationInFrames={z.dauer + 6} layout="none">
-            <Audio src={s.audioUrl} />
+          <Sequence key={s.id} from={z.from} durationInFrames={z.dauer} layout="none">
+            <SatzTon src={s.audioUrl} dauer={z.dauer} />
           </Sequence>
         )
       })}
@@ -115,25 +123,6 @@ function Ton({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
           />
         </Sequence>
       ))}
-      {p.sfx ? (
-        <>
-          <Sequence from={0} durationInFrames={10} layout="none">
-            <Audio src={oeffentlichSrc(SFX_CONFIG.hookImpact.datei)} volume={SFX_CONFIG.hookImpact.pegel * 0.7} />
-          </Sequence>
-          {t.bumper.map((b) => (
-            <Sequence key={b.from} from={Math.max(0, b.from - 4)} durationInFrames={30} layout="none">
-              <Audio src={whoosh} volume={LONG_SFX_PEGEL * 0.6} />
-            </Sequence>
-          ))}
-          {t.abo
-            ? [ABO_KLICK_LIKE, ABO_KLICK_ABO].map((k) => (
-                <Sequence key={k} from={t.abo!.from + k} durationInFrames={15} layout="none">
-                  <Audio src={mouseClick} volume={LONG_SFX_PEGEL} />
-                </Sequence>
-              ))
-            : null}
-        </>
-      ) : null}
     </>
   )
 }
@@ -157,28 +146,10 @@ export function AktienAnalyse(p: AktienAnalyseProps) {
             titel={p.abschnittTitel[b.abschnittId] ?? ''}
             akzent={p.varianten.akzent}
             gesamt={Math.max(1, t.bumper.length)}
+            dauer={b.dauer}
           />
         </Sequence>
       ))}
-      {t.disclosure && p.investiert != null ? (
-        <Sequence from={t.disclosure.from} durationInFrames={t.disclosure.dauer}>
-          <LongDisclosure investiert={p.investiert} firmenname={p.firmenname} />
-        </Sequence>
-      ) : null}
-      <Sequence from={Math.max(0, t.durationInFrames - LONG_ABSPANN)} durationInFrames={LONG_ABSPANN}>
-        <LongSchluss name={p.kanalName ?? 'DailyMoat'} logoUrl={p.kanalLogoUrl ?? null} />
-      </Sequence>
-      {t.abo ? (
-        <Sequence from={t.abo.from} durationInFrames={t.abo.dauer}>
-          <LongAbo
-            dauer={t.abo.dauer}
-            text={p.varianten.aboText}
-            akzent={p.varianten.akzent}
-            kanalName={p.kanalName}
-            kanalLogoUrl={p.kanalLogoUrl}
-          />
-        </Sequence>
-      ) : null}
       <KornAbSekunde />
       <Ton p={p} t={t} />
     </AbsoluteFill>

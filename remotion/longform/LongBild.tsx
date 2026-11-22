@@ -106,9 +106,9 @@ export function LongTitelKarte(sp: SzeneProps) {
 }
 
 /** Zwischentitel vor jedem Abschnitt: Nummer, Titel, eine Linie, die sich zieht. */
-export function LongBumper({ nummer, titel, akzent, gesamt = 3 }: { nummer: number; titel: string; akzent: string; gesamt?: number }) {
+export function LongBumper({ nummer, titel, akzent, gesamt = 3, dauer = 15 }: { nummer: number; titel: string; akzent: string; gesamt?: number; dauer?: number }) {
   const frame = useCurrentFrame()
-  const raus = interpolate(frame, [30, 38], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const raus = interpolate(frame, [Math.max(0, dauer - 4), dauer], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
   return (
     <AbsoluteFill style={{ background: '#0C0C0E', opacity: Math.min(ein(frame, 0, 6), 1) }}>
       <AbsoluteFill
@@ -118,7 +118,7 @@ export function LongBumper({ nummer, titel, akzent, gesamt = 3 }: { nummer: numb
         }}
       />
       <AbsoluteFill style={{ justifyContent: 'center', paddingLeft: LONG_RAND_X, opacity: raus }}>
-        <div style={{ fontFamily: LONG_MONO, fontSize: 28, letterSpacing: 6, color: akzent, opacity: ein(frame, 2, 8) }}>
+        <div style={{ fontFamily: LONG_MONO, fontSize: 28, letterSpacing: 6, color: akzent, opacity: ein(frame, 0, 4) }}>
           CHAPTER {String(nummer).padStart(2, '0')}
         </div>
         <div
@@ -128,13 +128,13 @@ export function LongBumper({ nummer, titel, akzent, gesamt = 3 }: { nummer: numb
             color: LONG_TEXT,
             lineHeight: 1.05,
             marginTop: 8,
-            opacity: ein(frame, 4, 12),
-            transform: `translateX(${(1 - ein(frame, 4, 14)) * -28}px)`,
+            opacity: ein(frame, 1, 5),
+            transform: `translateX(${(1 - ein(frame, 1, 5)) * -28}px)`,
           }}
         >
           {titel}
         </div>
-        <div style={{ marginTop: 28, height: 3, width: 480 * ein(frame, 8, 18), background: akzent }} />
+        <div style={{ marginTop: 28, height: 3, width: 480 * ein(frame, 2, 6), background: akzent }} />
       </AbsoluteFill>
       <div
         style={{

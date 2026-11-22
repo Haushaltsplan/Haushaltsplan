@@ -2,7 +2,7 @@
 import type { LongformAbschnittId } from '../../lib/youtube/longform/longform-types'
 import { LONG_FPS, type AktienAnalyseProps, type LongSatzProps } from './long-types'
 
-export type LongFamilie = 'hook' | 'chart' | 'moat' | 'bild' | 'titel' | 'reihe'
+export type LongFamilie = 'hook' | 'chart' | 'moat' | 'bild' | 'titel' | 'reihe' | 'karte'
 
 export type LongSatzZeit = {
   index: number
@@ -39,8 +39,8 @@ export type LongTimeline = {
 const VORLAUF = 3
 /** Satzlücke ~100 ms: gesprächig, ohne Hektik (früher ~300 ms + TTS-Polster = spürbare Löcher). */
 const LUECKE = 3
-/** ~1,3 s Kapitel-Bumper — danach sofort Inhalt. */
-const BUMPER = 38
+/** Kurze Kapitelkarte, etwa eine halbe Sekunde, damit die Stimme nicht in ein Loch fällt. */
+const BUMPER = 15
 export const LONG_ABSPANN = 75
 export const LONG_ABO_DAUER = 150
 
@@ -51,6 +51,7 @@ export function familieVon(s: LongSatzProps): LongFamilie {
   if (sz.startsWith('moat_')) return 'moat'
   if (sz === 'zahl_reihe') return 'reihe'
   if (sz === 'titel_karte') return 'titel'
+  if (sz === 'abo_karte' || sz === 'disclaimer' || sz === 'schluss') return 'karte'
   return 'bild'
 }
 
@@ -111,8 +112,7 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
     f += dauer + LUECKE
   })
   if (abschnitte.length) abschnitte[abschnitte.length - 1]!.bis = f
-  const disclosure = p.investiert === true || p.investiert === false ? { from: f, dauer: 110 } : null
-  if (disclosure) f += disclosure.dauer
+  const disclosure = null
   const durationInFrames = Math.max(LONG_FPS * 3, f + LONG_ABSPANN)
 
   const bloecke: LongBlock[] = []
@@ -144,14 +144,7 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
     bloecke[0].from = 0
   }
 
-  let abo: LongTimeline['abo'] = null
-  const aboSatz = saetze.find((z) => p.saetze[z.index]!.visual.fokus === 'abo')
-  if (aboSatz) abo = { from: aboSatz.from, dauer: Math.min(LONG_ABO_DAUER, aboSatz.dauer + 24) }
-  else {
-    const ziel = Math.round(durationInFrames * Math.min(0.8, Math.max(0.25, p.varianten.aboPosition)))
-    const start = saetze.find((z) => z.from >= ziel && p.saetze[z.index]!.abschnittId !== 'hook')
-    if (start && start.from + LONG_ABO_DAUER < durationInFrames - LONG_ABSPANN) abo = { from: start.from + 12, dauer: LONG_ABO_DAUER }
-  }
+  const abo = null
 
   return { durationInFrames, saetze, bloecke, bumper, abschnitte, sprechen, abo, disclosure }
 }

@@ -11,7 +11,7 @@ import { gesperrteHookTypen } from '@/lib/youtube/longform/longform-abwechslung'
 import { ladeProjekt, ladeVerlauf, mitUrls, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
 import { ladeDokumente } from '@/lib/youtube/longform/longform-projekt-server'
 import { pruefeSkript } from '@/lib/youtube/longform/longform-pruefung'
-import { erzeugeHooks, erzeugeSkript, pruefeBehauptungen, ueberarbeite } from '@/lib/youtube/longform/longform-skript-server'
+import { erzeugeHooks, erzeugeSkript, haengeSchlussAn, pruefeBehauptungen, ueberarbeite } from '@/lib/youtube/longform/longform-skript-server'
 import {
   LONGFORM_ABSCHNITTE,
   type LongformAbschnittId,
@@ -119,6 +119,7 @@ export async function POST(req: Request) {
             const i = a.saetze.findIndex((s) => s.id === satzId)
             return { ...a, saetze: [...a.saetze.slice(0, i), ...neu, ...a.saetze.slice(i + 1)] }
           })
+          haengeSchlussAn(abschnitte, z.faktenblatt, z.investiert)
           z = aufraeumen({ ...z, skript: pruefeSkript({ ...z.skript, abschnitte }, ctx) })
           break
         }
