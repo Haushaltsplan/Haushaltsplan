@@ -3,6 +3,9 @@
     "app/api/portfolio-berater/route.ts": {
       "maxDuration": 180
     },
+    "app/api/youtube/longform/skript/route.ts": {
+      "maxDuration": 300
+    },
     "app/api/portfolio-analyse/nachkaeufe/scan/route.ts": {
       "maxDuration": 300
     },

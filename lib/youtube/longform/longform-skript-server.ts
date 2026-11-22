@@ -62,10 +62,8 @@ async function frage<T>(opts: {
     jsonResponse: { schema: opts.schema },
     skipMessageTrim: true,
     thinkingLevel: opts.denkstufe,
-    /** Flex: ~50 % günstiger, Batch ok — Timeouts höher wegen möglicher Warteschlange. */
-    geminiServiceTier: 'flex',
-    timeoutMs: 360_000,
-    geminiTotalBudgetMs: 420_000,
+    timeoutMs: 120_000,
+    geminiTotalBudgetMs: 240_000,
     maxOutputTokens: opts.maxTokens ?? 32_768,
   })
   if (!r.ok) throw new Error(r.hint)
@@ -202,7 +200,7 @@ begruendung: one German sentence for the creator (studio only) explaining why th
     nutzer,
     dokumente: opts.dokumente,
     schema,
-    denkstufe: opts.zustand.denkstufe === 'low' ? 'medium' : 'high',
+    denkstufe: opts.zustand.denkstufe ?? 'medium',
   })
   return (daten.hooks ?? [])
     .filter((h) => h.saetze?.length && !opts.gesperrt.includes(h.typ))
