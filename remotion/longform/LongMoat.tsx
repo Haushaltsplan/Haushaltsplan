@@ -2,7 +2,7 @@
 import { AbsoluteFill, Sequence, useCurrentFrame } from 'remotion'
 import { englischOderLeer } from '../../lib/youtube/longform/longform-en'
 import { pct } from '../../lib/youtube/longform/longform-format'
-import { Blende, Logo, aktiverSatz, ein, satzLaeufe, zaehleText, type SatzLauf, type SzeneProps } from './long-bausteine'
+import { Logo, aktiverSatz, ein, satzLaeufe, zaehleText, type SatzLauf, type SzeneProps } from './long-bausteine'
 import {
   LONG_DISPLAY,
   LONG_GRUEN,
@@ -529,26 +529,30 @@ function SegmentZeile({
 }
 
 export function LongMoat(sp: SzeneProps) {
+  const frame = useCurrentFrame()
   const laeufe = satzLaeufe(sp)
+  let lauf = laeufe[0]
+  for (const l of laeufe) if (frame >= l.from) lauf = l
+  if (!lauf) return null
+  const idx = aktiverSatz(sp, frame)
+  const satz = sp.p.saetze[idx]
+  const zahl = satz?.faktIds.some((id) => id.startsWith('km.')) === true
+  const szene = zahl ? 'moat_finanzen' : lauf.szene
+  const satzFrom = sp.t.saetze[idx] ? sp.t.saetze[idx].from - sp.block.from : lauf.from
+  const gezeigt: SatzLauf = szene === lauf.szene ? lauf : { szene, from: satzFrom, bis: lauf.bis, saetze: [idx] }
   return (
-    <AbsoluteFill>
-      {laeufe.map((l, k) => (
-        <Blende key={k} von={l.from} bis={l.bis + (k < laeufe.length - 1 ? 3 : 0)}>
-          <Sequence from={l.from} layout="none" durationInFrames={Math.max(1, l.bis - l.from + 4)}>
-            {l.szene === 'moat_pfeiler' ? (
-              <Pfeiler sp={sp} lauf={l} />
-            ) : l.szene === 'moat_scorecard' ? (
-              <Scorecard sp={sp} />
-            ) : l.szene === 'moat_finanzen' ? (
-              <Finanzen sp={sp} lauf={l} />
-            ) : l.szene === 'moat_segmente' ? (
-              <Segmente sp={sp} lauf={l} />
-            ) : (
-              <Geschaeft sp={sp} />
-            )}
-          </Sequence>
-        </Blende>
-      ))}
-    </AbsoluteFill>
+    <Sequence from={gezeigt.from} layout="none" durationInFrames={Math.max(1, gezeigt.bis - gezeigt.from)}>
+      {szene === 'moat_pfeiler' ? (
+        <Pfeiler sp={sp} lauf={gezeigt} />
+      ) : szene === 'moat_scorecard' ? (
+        <Scorecard sp={sp} />
+      ) : szene === 'moat_finanzen' ? (
+        <Finanzen sp={sp} lauf={gezeigt} />
+      ) : szene === 'moat_segmente' ? (
+        <Segmente sp={sp} lauf={gezeigt} />
+      ) : (
+        <Geschaeft sp={sp} />
+      )}
+    </Sequence>
   )
 }

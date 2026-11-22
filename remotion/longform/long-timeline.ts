@@ -128,10 +128,17 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
     const fam = familieVon(s)
     const letzter = bloecke[bloecke.length - 1]
     const vorher = letzter ? p.saetze[letzter.saetze[letzter.saetze.length - 1]!]! : null
+    const moatBruch =
+      fam === 'moat' &&
+      vorher != null &&
+      (vorher.visual.szene !== s.visual.szene ||
+        s.visual.szene === 'moat_finanzen' ||
+        (s.visual.szene === 'moat_pfeiler' && (vorher.visual.fokus ?? '') !== (s.visual.fokus ?? '')))
     const gleich =
       letzter &&
       letzter.familie === fam &&
       letzter.abschnittId === s.abschnittId &&
+      !moatBruch &&
       fam !== 'titel' &&
       (fam !== 'bild' || (vorher?.bildUrl ?? null) === (s.bildUrl ?? null))
     if (gleich) {
