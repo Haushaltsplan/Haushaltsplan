@@ -36,7 +36,7 @@ export type LongTimeline = {
 }
 
 /** Kapitelkarten ohne den Hook. Die Nummer bleibt die feste Stelle, auch wenn nur ein Kapitel gerendert wird. */
-export const LONG_KAPITEL_REIHE = LONGFORM_ABSCHNITTE.filter((id) => id !== 'hook')
+export const LONG_KAPITEL_REIHE: readonly LongformAbschnittId[] = LONGFORM_ABSCHNITTE.filter((id) => id !== 'hook')
 
 function kapitelNummer(id: LongformAbschnittId): number {
   const i = LONG_KAPITEL_REIHE.indexOf(id)
