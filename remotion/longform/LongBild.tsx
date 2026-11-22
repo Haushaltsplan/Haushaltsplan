@@ -108,9 +108,11 @@ export function LongTitelKarte(sp: SzeneProps) {
 /** Zwischentitel vor jedem Abschnitt: Nummer, Titel, eine Linie, die sich zieht. */
 export function LongBumper({ nummer, titel, akzent, gesamt = 3, dauer = 15 }: { nummer: number; titel: string; akzent: string; gesamt?: number; dauer?: number }) {
   const frame = useCurrentFrame()
-  const raus = interpolate(frame, [Math.max(0, dauer - 4), dauer], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const rein = ein(frame, 0, 8)
+  const raus = interpolate(frame, [Math.max(8, dauer - 8), dauer], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  const o = rein * raus
   return (
-    <AbsoluteFill style={{ background: '#0C0C0E', opacity: Math.min(ein(frame, 0, 6), 1) }}>
+    <AbsoluteFill style={{ background: '#0C0C0E', opacity: o }}>
       <AbsoluteFill
         style={{
           background: `radial-gradient(ellipse 50% 40% at 30% 50%, ${mitAlpha(akzent, 0.12)} 0%, rgba(0,0,0,0) 70%)`,

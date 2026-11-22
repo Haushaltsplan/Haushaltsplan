@@ -11,7 +11,7 @@ export function usd(n: number): string {
 
 export function pct(n: number, opts?: { vorzeichen?: boolean }): string {
   const r = Math.abs(n) >= 100 ? Math.round(n) : Math.round(n * 10) / 10
-  const s = Math.abs(r) >= 1000 ? Math.round(r).toLocaleString('en-US') : String(r)
+  const s = String(r)
   return `${opts?.vorzeichen && r > 0 ? '+' : ''}${s}%`
 }
 

@@ -17,8 +17,8 @@ export const LONGFORM_ABSCHNITTE = [
 ] as const
 export type LongformAbschnittId = (typeof LONGFORM_ABSCHNITTE)[number]
 
-/** Test = Anfang des späteren Videos: Hook, Chart, Geschäft, Moat. Dieselben Bilder, nichts dazwischengeschoben. */
-export const LONGFORM_AKTIVE_ABSCHNITTE: LongformAbschnittId[] = ['hook', 'chart10k', 'geschaeft', 'burggraben']
+/** Alle Kapitel. Das Studio schreibt und zeigt sie einzeln. */
+export const LONGFORM_AKTIVE_ABSCHNITTE: LongformAbschnittId[] = [...LONGFORM_ABSCHNITTE]
 
 export const LONGFORM_ABSCHNITT_TITEL: Record<LongformAbschnittId, string> = {
   hook: 'Hook',
@@ -140,6 +140,8 @@ export type LongformFaktenblatt = {
   chart: LongformChart10k | null
   moat: LongformMoat | null
   burggraben: LongformScorecardSpalte | null
+  /** Alle vier Scorecard-Spalten. Leer bei alten Projekten. */
+  scorecard?: LongformScorecardSpalte[]
   segmente: LongformSegmente | null
   /** Jahresreihen aus dem 10-K. Leer, wenn der Export sie nicht hat. */
   reihen: LongformJahresreihe[]
@@ -196,6 +198,11 @@ export const LONGFORM_SZENEN = [
   'moat_finanzen',
   'moat_segmente',
   'zahl_reihe',
+  'inhaber_anteile',
+  'bewertung_zahl',
+  'risiko_karte',
+  'scorecard_spalten',
+  'fazit_antwort',
   'bild',
   'titel_karte',
   'abo_karte',
@@ -332,7 +339,13 @@ export type LongformProjektZustand = {
   investiert: boolean | null
   /** Nachgereichte Konkurrenten-Logos. Schlüssel ist der Firmenname in Kleinbuchstaben. */
   konkurrentLogos?: Record<string, { name: string; pfad: string; url?: string }>
+  /** Kapitel, die geprüft und freigegeben sind, in fester Reihenfolge. */
+  freigegeben?: LongformAbschnittId[]
+  /** Fertige Kapitel-MP4s. Der Schlussfilm setzt nur diese Dateien aneinander. */
+  kapitelDateien?: Partial<Record<LongformAbschnittId, LongformKapitelDatei>>
 }
+
+export type LongformKapitelDatei = { pfad: string; url?: string; dauerMs: number }
 
 export type LongformProjektKurz = {
   id: string

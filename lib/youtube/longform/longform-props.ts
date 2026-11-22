@@ -89,6 +89,7 @@ export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMus
     chart: normalisiereChart(fb.chart),
     moat: fb.moat,
     burggraben: fb.burggraben,
+    scorecard: fb.scorecard ?? [],
     segmente: fb.segmente
       ? {
           ...fb.segmente,

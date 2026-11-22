@@ -43,6 +43,7 @@ export type AktienAnalyseProps = {
   chart: LongformChart10k | null
   moat: LongformMoat | null
   burggraben: LongformScorecardSpalte | null
+  scorecard: LongformScorecardSpalte[]
   segmente: LongformSegmente | null
   reihen: LongformJahresreihe[]
   /** faktId → englischer Text und Label. */
@@ -78,6 +79,7 @@ export const AKTIEN_ANALYSE_DEFAULT_PROPS: AktienAnalyseProps = {
   chart: null,
   moat: null,
   burggraben: null,
+  scorecard: [],
   segmente: null,
   reihen: [],
   fakten: { 'k10.endwert': { text: '$34,210', label: 'Value of $10,000 today', wert: 34210 } },

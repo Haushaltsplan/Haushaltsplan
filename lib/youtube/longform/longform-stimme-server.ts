@@ -12,6 +12,34 @@ import type { LongformStimmeEinstellungen, LongformTake } from '@/lib/youtube/lo
 
 const TTS_URL = 'https://api.elevenlabs.io/v1/text-to-speech'
 
+const MPEG1_L3_BITRATE = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0]
+const MPEG_SAMPLE = [44100, 48000, 32000]
+
+/** Dauer einer CBR-MP3 aus dem ersten Frame und der Dateigröße. */
+export function mp3DauerMs(buf: Buffer): number | null {
+  let o = 0
+  if (buf.length > 10 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) {
+    const size = ((buf[6]! & 0x7f) << 21) | ((buf[7]! & 0x7f) << 14) | ((buf[8]! & 0x7f) << 7) | (buf[9]! & 0x7f)
+    o = 10 + size
+  }
+  while (o + 4 < buf.length) {
+    if (buf[o] === 0xff && (buf[o + 1]! & 0xe0) === 0xe0) {
+      const brIndex = (buf[o + 2]! >> 4) & 0xf
+      const srIndex = (buf[o + 2]! >> 2) & 3
+      const bitrate = MPEG1_L3_BITRATE[brIndex]! * 1000
+      const sampleRate = MPEG_SAMPLE[srIndex]
+      if (bitrate > 0 && sampleRate) {
+        const audioBytes = buf.length - o
+        const ms = Math.round((audioBytes * 8 * 1000) / bitrate)
+        if (ms > 200 && ms < 120_000) return ms
+      }
+    }
+    o += 1
+    if (o > 64_000) break
+  }
+  return null
+}
+
 function klemme(v: number, min: number, max: number, fallback: number): number {
   return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback
 }
@@ -78,12 +106,14 @@ export async function sprichSatz(opts: {
   const a = j.alignment?.characters?.length ? j.alignment : j.normalized_alignment
   const ends = a?.character_end_times_seconds ?? []
   const woerter = woerterAusZeichen(a?.characters ?? [], a?.character_start_times_seconds ?? [], ends)
-  // Nur knappes Polster — große Extra-ms erzeugen hörbare Löcher zwischen Sätzen.
-  const dauerMs = Math.round((ends.length ? ends[ends.length - 1]! : 0) * 1000) + 40
+  const audio = Buffer.from(j.audio_base64, 'base64')
+  const dateiMs = mp3DauerMs(audio)
+  const alignmentMs = Math.round((ends.length ? ends[ends.length - 1]! : 0) * 1000) + 40
+  const dauerMs = Math.max(alignmentMs, dateiMs ?? 0)
 
   const id = randomUUID()
   const pfad = projektPfad(opts.projektId, 'stimme', `${opts.satzId}-${id}.mp3`)
-  await ladeHoch(pfad, Buffer.from(j.audio_base64, 'base64'), 'audio/mpeg')
+  await ladeHoch(pfad, audio, 'audio/mpeg')
   return {
     id,
     pfad,

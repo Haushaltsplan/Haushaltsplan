@@ -26,7 +26,14 @@ function stichpunkte(begruendung: string, risiko: string): string[] {
     .flatMap((t) => t.split(/(?<=[,.;])\s+/))
     .map((t) => t.replace(/[.,;]+$/g, '').trim())
     .filter((t) => t.length > 8)
-  return teile.slice(0, 3).map((t) => (t.length > 72 ? `${t.slice(0, 69).trim()}…` : t))
+  return teile.slice(0, 3).map((t) => kuerzeAufWort(t, 72))
+}
+
+function kuerzeAufWort(t: string, max: number): string {
+  if (t.length <= max) return t
+  const schnitt = t.lastIndexOf(' ', max)
+  const basis = (schnitt > 24 ? t.slice(0, schnitt) : t.slice(0, max)).trim()
+  return `${basis}…`
 }
 
 function istKuerzel(name: string): boolean {
@@ -288,8 +295,8 @@ function Finanzen({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   const id = satz.faktIds.find((x) => x.startsWith('km.'))
   const fakt = id ? sp.p.fakten[id] : null
   const z = sp.t.saetze[i]!
-  const beton = (z.betonungFrame ?? z.from + 8) - sp.block.from
-  const fort = frame >= beton ? ein(frame, beton, 16) : 0
+  const start = z.from - sp.block.from
+  const fort = ein(frame, start, 14)
   const bisher = lauf.saetze
     .filter((k) => sp.t.saetze[k]!.from - sp.block.from <= frame)
     .flatMap((k) => {

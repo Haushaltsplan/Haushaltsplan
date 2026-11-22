@@ -1,6 +1,7 @@
 /** MP4 im Browser — funktioniert auf der Live-Seite (Chrome/Edge), ohne lokalen Remotion-CLI. */
 import { logoPlaySrc, musikPlaySrc } from '@/lib/youtube/moat-short-media-src'
 import { AktienAnalyse } from '@/remotion/longform/AktienAnalyse'
+import { LongZusammenschnitt, zusammenschnittDauer, type ZusammenschnittProps } from '@/remotion/longform/LongZusammenschnitt'
 import { berechneLongTimeline } from '@/remotion/longform/long-timeline'
 import {
   AKTIEN_ANALYSE_DEFAULT_PROPS,
@@ -158,6 +159,55 @@ export async function rendereAktienAnalyseImBrowser(
       if (s.bildUrl?.startsWith('blob:')) URL.revokeObjectURL(s.bildUrl)
     }
     for (const t of webProps.musik.tracks) {
+      if (t.src.startsWith('blob:')) URL.revokeObjectURL(t.src)
+    }
+  }
+}
+
+/** Schlussfilm aus den Kapiteldateien. Die Kapitel werden nicht neu gezeichnet, nur abgespielt und die Abo-Karte darübergelegt. */
+export async function rendereZusammenschnittImBrowser(
+  eingabe: ZusammenschnittProps,
+  onProgress?: (fortschritt: number) => void,
+): Promise<Blob> {
+  const { canRenderMediaOnWeb, renderMediaOnWeb } = await import('@remotion/web-renderer')
+  const check = await canRenderMediaOnWeb({
+    container: 'mp4',
+    width: LONG_WIDTH,
+    height: LONG_HEIGHT,
+  })
+  if (!check.canRender) {
+    const grund = check.issues
+      .filter((i) => i.severity === 'error')
+      .map((i) => i.message)
+      .join(' ')
+    throw new Error(grund || 'Dieser Browser kann kein MP4 erzeugen. Bitte Chrome oder Edge.')
+  }
+  const teile = await Promise.all(
+    eingabe.teile.map(async (t) => ({ ...t, src: (await alsBlobUrl(t.src)) ?? t.src })),
+  )
+  const props: ZusammenschnittProps = { ...eingabe, teile }
+  const dauer = zusammenschnittDauer(teile, eingabe.aboFromMs)
+  try {
+    const { getBlob } = await renderMediaOnWeb({
+      composition: {
+        id: 'KapitelZusammenschnitt',
+        component: LongZusammenschnitt,
+        durationInFrames: dauer,
+        fps: LONG_FPS,
+        width: LONG_WIDTH,
+        height: LONG_HEIGHT,
+        defaultProps: props,
+      },
+      inputProps: props,
+      container: 'mp4',
+      videoCodec: 'h264',
+      muted: false,
+      allowHtmlInCanvas: true,
+      onProgress: (p) => onProgress?.(p.progress),
+    })
+    return getBlob()
+  } finally {
+    for (const t of teile) {
       if (t.src.startsWith('blob:')) URL.revokeObjectURL(t.src)
     }
   }

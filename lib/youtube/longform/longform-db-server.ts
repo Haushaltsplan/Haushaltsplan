@@ -140,7 +140,12 @@ function ohneLaufzeitUrls(z: LongformProjektZustand): LongformProjektZustand {
   const konkurrentLogos = z.konkurrentLogos
     ? Object.fromEntries(Object.entries(z.konkurrentLogos).map(([k, v]) => [k, { name: v.name, pfad: v.pfad }]))
     : undefined
-  return { ...z, stimme: { ...z.stimme, saetze }, bilder, konkurrentLogos }
+  const kapitelDateien = z.kapitelDateien
+    ? Object.fromEntries(
+        Object.entries(z.kapitelDateien).flatMap(([k, v]) => (v ? [[k, { pfad: v.pfad, dauerMs: v.dauerMs }]] : [])),
+      )
+    : undefined
+  return { ...z, stimme: { ...z.stimme, saetze }, bilder, konkurrentLogos, kapitelDateien }
 }
 
 export function projektPfad(projektId: string, ordner: 'stimme' | 'quellen' | 'bilder' | 'export' | 'logos', datei: string): string {
@@ -179,6 +184,7 @@ export async function mitUrls(z: LongformProjektZustand): Promise<LongformProjek
     ...Object.values(z.stimme.saetze).flatMap((s) => s.takes.map((t) => t.pfad)),
     ...Object.values(z.bilder).flatMap((b) => (b ? [b.pfad] : [])),
     ...Object.values(z.konkurrentLogos ?? {}).map((l) => l.pfad),
+    ...Object.values(z.kapitelDateien ?? {}).flatMap((d) => (d ? [d.pfad] : [])),
   ]
   const urls = await signiereUrls(pfade)
   const saetze = Object.fromEntries(
@@ -188,5 +194,19 @@ export async function mitUrls(z: LongformProjektZustand): Promise<LongformProjek
   const konkurrentLogos = z.konkurrentLogos
     ? Object.fromEntries(Object.entries(z.konkurrentLogos).map(([k, l]) => [k, { ...l, url: urls[l.pfad] }]))
     : undefined
-  return { ...z, stimme: { ...z.stimme, saetze }, bilder, konkurrentLogos }
+  const kapitelDateien = z.kapitelDateien
+    ? Object.fromEntries(
+        Object.entries(z.kapitelDateien).map(([k, d]) => [k, d ? { ...d, url: urls[d.pfad] } : d]),
+      )
+    : undefined
+  return { ...z, stimme: { ...z.stimme, saetze }, bilder, konkurrentLogos, kapitelDateien }
+}
+
+/** Upload-Link für eine Kapitel-MP4. Gilt zwei Stunden, ohne die Datei durch die Server-Route zu schicken. */
+export async function signierteKapitelUploadUrl(pfad: string): Promise<{ signedUrl: string; token: string; path: string }> {
+  const { data, error } = await createSupabaseAdmin()
+    .storage.from(LONGFORM_BUCKET)
+    .createSignedUploadUrl(pfad, { upsert: true })
+  if (error || !data?.signedUrl) throw new Error(error?.message ?? 'Upload-Link fehlgeschlagen.')
+  return data
 }

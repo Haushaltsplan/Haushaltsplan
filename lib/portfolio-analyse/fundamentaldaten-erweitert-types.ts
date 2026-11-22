@@ -19,6 +19,8 @@ export type DividendenHistorieStat = {
   quelle: 'divvydiary'
 }
 
+export type YahooInstitution = { name: string; anteilPct: number }
+
 export type YahooHoldersPaket = {
   insiderPct: number | null
   institutionenPct: number | null
@@ -26,6 +28,8 @@ export type YahooHoldersPaket = {
   institutionenShares: number | null
   floatShares: number | null
   sharesOutstanding: number | null
+  /** Die drei größten genannten Institutionen. Leer, wenn der Anteil fehlt. */
+  institutionen?: YahooInstitution[]
   quelle: 'yahoo'
 }
 

@@ -1,16 +1,18 @@
 'use client'
 
 import dynamic from 'next/dynamic'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { HOOK_KATALOG } from '@/lib/youtube/longform/longform-abwechslung'
 import type { LongformMusikTrack } from '@/lib/youtube/longform/longform-musik'
 import { baueAnalyseProps } from '@/lib/youtube/longform/longform-props'
-import { rendereAktienAnalyseImBrowser } from '@/lib/youtube/longform/longform-render-web'
+import { rendereAktienAnalyseImBrowser, rendereZusammenschnittImBrowser } from '@/lib/youtube/longform/longform-render-web'
+import { aboStartMs } from '@/lib/youtube/longform/longform-zusammenschnitt'
 import {
+  LONGFORM_ABSCHNITTE,
   LONGFORM_ABSCHNITT_TITEL,
-  LONGFORM_AKTIVE_ABSCHNITTE,
   type LongformAbschnitt,
+  type LongformAbschnittId,
   type LongformFakt,
   type LongformHookVorschlag,
   type LongformProjekt,
@@ -18,6 +20,8 @@ import {
   type LongformProjektZustand,
   type LongformSatz,
 } from '@/lib/youtube/longform/longform-types'
+import { berechneLongTimeline } from '@/remotion/longform/long-timeline'
+import { LONG_FPS } from '@/remotion/longform/long-types'
 import { LF_FELD, LF_KNOPF, LF_KNOPF_PRIMAER, lfApi, type ZustandAntwort } from './longform-api'
 import { LongformSatzEditor, StimmRegler } from './longform-satz.client'
 
@@ -33,6 +37,30 @@ const SCHRITTE: { id: Schritt; label: string }[] = [
   { id: 'stimme', label: '5 · Stimme' },
   { id: 'vorschau', label: '6 · Video' },
 ]
+
+function videoDauerMs(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const v = document.createElement('video')
+    v.preload = 'metadata'
+    v.onloadedmetadata = () => {
+      const ms = Math.round(v.duration * 1000)
+      URL.revokeObjectURL(url)
+      if (!Number.isFinite(ms) || ms < 500) reject(new Error('Länge der Datei nicht lesbar.'))
+      else resolve(ms)
+    }
+    v.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Die Datei ist kein abspielbares Video.'))
+    }
+    v.src = url
+  })
+}
+
+function formatDauer(ms: number): string {
+  const gesamt = Math.round(ms / 1000)
+  return `${Math.floor(gesamt / 60)}:${String(gesamt % 60).padStart(2, '0')}`
+}
 
 function faktenNachGruppe(fakten: LongformFakt[]): { titel: string; items: LongformFakt[] }[] {
   const gruppen: { titel: string; prefix: string }[] = [
@@ -64,9 +92,23 @@ export function LongformStudio() {
   const [katalog, setKatalog] = useState<LongformMusikTrack[]>([])
   const [abschnittChat, setAbschnittChat] = useState<Record<string, string>>({})
   const [renderProzent, setRenderProzent] = useState<number | null>(null)
+  const [renderId, setRenderId] = useState<LongformAbschnittId | null>(null)
   const [dirty, setDirty] = useState(false)
+  const uploadZiel = useRef<LongformAbschnittId | null>(null)
+  const dateiEingabe = useRef<HTMLInputElement>(null)
 
   const z = projekt?.zustand ?? null
+  const naechstesKapitel: LongformAbschnittId | null = z
+    ? (LONGFORM_ABSCHNITTE.find((id) => !(z.freigegeben ?? []).includes(id)) ?? null)
+    : null
+  const alleFrei = z != null && naechstesKapitel == null
+  const sichtZustand = useMemo(() => {
+    if (!z?.skript || alleFrei || !naechstesKapitel) return z
+    return {
+      ...z,
+      skript: { ...z.skript, abschnitte: z.skript.abschnitte.filter((a) => a.id === naechstesKapitel) },
+    }
+  }, [z, alleFrei, naechstesKapitel])
 
   const ladeListe = useCallback(async () => {
     try {
@@ -228,12 +270,13 @@ export function LongformStudio() {
   const alleSprechen = async () => {
     if (!projekt) return
     const id = projekt.id
+    const satzIds = (sichtZustand?.skript?.abschnitte ?? []).flatMap((a) => a.saetze.map((s) => s.id))
     await speichereLokal()
     let offen = 1
     while (offen > 0) {
       const r = await aktion('stimme-all', async () =>
         lfApi<ZustandAntwort & { offen?: number }>('/api/youtube/longform/stimme', {
-          json: { id, aktion: 'sprechen' },
+          json: { id, aktion: 'sprechen', satzIds },
         }),
       )
       if (!r) break
@@ -263,36 +306,126 @@ export function LongformStudio() {
     setDirty(true)
   }
 
-  /** Wie bei den Moat-Shorts: MP4 entsteht im Browser — geht auch auf der Live-Domain. */
-  const starteRender = () =>
+  const speichereDatei = (blob: Blob, dateiname: string) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = dateiname
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  /** Nur dieses Kapitel. Stimme und Bilder bleiben, es wird nichts neu geschrieben. */
+  const ladeKapitelHerunter = (abschnittId: LongformAbschnittId) =>
     aktion('render', async () => {
       await speichereLokal()
       if (!projekt) throw new Error('Kein Projekt.')
-      // Frische signed URLs, dann blob:-Normalisierung im Web-Renderer.
+      if (abschnittId === 'fazit' && projekt.zustand.investiert == null) {
+        throw new Error('Vor dem Fazit die Disclosure wählen. Sie wird in diese Datei gesprochen.')
+      }
       const frisch = await lfApi<{ projekt: LongformProjekt }>(`/api/youtube/longform?id=${encodeURIComponent(projekt.id)}`)
       setProjekt(frisch.projekt)
-      const props = baueAnalyseProps(frisch.projekt.zustand, katalog)
-      if (!props) throw new Error('Noch kein Skript.')
+      const skript = frisch.projekt.zustand.skript
+      const abschnitt = skript?.abschnitte.find((a) => a.id === abschnittId)
+      if (!abschnitt?.saetze.length || !skript) throw new Error('Dieses Kapitel hat noch kein Skript.')
+      if (abschnitt.saetze.some((s) => !frisch.projekt.zustand.stimme.saetze[s.id]?.aktiv)) {
+        throw new Error('Erst alle Sätze dieses Kapitels sprechen.')
+      }
+      const props = baueAnalyseProps({ ...frisch.projekt.zustand, skript: { ...skript, abschnitte: [abschnitt] } }, katalog)
+      if (!props) throw new Error('Kapitel lässt sich nicht bauen.')
       const ticker = frisch.projekt.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'LF'
-      const dateiname = `${ticker}-LF.mp4`
+      const dateiname = `${ticker}-${abschnittId}.mp4`
+      setRenderId(abschnittId)
       setRenderProzent(0)
       try {
         const blob = await rendereAktienAnalyseImBrowser(props, (p) => {
           if (Number.isFinite(p)) setRenderProzent(Math.max(0, Math.min(100, Math.round(p * 100))))
         })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = dateiname
-        a.click()
-        URL.revokeObjectURL(url)
+        speichereDatei(blob, dateiname)
         setRenderProzent(100)
-        toast.success(`${dateiname} heruntergeladen.`)
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : 'Export fehlgeschlagen'
-        toast.error(msg.length > 180 ? `${msg.slice(0, 177)}…` : msg)
-        throw e
+        toast.success(`${dateiname} heruntergeladen. Prüf die Datei, dann lad sie hier hoch.`)
+      } finally {
+        setRenderId(null)
       }
+    })
+
+  const ladeKapitelHoch = (abschnittId: LongformAbschnittId, file: File) =>
+    aktion('hochladen', async () => {
+      await speichereLokal()
+      if (!projekt) return
+      if (file.size > 180 * 1024 * 1024) throw new Error('Die Datei ist größer als 180 MB.')
+      if (file.type && !file.type.includes('mp4')) throw new Error('Nur MP4.')
+      const dauerMs = await videoDauerMs(file)
+      const link = await lfApi<{ signedUrl: string }>('/api/youtube/longform/kapitel-datei', {
+        json: { id: projekt.id, aktion: 'link', abschnittId },
+      })
+      const body = new FormData()
+      body.append('cacheControl', '3600')
+      body.append('', file)
+      const put = await fetch(link.signedUrl, { method: 'PUT', body, headers: { 'x-upsert': 'true' } })
+      if (!put.ok) throw new Error(`Upload abgelehnt (${put.status}).`)
+      const r = await lfApi<ZustandAntwort>('/api/youtube/longform/kapitel-datei', {
+        json: { id: projekt.id, aktion: 'merken', abschnittId, dauerMs },
+      })
+      setProjekt({ ...projekt, zustand: r.zustand })
+      setDirty(false)
+      toast.success(`${LONGFORM_ABSCHNITT_TITEL[abschnittId]} liegt bereit.`)
+    })
+
+  const entferneKapitelDatei = (abschnittId: LongformAbschnittId) =>
+    aktion('hochladen', async () => {
+      await speichereLokal()
+      if (!projekt) return
+      const r = await lfApi<ZustandAntwort>('/api/youtube/longform/kapitel-datei', {
+        json: { id: projekt.id, aktion: 'entfernen', abschnittId },
+      })
+      setProjekt({ ...projekt, zustand: r.zustand })
+      setDirty(false)
+    })
+
+  /** Legt die hochgeladenen Kapitel aneinander. Keine neue Stimme, kein neues Skript. */
+  const setzeFilmZusammen = () =>
+    aktion('film', async () => {
+      await speichereLokal()
+      if (!projekt) throw new Error('Kein Projekt.')
+      const frisch = await lfApi<{ projekt: LongformProjekt }>(`/api/youtube/longform?id=${encodeURIComponent(projekt.id)}`)
+      setProjekt(frisch.projekt)
+      const stand = frisch.projekt.zustand
+      if (!stand.skript) throw new Error('Noch kein Skript.')
+      const fehlt = LONGFORM_ABSCHNITTE.filter((id) => !stand.kapitelDateien?.[id]?.url)
+      if (fehlt.length) throw new Error(`Es fehlt noch: ${fehlt.map((id) => LONGFORM_ABSCHNITT_TITEL[id]).join(', ')}.`)
+      const teile = LONGFORM_ABSCHNITTE.map((id) => {
+        const datei = stand.kapitelDateien?.[id]
+        const abschnitt = stand.skript?.abschnitte.find((a) => a.id === id)
+        if (!datei?.url || !abschnitt || !stand.skript) throw new Error('Kapiteldatei fehlt.')
+        const props = baueAnalyseProps({ ...stand, skript: { ...stand.skript, abschnitte: [abschnitt] } }, katalog)
+        const timeline = props ? berechneLongTimeline(props) : null
+        const sollMs = timeline ? (timeline.durationInFrames / LONG_FPS) * 1000 : 0
+        const passt = timeline != null && Math.abs(datei.dauerMs - sollMs) < 800
+        return {
+          src: datei.url,
+          dauerMs: datei.dauerMs,
+          schnitteMs: passt ? timeline.saetze.map((s) => (s.from / LONG_FPS) * 1000) : [0],
+        }
+      })
+      const start = aboStartMs(teile)
+      const ticker = frisch.projekt.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'LF'
+      setRenderProzent(0)
+      const blob = await rendereZusammenschnittImBrowser(
+        {
+          teile: teile.map(({ src, dauerMs }) => ({ src, dauerMs })),
+          aboFromMs: start,
+          aboText: stand.varianten.aboText,
+          akzent: stand.varianten.akzent,
+        },
+        (p) => {
+          if (Number.isFinite(p)) setRenderProzent(Math.max(0, Math.min(100, Math.round(p * 100))))
+        },
+      )
+      speichereDatei(blob, `${ticker}-LF.mp4`)
+      setRenderProzent(100)
+      if (start == null) toast('Zwischen Minute 4 und 5 liegt keine Satzgrenze. Der Film hat keine Abo-Karte.')
+      else toast.success(`${ticker}-LF.mp4 heruntergeladen.`)
     })
 
   const loeschen = () =>
@@ -306,9 +439,57 @@ export function LongformStudio() {
     })
 
   const vorschauProps = useMemo(() => {
-    if (!z?.skript) return null
-    return baueAnalyseProps(z, katalog)
-  }, [z, katalog])
+    if (!z?.skript || !naechstesKapitel) return null
+    const abschnitt = z.skript.abschnitte.find((a) => a.id === naechstesKapitel)
+    if (!abschnitt?.saetze.length) return null
+    return baueAnalyseProps({ ...z, skript: { ...z.skript, abschnitte: [abschnitt] } }, katalog)
+  }, [z, naechstesKapitel, katalog])
+
+  const kapitelSchreiben = () =>
+    aktion('kapitel', async () => {
+      if (!projekt || !naechstesKapitel) return
+      await speichereLokal()
+      const r = await lfApi<ZustandAntwort>('/api/youtube/longform/skript', {
+        json: { id: projekt.id, aktion: 'kapitel', abschnittId: naechstesKapitel, denkstufe: z?.denkstufe },
+      })
+      setProjekt({ ...projekt, zustand: r.zustand })
+      setDirty(false)
+      toast.success('Kapitel geschrieben.')
+    })
+
+  const speichereZustand = (zustand: LongformProjektZustand) =>
+    aktion('speichern', async () => {
+      if (!projekt) return
+      await lfApi('/api/youtube/longform', { method: 'PATCH', json: { id: projekt.id, zustand } })
+      setProjekt({ ...projekt, zustand })
+      setDirty(false)
+    })
+
+  const gibFrei = () => {
+    if (!projekt || !z || !naechstesKapitel) return
+    const da = z.skript?.abschnitte.some((a) => a.id === naechstesKapitel && a.saetze.length)
+    if (!da) return
+    void speichereZustand({ ...z, freigegeben: [...(z.freigegeben ?? []), naechstesKapitel] })
+  }
+
+  const nimmZurueck = () => {
+    if (!projekt || !z || !(z.freigegeben ?? []).length) return
+    void speichereZustand({ ...z, freigegeben: (z.freigegeben ?? []).slice(0, -1) })
+  }
+
+  /** Fertige Kapitel bis einschließlich `bis` ausblenden, damit das nächste direkt dran ist. */
+  const ueberspringe = (bis: LongformAbschnittId) => {
+    if (!projekt || !z?.skript) return
+    const ende = LONGFORM_ABSCHNITTE.indexOf(bis)
+    const ids: LongformAbschnittId[] = []
+    for (let i = 0; i <= ende; i++) {
+      const id = LONGFORM_ABSCHNITTE[i]!
+      const hat = z.skript.abschnitte.some((a) => a.id === id && a.saetze.length > 0)
+      if (!hat) return
+      ids.push(id)
+    }
+    void speichereZustand({ ...z, freigegeben: ids })
+  }
 
   const satzAnzahl = z?.skript?.abschnitte.reduce((n, a) => n + a.saetze.length, 0) ?? 0
   const stimmeFertig =
@@ -404,7 +585,35 @@ export function LongformStudio() {
           <span className="font-semibold text-[var(--app-text)]">
             {projekt.ticker} · {projekt.firmenname}
           </span>
-          <span className="text-[var(--app-text-muted)]">Aktiv: {LONGFORM_AKTIVE_ABSCHNITTE.map((id) => LONGFORM_ABSCHNITT_TITEL[id]).join(' · ')}</span>
+          <span className="text-[var(--app-text-muted)]">
+            {alleFrei ? 'Alle Kapitel frei' : `Kapitel: ${naechstesKapitel ? LONGFORM_ABSCHNITT_TITEL[naechstesKapitel] : ''}`}
+          </span>
+          {naechstesKapitel && !z.skript?.abschnitte.some((a) => a.id === naechstesKapitel && a.saetze.length) ? (
+            <button type="button" className={LF_KNOPF_PRIMAER} disabled={laeuft != null || z.gewaehlterHook == null} onClick={() => void kapitelSchreiben()}>
+              {laeuft === 'kapitel' ? 'Schreibt…' : 'Kapitel schreiben'}
+            </button>
+          ) : naechstesKapitel ? (
+            <button type="button" className={LF_KNOPF_PRIMAER} disabled={laeuft != null} onClick={gibFrei}>
+              Kapitel freigeben
+            </button>
+          ) : null}
+          {(z.freigegeben ?? []).length ? (
+            <button type="button" className={LF_KNOPF} disabled={laeuft != null} onClick={nimmZurueck}>
+              Freigabe zurück
+            </button>
+          ) : null}
+          {LONGFORM_ABSCHNITTE.flatMap((id, index) => {
+            if ((z.freigegeben ?? []).includes(id)) return []
+            const erreichbar = LONGFORM_ABSCHNITTE.slice(0, index + 1).every((vorher) =>
+              z.skript?.abschnitte.some((a) => a.id === vorher && a.saetze.length > 0),
+            )
+            if (!erreichbar) return []
+            return [
+              <button key={id} type="button" className={LF_KNOPF} disabled={laeuft != null} onClick={() => ueberspringe(id)}>
+                {LONGFORM_ABSCHNITT_TITEL[id]} überspringen
+              </button>,
+            ]
+          })}
           <label className="ml-auto flex items-center gap-2 text-[var(--app-text-muted)]">
             Denkstufe
             <select
@@ -553,7 +762,7 @@ export function LongformStudio() {
             </button>
           </div>
           <div className="space-y-6 px-4 py-3 sm:px-5 sm:py-4">
-            {z.skript.abschnitte.map((a) => (
+            {(sichtZustand?.skript?.abschnitte ?? []).map((a) => (
               <AbschnittBlock
                 key={a.id}
                 abschnitt={a}
@@ -603,7 +812,7 @@ export function LongformStudio() {
                 setDirty(true)
               }}
             />
-            {z.skript.abschnitte.map((a) => (
+            {(sichtZustand?.skript?.abschnitte ?? []).map((a) => (
               <div key={a.id} className="space-y-2">
                 <h3 className="text-sm font-medium text-[var(--app-text)]">{a.titel}</h3>
                 {a.saetze.map((s) => (
@@ -669,24 +878,81 @@ export function LongformStudio() {
                 }}
               />
             </label>
-            <button type="button" className={LF_KNOPF_PRIMAER} disabled={laeuft != null || !stimmeFertig || z.investiert == null} onClick={() => void starteRender()}>
-              {laeuft === 'render'
-                ? `Rendert… ${renderProzent ?? 0}%`
-                : 'MP4 im Browser erzeugen'}
+            <button
+              type="button"
+              className={LF_KNOPF_PRIMAER}
+              disabled={laeuft != null || !LONGFORM_ABSCHNITTE.every((id) => z.kapitelDateien?.[id]?.url)}
+              onClick={() => void setzeFilmZusammen()}
+            >
+              {laeuft === 'film' ? `Setzt zusammen… ${renderProzent ?? 0}%` : 'Film aus den Kapiteln'}
             </button>
           </div>
           <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
-            {z.investiert == null ? (
-              <p className="text-sm text-amber-200">Disclosure wählen: investiert oder nicht. Die Zeile steht am Ende des Videos. Ohne Wahl kein Export.</p>
-            ) : null}
-            {!stimmeFertig ? (
-              <p className="text-sm text-amber-200">Noch nicht alle Sätze haben eine Stimme. Render ist gesperrt.</p>
-            ) : (
-              <p className="text-sm text-[var(--app-text-muted)]">
-                Vorschau und MP4 laufen im Browser (Chrome/Edge) — auch auf der Live-Seite. Ein 3–4-Minuten-Test braucht je nach Rechner einige Minuten.
-              </p>
-            )}
-            {laeuft === 'render' && renderProzent != null ? (
+            <p className="text-sm text-[var(--app-text-muted)]">
+              Lade jedes Kapitel als MP4, prüf die Datei, und lad sie danach hier hoch. Der Schlussfilm legt nur diese Dateien aneinander. Stimme und Bilder werden nicht neu erzeugt. Zwischen Minute 4 und 5 kommt die Abo-Karte auf eine Satzgrenze, die Stimme läuft weiter.
+            </p>
+            <p className="text-sm text-[var(--app-text-muted)]">
+              Musik und Disclosure stecken in der Kapiteldatei. Stell sie ein, bevor du das Kapitel lädst. Das Fazit erst laden, wenn die Disclosure gewählt ist.
+            </p>
+            <input
+              ref={dateiEingabe}
+              type="file"
+              accept="video/mp4"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                const ziel = uploadZiel.current
+                e.target.value = ''
+                if (file && ziel) void ladeKapitelHoch(ziel, file)
+              }}
+            />
+            <div className="space-y-2">
+              {LONGFORM_ABSCHNITTE.map((id) => {
+                const abschnitt = z.skript?.abschnitte.find((a) => a.id === id)
+                const stimmeDa = !!abschnitt?.saetze.length && abschnitt.saetze.every((s) => z.stimme.saetze[s.id]?.aktiv)
+                const datei = z.kapitelDateien?.[id]
+                const dran = id === naechstesKapitel
+                return (
+                  <div
+                    key={id}
+                    className={`flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 ${dran ? 'border-red-600' : 'border-[var(--app-border)]'}`}
+                  >
+                    <div className="min-w-40 text-sm text-[var(--app-text)]">
+                      {LONGFORM_ABSCHNITT_TITEL[id]}
+                      {dran ? <span className="ml-2 text-xs text-red-400">dran</span> : null}
+                    </div>
+                    <div className="text-xs text-[var(--app-text-muted)]">
+                      {datei ? `hochgeladen · ${formatDauer(datei.dauerMs)}` : stimmeDa ? 'bereit zum Laden' : 'noch keine Stimme'}
+                    </div>
+                    <button
+                      type="button"
+                      className={`${LF_KNOPF} ml-auto`}
+                      disabled={laeuft != null || !stimmeDa || (id === 'fazit' && z.investiert == null)}
+                      onClick={() => void ladeKapitelHerunter(id)}
+                    >
+                      {laeuft === 'render' && renderId === id ? `Lädt… ${renderProzent ?? 0}%` : 'MP4 laden'}
+                    </button>
+                    <button
+                      type="button"
+                      className={LF_KNOPF}
+                      disabled={laeuft != null}
+                      onClick={() => {
+                        uploadZiel.current = id
+                        dateiEingabe.current?.click()
+                      }}
+                    >
+                      Hochladen
+                    </button>
+                    {datei ? (
+                      <button type="button" className={LF_KNOPF} disabled={laeuft != null} onClick={() => void entferneKapitelDatei(id)}>
+                        Entfernen
+                      </button>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+            {(laeuft === 'render' || laeuft === 'film') && renderProzent != null ? (
               <div className="h-2 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
                 <div className="h-full bg-red-600 transition-[width]" style={{ width: `${renderProzent}%` }} />
               </div>

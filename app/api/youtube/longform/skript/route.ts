@@ -9,9 +9,9 @@ import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { gesperrteHookTypen } from '@/lib/youtube/longform/longform-abwechslung'
 import { ladeProjekt, ladeVerlauf, mitUrls, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
-import { ladeDokumente } from '@/lib/youtube/longform/longform-projekt-server'
+import { ergaenzeKapitelAusExport, ladeDokumente } from '@/lib/youtube/longform/longform-projekt-server'
 import { pruefeSkript } from '@/lib/youtube/longform/longform-pruefung'
-import { erzeugeHooks, erzeugeSkript, haengeSchlussAn, logosFuerKonkurrenten, pruefeBehauptungen, ueberarbeite } from '@/lib/youtube/longform/longform-skript-server'
+import { erzeugeHooks, erzeugeSkript, haengeSchlussAn, logosFuerKonkurrenten, pruefeBehauptungen, setzeFazit, ueberarbeite } from '@/lib/youtube/longform/longform-skript-server'
 import {
   LONGFORM_ABSCHNITTE,
   type LongformAbschnittId,
@@ -84,10 +84,43 @@ export async function POST(req: Request) {
           const hook = z.hooks?.[idx]
           if (!hook) return { ok: false as const, fehler: 'Bitte zuerst einen Hook wählen.' }
           const dokumente = await ladeDokumente(z)
-          let skript = pruefeSkript(await erzeugeSkript({ zustand: z, hook, dokumente }), ctx)
+          const neu = await erzeugeSkript({ zustand: z, hook, dokumente, nur: 'hook' })
+          const behalten = (z.skript?.abschnitte ?? []).filter((a) => a.id !== 'hook')
+          let skript = pruefeSkript({ ...neu, abschnitte: [...neu.abschnitte, ...behalten] }, ctx)
           const probleme = await pruefeBehauptungen({ zustand: z, skript, dokumente }).catch(() => ({}))
           skript = mitBehauptungen(skript, probleme)
           z = aufraeumen({ ...z, gewaehlterHook: idx, skript })
+          break
+        }
+        case 'kapitel': {
+          const abschnittId = String(body.abschnittId) as LongformAbschnittId
+          if (!(LONGFORM_ABSCHNITTE as readonly string[]).includes(abschnittId)) return { ok: false as const, fehler: 'Unbekannter Abschnitt.' }
+          const idx = z.gewaehlterHook
+          const hook = idx != null ? z.hooks?.[idx] : null
+          if (!hook) return { ok: false as const, fehler: 'Bitte zuerst einen Hook wählen.' }
+          z = await ergaenzeKapitelAusExport(id, z)
+          const kontext = { faktenblatt: z.faktenblatt, frueher }
+          const dokumente = await ladeDokumente(z)
+          const teil = await erzeugeSkript({ zustand: z, hook, dokumente, nur: abschnittId })
+          const stueck = teil.abschnitte[0]
+          if (!stueck?.saetze.length) return { ok: false as const, fehler: 'Das Kapitel ist leer.' }
+          const bisher = (z.skript?.abschnitte ?? []).filter((a) => a.id !== abschnittId)
+          let abschnitte = LONGFORM_ABSCHNITTE.flatMap((kapitel) => {
+            if (kapitel === abschnittId) return [stueck]
+            const alt = bisher.find((a) => a.id === kapitel)
+            return alt ? [alt] : []
+          })
+          if (abschnittId === 'fazit') {
+            setzeFazit(abschnitte, z.faktenblatt)
+            haengeSchlussAn(abschnitte, z.faktenblatt, z.investiert)
+          }
+          let skript = pruefeSkript(
+            { leitfrage: z.skript?.leitfrage ?? hook.leitfrage, hookTyp: z.skript?.hookTyp ?? hook.typ, abschnitte, kernphrasen: teil.kernphrasen },
+            kontext,
+          )
+          const probleme = await pruefeBehauptungen({ zustand: z, skript, dokumente }).catch(() => ({}))
+          skript = mitBehauptungen(skript, probleme)
+          z = aufraeumen({ ...z, skript })
           break
         }
         case 'pruefen': {

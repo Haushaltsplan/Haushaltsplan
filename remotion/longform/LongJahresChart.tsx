@@ -4,7 +4,7 @@ import { AbsoluteFill, useCurrentFrame } from 'remotion'
 import { pct, usd } from '../../lib/youtube/longform/longform-format'
 import type { LongformJahresreihe } from '../../lib/youtube/longform/longform-types'
 import { aktiverSatz, ein, zaehleText, type SzeneProps } from './long-bausteine'
-import { LONG_DISPLAY, LONG_LINIE, LONG_MONO, LONG_MUTED, LONG_RAND_X, LONG_ROT, LONG_SERIF, LONG_TEXT, mitAlpha } from './long-look'
+import { LONG_DISPLAY, LONG_GRUEN, LONG_LINIE, LONG_MONO, LONG_MUTED, LONG_RAND_X, LONG_ROT, LONG_SERIF, LONG_TEXT, mitAlpha } from './long-look'
 
 const X0 = 220
 const X1 = 1500
@@ -40,7 +40,6 @@ export function LongJahresChart(sp: SzeneProps) {
   const frame = useCurrentFrame()
   const i = aktiverSatz(sp, frame)
   const reihe = reiheVon(sp, i)
-  const akzent = sp.p.varianten.akzent
   const geo = useMemo(() => {
     if (!reihe || reihe.punkte.length < 2) return null
     const werte = reihe.punkte.map((p) => p.wert)
@@ -68,8 +67,9 @@ export function LongJahresChart(sp: SzeneProps) {
   const letzter = reihe.punkte[reihe.punkte.length - 1]!
   const text = reihe.einheit === 'pct' ? pct(letzter.wert) : usd(letzter.wert * 1_000_000)
   const z = sp.t.saetze[i]!
-  const beton = (z.betonungFrame ?? z.from + 8) - sp.block.from
-  const fort = frame >= beton ? ein(frame, beton, 16) : 0
+  const start = z.from - sp.block.from
+  const fort = ein(frame, start, 14)
+  const zahlFarbe = letzter.wert < 0 ? LONG_ROT : LONG_GRUEN
   const zeichnen = ein(frame, 10, 36)
 
   return (
@@ -81,7 +81,7 @@ export function LongJahresChart(sp: SzeneProps) {
         </div>
       </div>
       <div style={{ position: 'absolute', right: LONG_RAND_X, top: 88, textAlign: 'right', opacity: fort }}>
-        <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 84, color: LONG_TEXT, letterSpacing: -2 }}>{zaehleText(text, fort || 0.01)}</div>
+        <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 84, color: zahlFarbe, letterSpacing: -2 }}>{zaehleText(text, fort || 0.01)}</div>
       </div>
       <svg width={1920} height={1080} style={{ position: 'absolute', inset: 0 }}>
         <defs>
@@ -96,7 +96,7 @@ export function LongJahresChart(sp: SzeneProps) {
         ))}
         <line x1={X0} x2={X1} y1={Y1} y2={Y1} stroke={LONG_LINIE} strokeWidth={1.5} />
         <g clipPath="url(#lf-reihe)">
-          <path d={geo.d} fill="none" stroke={akzent} strokeWidth={2.5} strokeLinejoin="round" />
+          <path d={geo.d} fill="none" stroke={zahlFarbe} strokeWidth={2.5} strokeLinejoin="round" />
         </g>
         {geo.knick != null
           ? reihe.punkte.map((p, k) =>

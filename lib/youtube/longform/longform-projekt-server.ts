@@ -5,10 +5,12 @@ import { ladeDepotRadarAktien } from '@/lib/portfolio-analyse/depot-gewichte-ser
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { generiereMoatKiBewertung, ladeMoatKiCache } from '@/lib/portfolio-analyse/moat-ki-server'
 import type { MoatKiBewertung } from '@/lib/portfolio-analyse/moat-ki-types'
+import { ladeYahooHolders } from '@/lib/portfolio-analyse/yahoo-holders-server'
 import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
+import { pct } from '@/lib/youtube/longform/longform-format'
 import { waehleVarianten } from '@/lib/youtube/longform/longform-abwechslung'
 import { ladeHerunter, ladeHoch, ladeVerlauf, legeProjektAn, projektPfad, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
-import { baueFaktenblatt } from '@/lib/youtube/longform/longform-fakten'
+import { baueFaktenblatt, haengeRisikoUndFazit } from '@/lib/youtube/longform/longform-fakten'
 import { ladeHookZusatz } from '@/lib/youtube/longform/longform-hook-karten'
 import { moatTexteEnglisch } from '@/lib/youtube/longform/longform-moat-en-server'
 import { ladeChart10k } from '@/lib/youtube/longform/longform-kurse-server'
@@ -83,6 +85,7 @@ export async function erstelleProjekt(eingabe: LongformExportEingabe, thema: str
   )
   faktenblatt.hookKarten = hook.karten
   faktenblatt.hookBasis = hook.basis
+  haengeRisikoUndFazit(faktenblatt)
   const zustand: LongformProjektZustand = {
     version: 1,
     thema: thema.trim(),
@@ -129,4 +132,51 @@ export async function ladeDokumente(zustand: LongformProjektZustand): Promise<Lo
     out.push({ name: q.name, mime: q.art === 'text' ? 'text/plain' : q.mime, base64: buf.toString('base64') })
   }
   return out
+}
+
+/** Neue Kapitel-Fakten aus der gespeicherten JSON. Skript, Stimme und Bilder bleiben. */
+export async function ergaenzeKapitelAusExport(id: string, z: LongformProjektZustand): Promise<LongformProjektZustand> {
+  const buf = await ladeHerunter(projektPfad(id, 'export', 'fundamentaldaten.json'))
+  let faktenblatt = z.faktenblatt
+  if (buf) {
+    try {
+      const gelesen = leseLongformExport(JSON.parse(buf.toString('utf8')))
+      if (typeof gelesen !== 'string') {
+        const neu = baueFaktenblatt({
+          paket: gelesen.paket,
+          isin: z.faktenblatt.isin,
+          exportDatum: z.faktenblatt.exportDatum,
+          chart: z.faktenblatt.chart,
+          moatKi: null,
+          logoUrl: z.faktenblatt.logoUrl,
+          imDepot: z.faktenblatt.imDepot,
+        })
+        const ids = new Set(z.faktenblatt.fakten.map((f) => f.id))
+        faktenblatt = {
+          ...z.faktenblatt,
+          fakten: [...z.faktenblatt.fakten, ...neu.fakten.filter((f) => !ids.has(f.id))],
+          scorecard: neu.scorecard?.length ? neu.scorecard : z.faktenblatt.scorecard,
+        }
+      }
+    } catch (e) {
+      console.warn('[longform] Faktenblatt aus Export:', e)
+    }
+  }
+  faktenblatt = { ...faktenblatt, fakten: [...faktenblatt.fakten] }
+  if (faktenblatt.symbolYahoo && !faktenblatt.fakten.some((f) => f.id === 'own.inst1')) {
+    const holders = await ladeYahooHolders(faktenblatt.symbolYahoo).catch(() => null)
+    holders?.institutionen?.forEach((inst, i) => {
+      faktenblatt.fakten.push({
+        id: `own.inst${i + 1}`,
+        label: inst.name,
+        wert: Math.round(inst.anteilPct * 10) / 10,
+        text: pct(inst.anteilPct),
+        einheit: 'pct',
+        stichtag: faktenblatt.exportDatum,
+        quelle: 'Yahoo Finance, institution ownership',
+      })
+    })
+  }
+  haengeRisikoUndFazit(faktenblatt)
+  return { ...z, faktenblatt }
 }

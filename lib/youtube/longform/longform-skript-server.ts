@@ -12,7 +12,6 @@ import { faktenFuerPrompt } from '@/lib/youtube/longform/longform-fakten'
 import { findeMoatShortLogo } from '@/lib/youtube/moat-short-logo-server'
 import {
   LONGFORM_ABSCHNITT_TITEL,
-  LONGFORM_AKTIVE_ABSCHNITTE,
   LONGFORM_HOOK_TYPEN,
   LONGFORM_SZENEN,
   type LongformAbschnitt,
@@ -128,6 +127,11 @@ const SZENEN_JE_ABSCHNITT: Partial<Record<LongformAbschnittId, LongformSzenenTyp
   geschaeft: ['moat_geschaeft', 'moat_segmente', 'bild'],
   burggraben: ['moat_pfeiler', 'moat_scorecard', 'moat_finanzen', 'moat_segmente', 'bild'],
   zahlen: ['zahl_reihe', 'bild'],
+  inhaber: ['inhaber_anteile', 'bild'],
+  bewertung: ['bewertung_zahl', 'bild'],
+  risiken: ['risiko_karte', 'bild'],
+  scorecard: ['scorecard_spalten', 'bild'],
+  fazit: ['fazit_antwort', 'bild'],
 }
 
 let satzZaehler = 0
@@ -146,7 +150,7 @@ function satzAusRoh(r: SatzRoh, abschnitt: LongformAbschnittId, fb: LongformFakt
   if ((szene === 'moat_pfeiler' || szene === 'moat_scorecard') && !fb.moat && !fb.burggraben) szene = 'moat_geschaeft'
   const text = r.text.replace(/\s+/g, ' ').trim()
   const faktIds = [...new Set(r.faktIds ?? [])].filter((id) => !id.startsWith('hook.'))
-  if (faktIds.some((id) => id.startsWith('km.'))) szene = 'moat_finanzen'
+  if (abschnitt === 'burggraben' && faktIds.some((id) => id.startsWith('km.'))) szene = 'moat_finanzen'
   return {
     id: neueSatzId(abschnitt),
     text,
@@ -276,25 +280,39 @@ function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): str
     case 'burggraben':
       return `burggraben (about 100 to 140 seconds): the moat, starting at the pillars. Do NOT re-explain how the company makes money. Say "moat", never the German word. Overall score is moat.score, said once. One sentence per pillar, scene moat_pfeiler, fokus = exactly one pillar id (preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte). Put a scene bild with a concrete English bildWunsch BETWEEN pillars so the same card is never on screen for the whole chapter. Then one moat_scorecard sentence for the overall score. ${fb.segmente ? 'At most one moat_segmente callback.' : ''} If you cite a km.* fact (operating margin, ROIC, net cash, interest coverage, and the other key metrics), that sentence is scene moat_finanzen with exactly one km.* id. Never leave those numbers on moat_scorecard. End on one threat, a single sentence. Do not add a like or subscribe sentence.`
     case 'zahlen':
-      return `zahlen: one chart per series, never combined. Scenes zahl_reihe with fokus umsatz, marge, gewinn, fcf — only for series that exist as reihe.* facts. One sentence per chart, faktIds = reihe.<id>, betonung on the latest figure. If a year is an outlier, say so only when a fact gives the company's own reason; otherwise just name the year. A bild sentence with bildWunsch may sit between two charts.`
+      return `zahlen (about 45 to 75 seconds): one chart per series, never combined. Scenes zahl_reihe with fokus umsatz, marge, gewinn, fcf — only for series that exist as reihe.* facts. One sentence per chart, faktIds = reihe.<id>, betonung on the latest figure. If a year is an outlier, say so only when a fact gives the company's own reason; otherwise just name the year. A bild sentence with bildWunsch may sit between two charts, never on top of the number.`
+    case 'inhaber':
+      return `inhaber (about 45 to 75 seconds): who owns the shares. Scene inhaber_anteile. One sentence per fact that exists: own.insider, own.institutionen, then own.inst1, own.inst2, own.inst3, then own.insider_netto. Skip any id that is not in the fact sheet. fokus = that fact id. A bild sentence may sit between two cards. Do not invent a holder.`
+    case 'bewertung':
+      return `bewertung (about 45 to 75 seconds): scene bewertung_zahl. One sentence per val.* fact that exists, in this order when present: val.ntm_pe, val.ltm_pe, val.ntm_ev_ebitda, val.ev_ebitda_mitte, val.ev_ebitda_abstand, val.ntm_fcf_rendite, val.peg_ratio. faktIds is exactly that one id. A bild sentence may sit between two numbers. Do not say cheap or expensive except through val.ev_ebitda_abstand.`
+    case 'risiken':
+      return `risiken (about 45 to 75 seconds): scene risiko_karte. One sentence per risk.* fact and, if present, km.net_debt_ebitda and km.aktien_verwaesserung. faktIds is exactly one of those ids. Say only what that fact says. A bild sentence may sit between two cards.`
+    case 'scorecard':
+      return `scorecard (about 45 to 75 seconds): scene scorecard_spalten. One sentence per sc.* fact (dividendenertrag, dividendenwachstum, gewinnwachstum, burggraben). fokus = the id without the sc. prefix. The bars for all columns stay on screen. A bild sentence may sit between two sentences.`
+    case 'fazit':
+      return `fazit (about 45 to 75 seconds): answer the guiding question without stating the buy verdict yourself. Scene fazit_antwort. Two or three sentences that cite sc.* and val.ev_ebitda_abstand when those facts exist. Do not write the final verdict sentence. Do not give a price target.`
     default:
       return `${id}: ${LONGFORM_ABSCHNITT_TITEL[id]}`
   }
 }
 
-const ABSCHNITT_SCHEMA = {
-  type: 'object',
-  properties: {
-    id: { type: 'string', enum: [...LONGFORM_AKTIVE_ABSCHNITTE] },
-    saetze: { type: 'array', items: SATZ_SCHEMA },
-  },
-  required: ['id', 'saetze'],
+function abschnittSchema(id: LongformAbschnittId) {
+  return {
+    type: 'object',
+    properties: {
+      id: { type: 'string', enum: [id] },
+      saetze: { type: 'array', items: SATZ_SCHEMA },
+    },
+    required: ['id', 'saetze'],
+  }
 }
 
 export async function erzeugeSkript(opts: {
   zustand: LongformProjektZustand
   hook: LongformHookVorschlag
   dokumente: LongformDokument[]
+  /** Ein Kapitel. Ohne Angabe nur der Hook. */
+  nur?: LongformAbschnittId
 }): Promise<LongformSkript> {
   const z = opts.zustand
   const fb = z.faktenblatt
@@ -302,14 +320,15 @@ export async function erzeugeSkript(opts: {
     kontext(fb, z.thema),
     `CHOSEN OPENING (type ${opts.hook.typ}):\nGuiding question: ${opts.hook.leitfrage}\n${opts.hook.saetze.map((s) => `- ${s.text} [${s.faktIds.join(', ')}]`).join('\n')}`,
     `PREFERRED HOOK SCENE: ${z.varianten.hookSzene}`,
-    `TASK: Write these sections of the video, in this order. Every section keeps the guiding question alive without answering it (the answer comes in the final section of the full video, not now).\n${LONGFORM_AKTIVE_ABSCHNITTE.map((a) => `- ${abschnittAuftrag(a, fb)}`).join('\n')}
+    `TASK: Write only this section. ${opts.nur && opts.nur !== 'fazit' ? 'Keep the guiding question alive without answering it.' : opts.nur === 'fazit' ? 'This is the final section. Do not write the verdict sentence.' : 'Keep the guiding question alive without answering it.'}\n- ${abschnittAuftrag(opts.nur ?? 'hook', fb)}
 For every sentence choose the scene that best shows what is being said. Consecutive sentences may share a scene. For moat: change visuals / insert scene bild about every 20–25 seconds. For chart10k: keep ONE unbroken chart sequence (no mid-chapter bild). One core number per sentence; faktIds + betonung must match that spoken number so on-screen HUD syncs with the voice. Every bild / hook_bild sentence MUST include a concrete English bildWunsch (image brief a human can search or shoot).
 Never cite a hook.* fact in any section. When a sentence names rival companies, set konkurrenten to those exact spoken names, at most four, and repeat that same list on the following sentences while you are still talking about them. Otherwise leave konkurrenten empty. Do not add a company you do not say.
 kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks in later videos).`,
   ].join('\n\n')
+  const nur = opts.nur ?? 'hook'
   const schema = {
     type: 'object',
-    properties: { abschnitte: { type: 'array', items: ABSCHNITT_SCHEMA }, kernphrasen: { type: 'array', items: { type: 'string' } } },
+    properties: { abschnitte: { type: 'array', items: abschnittSchema(nur) }, kernphrasen: { type: 'array', items: { type: 'string' } } },
     required: ['abschnitte', 'kernphrasen'],
   }
   const { daten } = await frage<{ abschnitte: { id: LongformAbschnittId; saetze: SatzRoh[] }[]; kernphrasen: string[] }>({
@@ -321,7 +340,7 @@ kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks
     denkstufe: z.denkstufe,
     maxTokens: 48_000,
   })
-  const abschnitte: LongformAbschnitt[] = LONGFORM_AKTIVE_ABSCHNITTE.map((id) => {
+  const abschnitte: LongformAbschnitt[] = [nur].map((id) => {
     const roh = daten.abschnitte?.find((a) => a.id === id)
     return { id, titel: LONGFORM_ABSCHNITT_TITEL[id], saetze: (roh?.saetze ?? []).filter((s) => s.text?.trim()).map((s) => satzAusRoh(s, id, fb)) }
   })
@@ -331,7 +350,10 @@ kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks
   stelleBrollSicher(abschnitte, fb)
   stelleSegmentFokusSicher(abschnitte)
   stellePfeilerFokusSicher(abschnitte)
-  haengeSchlussAn(abschnitte, fb, z.investiert)
+  if (nur === 'fazit') {
+    setzeFazit(abschnitte, fb)
+    haengeSchlussAn(abschnitte, fb, z.investiert)
+  }
   await logosFuerKonkurrenten(abschnitte)
   const deutsch = abschnitte.flatMap((a) => a.saetze).filter((s) => klingtNachDeutsch(s.text))
   if (deutsch.length) {
@@ -419,6 +441,19 @@ function stellePfeilerFokusSicher(abschnitte: LongformAbschnitt[]) {
     }
     n += 1
   }
+}
+
+export function setzeFazit(abschnitte: LongformAbschnitt[], fb: LongformFaktenblatt) {
+  const fazit = abschnitte.find((a) => a.id === 'fazit')
+  const urteil = fb.fakten.find((f) => f.id === 'fazit.urteil')
+  if (!fazit || !urteil) return
+  fazit.saetze = fazit.saetze.filter((s) => !s.faktIds.includes('fazit.urteil'))
+  fazit.saetze.push({
+    id: neueSatzId('fazit'),
+    text: urteil.text,
+    faktIds: ['fazit.urteil'],
+    visual: { szene: 'fazit_antwort', fokus: null, betonung: null, bildWunsch: null },
+  })
 }
 
 const SCHLUSS_SZENEN = new Set(['abo_karte', 'disclaimer', 'schluss'])

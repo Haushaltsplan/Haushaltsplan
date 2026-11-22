@@ -6,7 +6,9 @@ import { Hintergrund, Korn, oeffentlichSrc, type SzeneProps } from './long-baust
 import { LONG_MUSIK_FREI, LONG_MUSIK_UNTER_STIMME } from './long-look'
 import { berechneLongTimeline, type LongBlock, type LongTimeline } from './long-timeline'
 import type { AktienAnalyseProps } from './long-types'
+import { LongAbo } from './LongAbo'
 import { LongBild, LongBumper, LongTitelKarte } from './LongBild'
+import { LongKapitel } from './LongKapitel'
 import { LongChart } from './LongChart'
 import { LongEnde } from './LongEnde'
 import { LongHook } from './LongHook'
@@ -29,6 +31,8 @@ function Szene(sp: SzeneProps) {
       return <LongMoat {...sp} />
     case 'reihe':
       return <LongJahresChart {...sp} />
+    case 'kapitel':
+      return <LongKapitel {...sp} />
     case 'titel':
       return <LongTitelKarte {...sp} />
     case 'karte':
@@ -49,7 +53,7 @@ function Kamera({ p, t, block, children }: SzeneProps & { children: React.ReactN
   }
   // Chart/B-Roll: kaum Punch — sonst „zucken“ die Linien und Fotos.
   if (block.familie === 'chart' || block.familie === 'reihe') punch = 0
-  if (block.familie === 'bild' || block.familie === 'moat') punch *= 0.25
+  if (block.familie === 'bild' || block.familie === 'moat' || block.familie === 'kapitel') punch *= 0.25
   if (block.familie === 'hook' && frame + block.from < 90) {
     return <AbsoluteFill>{children}</AbsoluteFill>
   }
@@ -77,30 +81,10 @@ function musikVolumen(f: number, t: LongTimeline, basis: number, von: number, bi
   return Math.max(0, pegel * basis * Math.max(0, kante))
 }
 
-const UEBERLAPP = 5
-
-function logoKey(logos: { url: string }[] | null | undefined): string {
-  return (logos ?? []).map((l) => l.url).join('|')
-}
-
-/** Überlapp nur zwischen zwei Sätzen desselben Kapitels. Die Kapitelkarte bleibt eine Pause. */
-function satzFenster(p: AktienAnalyseProps, t: LongTimeline, i: number) {
+/** Satz beginnt, wenn der vorige zu Ende ist. Volle Lautstärke, kein Überlapp. */
+function satzFenster(t: LongTimeline, i: number) {
   const z = t.saetze[i]!
-  const vor = i > 0 ? t.saetze[i - 1] : null
-  const nach = t.saetze[i + 1]
-  const gleichesVor = vor != null && p.saetze[i]!.abschnittId === p.saetze[i - 1]!.abschnittId && z.from - (vor.from + vor.dauer) <= 2
-  const gleichesNach = nach != null && p.saetze[i]!.abschnittId === p.saetze[i + 1]!.abschnittId && nach.from - (z.from + z.dauer) <= 2
-  const start = gleichesVor ? Math.max(0, z.from - UEBERLAPP) : z.from
-  const ende = gleichesNach ? z.from + z.dauer + UEBERLAPP : z.from + z.dauer
-  return { start, laenge: Math.max(1, ende - start), ein: gleichesVor ? UEBERLAPP : 2, aus: gleichesNach ? UEBERLAPP : 4 }
-}
-
-/** Im Überlapp fällt der vorige Satz und der nächste kommt. Dazwischen bleibt Stimme. */
-function SatzTon({ src, laenge, einblende, ausblende }: { src: string; laenge: number; einblende: number; ausblende: number }) {
-  const frame = useCurrentFrame()
-  const rein = interpolate(frame, [0, einblende], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  const raus = interpolate(frame, [Math.max(einblende, laenge - ausblende), laenge], [1, 0], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-  return <Audio src={src} volume={rein * raus} />
+  return { start: z.from, laenge: Math.max(1, z.dauer) }
 }
 
 function Ton({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
@@ -124,10 +108,10 @@ function Ton({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
       {p.saetze.map((s, i) => {
         const z = t.saetze[i]!
         if (!s.audioUrl) return null
-        const fenster = satzFenster(p, t, i)
+        const fenster = satzFenster(t, i)
         return (
           <Sequence key={s.id} from={fenster.start} durationInFrames={fenster.laenge} layout="none">
-            <SatzTon src={s.audioUrl} laenge={fenster.laenge} einblende={fenster.ein} ausblende={fenster.aus} />
+            <Audio src={s.audioUrl} volume={1} />
           </Sequence>
         )
       })}
@@ -145,34 +129,80 @@ function Ton({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
   )
 }
 
-/** Kleine Logoleiste, solange derselbe Konkurrenten-Satzblock läuft. */
-function KonkurrentenLeiste({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
-  const frame = useCurrentFrame()
-  let pos = 0
-  for (let i = 0; i < t.saetze.length; i++) if (t.saetze[i]!.from <= frame) pos = i
-  const logos = p.saetze[pos]?.visual.konkurrentLogos ?? []
-  if (!logos.length) return null
-  const key = logoKey(logos)
-  let start = t.saetze[pos]!.from
-  for (let i = pos - 1; i >= 0; i--) {
-    if (logoKey(p.saetze[i]?.visual.konkurrentLogos) !== key) break
-    start = t.saetze[i]!.from
+function wortKern(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/** Spanne nur über die Wörter, die den Namen wirklich sagen. Sonst kein Logo. */
+function namensSpanne(woerter: { text: string; from: number; bis: number }[], name: string): { von: number; bis: number } | null {
+  const teile = name
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length > 2)
+  const such = teile.length ? teile : [wortKern(name)].filter((t) => t.length > 1)
+  if (!such.length) return null
+  let von = -1
+  let bis = -1
+  let naechstes = 0
+  for (const w of woerter) {
+    const text = wortKern(w.text)
+    if (!text) continue
+    const ziel = such[naechstes]!
+    if (text.includes(ziel) || (ziel.includes(text) && text.length > 2)) {
+      if (von < 0) von = w.from
+      bis = w.bis
+      naechstes += 1
+      if (naechstes >= such.length) return { von, bis: Math.max(bis, von + 1) }
+    }
   }
-  const o = interpolate(frame, [start, start + 6], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+  return null
+}
+
+/** Jedes Logo nur, solange sein Name gesprochen wird. Davor und danach ist es weg. */
+function KonkurrentenWurf({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
+  const frame = useCurrentFrame()
+  const sichtbar = t.saetze.flatMap((z) => {
+    const logos = p.saetze[z.index]?.visual.konkurrentLogos ?? []
+    return logos.flatMap((logo) => {
+      const spanne = namensSpanne(z.woerter, logo.name)
+      if (!spanne || frame < spanne.von || frame >= spanne.bis) return []
+      const dauer = spanne.bis - spanne.von
+      const kante = Math.min(8, Math.max(3, Math.floor(dauer * 0.28)))
+      const lokal = frame - spanne.von
+      const rein = interpolate(lokal, [0, kante], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+      const raus = interpolate(lokal, [Math.max(kante, dauer - kante), dauer], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
+      return [{ url: logo.url, x: (1 - rein) * 900 + raus * -900 }]
+    })
+  })
+  if (!sichtbar.length) return null
   return (
-    <div style={{ position: 'absolute', left: 120, top: 36, zIndex: 4, display: 'flex', gap: 16, opacity: o }}>
-      {logos.map((l) => (
+    <div
+      style={{
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        top: '50%',
+        zIndex: 6,
+        display: 'flex',
+        justifyContent: 'center',
+        gap: 36,
+        transform: 'translateY(-50%)',
+        pointerEvents: 'none',
+      }}
+    >
+      {sichtbar.map((l) => (
         <div
           key={l.url}
           style={{
-            width: 72,
-            height: 72,
-            borderRadius: 16,
-            background: 'rgba(12,12,14,0.78)',
+            width: 220,
+            height: 220,
+            borderRadius: 36,
+            background: 'rgba(12,12,14,0.9)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 10,
+            padding: 28,
+            transform: `translateX(${l.x}px)`,
           }}
         >
           <Img src={oeffentlichSrc(l.url)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
@@ -206,7 +236,12 @@ export function AktienAnalyse(p: AktienAnalyseProps) {
         </Sequence>
       ))}
       <KornAbSekunde />
-      <KonkurrentenLeiste p={p} t={t} />
+      <KonkurrentenWurf p={p} t={t} />
+      {t.abo ? (
+        <Sequence from={t.abo.from} durationInFrames={t.abo.dauer}>
+          <LongAbo dauer={t.abo.dauer} text={p.varianten.aboText} akzent={p.varianten.akzent} kanalName={p.kanalName} kanalLogoUrl={p.kanalLogoUrl} />
+        </Sequence>
+      ) : null}
       <Ton p={p} t={t} />
     </AbsoluteFill>
   )

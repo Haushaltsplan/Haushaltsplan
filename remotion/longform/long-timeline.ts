@@ -2,7 +2,7 @@
 import type { LongformAbschnittId } from '../../lib/youtube/longform/longform-types'
 import { LONG_FPS, type AktienAnalyseProps, type LongSatzProps } from './long-types'
 
-export type LongFamilie = 'hook' | 'chart' | 'moat' | 'bild' | 'titel' | 'reihe' | 'karte'
+export type LongFamilie = 'hook' | 'chart' | 'moat' | 'bild' | 'titel' | 'reihe' | 'karte' | 'kapitel'
 
 export type LongSatzZeit = {
   index: number
@@ -10,8 +10,8 @@ export type LongSatzZeit = {
   /** Frames mit Stimme. */
   dauer: number
   betonungFrame: number | null
-  /** Absolute Startframes der Wörter (für Wort-Highlights). */
-  woerter: { text: string; from: number }[]
+  /** Absolute Frames der gesprochenen Wörter. */
+  woerter: { text: string; from: number; bis: number }[]
 }
 
 export type LongBlock = {
@@ -37,10 +37,12 @@ export type LongTimeline = {
 
 /** Wenig Luft vor dem ersten Wort — Cold Open soll sofort sitzen. */
 const VORLAUF = 3
-/** Satzlücke ~100 ms: gesprächig, ohne Hektik (früher ~300 ms + TTS-Polster = spürbare Löcher). */
-const LUECKE = 3
-/** Kurze Kapitelkarte, etwa eine halbe Sekunde, damit die Stimme nicht in ein Loch fällt. */
-const BUMPER = 15
+/** Keine Extra-Pause. Die Kapitelkarte ist die einzige Lücke. */
+const LUECKE = 0
+/** Kapitelkarte 1,5 Sekunden, mit Ein- und Ausblendung und Standzeit dazwischen. */
+const BUMPER = 45
+const MINUTE_4 = 4 * 60 * LONG_FPS
+const MINUTE_5 = 5 * 60 * LONG_FPS
 export const LONG_ABSPANN = 75
 export const LONG_ABO_DAUER = 150
 
@@ -50,6 +52,7 @@ export function familieVon(s: LongSatzProps): LongFamilie {
   if (sz.startsWith('chart_')) return 'chart'
   if (sz.startsWith('moat_')) return 'moat'
   if (sz === 'zahl_reihe') return 'reihe'
+  if (sz === 'inhaber_anteile' || sz === 'bewertung_zahl' || sz === 'risiko_karte' || sz === 'scorecard_spalten' || sz === 'fazit_antwort') return 'kapitel'
   if (sz === 'titel_karte') return 'titel'
   if (sz === 'abo_karte' || sz === 'disclaimer' || sz === 'schluss') return 'karte'
   return 'bild'
@@ -98,15 +101,18 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
         abschnitte.push({ id: s.abschnittId, from: 0, bis: f })
       }
     }
-    const ms = s.dauerMs > 0 ? s.dauerMs : geschaetzteDauerMs(s.text)
-    const dauer = Math.max(18, Math.ceil((ms / 1000) * LONG_FPS))
+    const dauer = satzDauerFrames(s)
     const bf = betonungInFrames(s, dauer)
     saetze.push({
       index,
       from: f,
       dauer,
       betonungFrame: bf != null ? f + bf : null,
-      woerter: s.woerter.map((w) => ({ text: w.text, from: f + Math.round((w.startMs / 1000) * LONG_FPS) })),
+      woerter: s.woerter.map((w) => ({
+        text: w.text,
+        from: f + Math.round((w.startMs / 1000) * LONG_FPS),
+        bis: f + Math.max(Math.round((w.startMs / 1000) * LONG_FPS) + 1, Math.round((w.endMs / 1000) * LONG_FPS)),
+      })),
     })
     sprechen.push([f, f + dauer])
     const naechster = p.saetze[index + 1]
@@ -145,7 +151,17 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
     bloecke[0].from = 0
   }
 
-  const abo = null
+  const grenze = saetze.find((z, i) => i > 0 && z.from >= MINUTE_4 && z.from < MINUTE_5)
+  const abo = grenze ? { from: grenze.from, dauer: LONG_ABO_DAUER } : null
 
   return { durationInFrames, saetze, bloecke, bumper, abschnitte, sprechen, abo, disclosure }
+}
+
+/** Volle Datei, wenn die Länge bekannt ist. Alte Takes enden am letzten Wort und bekommen den Ausklang dazu. */
+function satzDauerFrames(s: LongSatzProps): number {
+  const ms = s.dauerMs > 0 ? s.dauerMs : geschaetzteDauerMs(s.text)
+  const letztesEnde = s.woerter.reduce((m, w) => Math.max(m, w.endMs), 0)
+  const abgeschnitten = Boolean(s.audioUrl) && letztesEnde > 0 && ms <= letztesEnde + 90
+  const gesamt = abgeschnitten ? letztesEnde + 280 : ms
+  return Math.max(18, Math.ceil((gesamt / 1000) * LONG_FPS))
 }

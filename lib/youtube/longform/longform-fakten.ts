@@ -6,7 +6,7 @@ import { baueScorecard } from '@/lib/portfolio-analyse/fundamentaldaten-scorecar
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { gesamtScoreAusPfeilern, type MoatKiBewertung } from '@/lib/portfolio-analyse/moat-ki-types'
 import { istMuellSegmentName, sektorBrancheEnglisch } from '@/lib/youtube/longform/longform-en'
-import { monatJahr, moatTextEnglisch, pct, scorecardTextEnglisch, usd } from '@/lib/youtube/longform/longform-format'
+import { monatJahr, moatTextEnglisch, multiple, pct, scorecardTextEnglisch, usd } from '@/lib/youtube/longform/longform-format'
 import { metrikenAusPaket } from '@/lib/youtube/moat-short-zahlen'
 import { pfeilerAufZielScore, urteilAusMoatScore } from '@/lib/youtube/moat-short-urteil'
 import {
@@ -153,26 +153,29 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
   }
 
   let burggraben: LongformScorecardSpalte | null = null
+  let scorecard: LongformScorecardSpalte[] = []
   try {
     const sc = baueScorecard(paket, e.isin)
-    const sp = sc.strategien.find((x) => x.id === 'burggraben')
-    if (sp) {
-      burggraben = {
-        titel: 'Moat',
-        score: sp.score,
-        balken: sp.balken.map((b) => ({
-          label: BALKEN_EN[b.id] ?? b.label,
-          wertText: scorecardTextEnglisch(b.wertText),
-          position: b.position,
-        })),
-      }
-      if (sp.score != null) {
-        add({ id: 'sc.burggraben', label: 'Scorecard: moat quality (1–10)', wert: sp.score, text: `${sp.score} out of 10`, einheit: 'score' }, { stichtag: exportTag, quelle: 'Scorecard der App (baueScorecard)' })
-      }
-    }
+    const scQuelle = { stichtag: exportTag, quelle: 'Scorecard der App (baueScorecard)' }
+    scorecard = sc.strategien.map((sp) => ({
+      titel: SCORE_EN[sp.id] ?? sp.titel,
+      score: sp.score,
+      balken: sp.balken.map((b) => ({
+        label: BALKEN_EN[b.id] ?? scorecardTextEnglisch(b.label),
+        wertText: scorecardTextEnglisch(b.wertText),
+        position: b.position,
+      })),
+    }))
+    sc.strategien.forEach((sp, i) => {
+      const titel = scorecard[i]?.titel ?? sp.titel
+      if (sp.score == null) return
+      add({ id: `sc.${sp.id}`, label: `Scorecard: ${titel} (1–10)`, wert: sp.score, text: `${sp.score} out of 10`, einheit: 'score' }, scQuelle)
+    })
+    burggraben = scorecard.find((s) => s.titel === 'Moat') ?? null
   } catch {
     hinweise.push('Scorecard konnte nicht berechnet werden.')
   }
+  ergaenzeBewertungUndEigentum(paket, add, exportTag)
 
   let moat: LongformMoat | null = null
   if (e.moatKi) {
@@ -272,12 +275,142 @@ export function baueFaktenblatt(e: FaktenblattEingabe): LongformFaktenblatt {
     chart: c,
     moat,
     burggraben,
+    scorecard,
     segmente,
     reihen,
     logoUrl: e.logoUrl,
     imDepot: e.imDepot,
     hinweise,
   }
+}
+
+const SCORE_EN: Record<string, string> = {
+  dividendenertrag: 'Dividend yield',
+  dividendenwachstum: 'Dividend growth',
+  gewinnwachstum: 'Earnings growth',
+  burggraben: 'Moat',
+}
+
+const VAL_IDS = ['ntm_pe', 'ltm_pe', 'ntm_ev_ebitda', 'ntm_fcf_rendite', 'peg_ratio'] as const
+
+function anteilAusJson(v: number | null | undefined): number | null {
+  if (v == null || !Number.isFinite(v) || v <= 0) return null
+  return v <= 1 ? Math.round(v * 1000) / 10 : Math.round(v * 10) / 10
+}
+
+function fuenfJahresMitte(paket: FundamentaldatenPaket, zeileId: string): number | null {
+  const zeile = paket.zeilen.find((z) => z.id === zeileId)
+  if (!zeile) return null
+  const keys = paket.perioden
+    .filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung && /^\d{4}-\d{2}-\d{2}$/.test(p.iso))
+    .map((p) => p.iso)
+    .slice(-5)
+  const werte = keys.map((k) => zeile.werte[k]).filter((v): v is number => v != null && Number.isFinite(v) && v > 0)
+  if (werte.length < 3) return null
+  const sortiert = [...werte].sort((a, b) => a - b)
+  const mid = Math.floor(sortiert.length / 2)
+  const mitte = sortiert.length % 2 ? sortiert[mid]! : (sortiert[mid - 1]! + sortiert[mid]!) / 2
+  return Math.round(mitte * 10) / 10
+}
+
+function ergaenzeBewertungUndEigentum(
+  paket: FundamentaldatenPaket,
+  add: (f: FaktEingabe, standard: { stichtag: string; quelle: string }) => void,
+  exportTag: string,
+) {
+  const quelle = { stichtag: exportTag, quelle: 'Fundamentaldaten-Export' }
+  for (const id of VAL_IDS) {
+    const m = paket.keyMetrics.find((k) => k.id === id)
+    if (m?.zahl == null || !Number.isFinite(m.zahl)) continue
+    const pctZahl = id.includes('rendite')
+    add(
+      {
+        id: `val.${id}`,
+        label: m.label,
+        wert: m.zahl,
+        text: pctZahl ? pct(m.zahl) : multiple(m.zahl),
+        einheit: pctZahl ? 'pct' : 'x',
+      },
+      quelle,
+    )
+  }
+  const mitte = fuenfJahresMitte(paket, 'ev_ebitda')
+  const aktuell = paket.keyMetrics.find((k) => k.id === 'ntm_ev_ebitda')?.zahl
+  if (mitte != null) {
+    add({ id: 'val.ev_ebitda_mitte', label: 'EV/EBITDA, own 5-year middle', wert: mitte, text: multiple(mitte), einheit: 'x' }, quelle)
+  }
+  if (mitte != null && mitte > 0 && aktuell != null && Number.isFinite(aktuell)) {
+    const abstand = ((aktuell - mitte) / mitte) * 100
+    add(
+      {
+        id: 'val.ev_ebitda_abstand',
+        label: abstand > 0 ? 'Above its own 5-year middle' : 'Below its own 5-year middle',
+        wert: abstand,
+        text: pct(abstand, { vorzeichen: true }),
+        einheit: 'pct',
+      },
+      quelle,
+    )
+  }
+  const h = paket.erweitert?.holders
+  const insider = anteilAusJson(h?.insiderPct)
+  const inst = anteilAusJson(h?.institutionenPct)
+  if (insider != null) add({ id: 'own.insider', label: 'Insiders', wert: insider, text: pct(insider), einheit: 'pct' }, { ...quelle, quelle: 'Yahoo Finance, Holders' })
+  if (inst != null) add({ id: 'own.institutionen', label: 'Institutions', wert: inst, text: pct(inst), einheit: 'pct' }, { ...quelle, quelle: 'Yahoo Finance, Holders' })
+  const netto = paket.erweitert?.insiderNetto
+  if (netto && (netto.nettoRichtung === 'kauf' || netto.nettoRichtung === 'verkauf')) {
+    const kauf = netto.nettoRichtung === 'kauf'
+    const betrag = netto.nettoWertUsd90d
+    add(
+      {
+        id: 'own.insider_netto',
+        label: kauf ? 'Insider net buying, 90 days' : 'Insider net selling, 90 days',
+        wert: betrag,
+        text: betrag != null && Number.isFinite(betrag) ? `${kauf ? 'bought' : 'sold'} ${usd(Math.abs(betrag))} over 90 days` : kauf ? 'net buyers over 90 days' : 'net sellers over 90 days',
+        einheit: betrag != null ? 'usd' : 'text',
+      },
+      { ...quelle, quelle: netto.quelle },
+    )
+  }
+  const kunde = paket.keyMetrics.find((k) => k.id === 'kunden_top1' || k.id === 'kunden_top3')
+  if (kunde?.zahl != null && Number.isFinite(kunde.zahl)) {
+    add({ id: 'risk.kunden', label: kunde.label, wert: kunde.zahl, text: pct(kunde.zahl), einheit: 'pct' }, quelle)
+  }
+}
+
+export function haengeRisikoUndFazit(blatt: LongformFaktenblatt): LongformFaktenblatt {
+  const hat = (id: string) => blatt.fakten.some((f) => f.id === id)
+  const basis = { stichtag: blatt.exportDatum, quelle: 'Moat-Check' }
+  ;(blatt.moat?.zerstoerung ?? []).slice(0, 3).forEach((text, i) => {
+    const id = `risk.${i + 1}`
+    const sauber = text.trim()
+    if (hat(id) || !sauber) return
+    blatt.fakten.push({ id, label: 'What could break it', wert: null, text: sauber, einheit: 'text', ...basis })
+  })
+  if (!hat('fazit.urteil')) {
+    const moat = blatt.fakten.find((f) => f.id === 'moat.score')?.wert ?? blatt.fakten.find((f) => f.id === 'sc.burggraben')?.wert ?? null
+    const abstand = blatt.fakten.find((f) => f.id === 'val.ev_ebitda_abstand')?.wert ?? null
+    const text = fazitText(moat, abstand)
+    if (text) {
+      blatt.fakten.push({
+        id: 'fazit.urteil',
+        label: 'Verdict',
+        wert: null,
+        text,
+        einheit: 'text',
+        stichtag: blatt.exportDatum,
+        quelle: 'Regel aus Burggraben und Bewertung',
+      })
+    }
+  }
+  return blatt
+}
+
+function fazitText(moat: number | null, abstand: number | null): string | null {
+  if (moat == null || !Number.isFinite(moat)) return null
+  if (moat < 7) return 'The business does not carry it.'
+  if (abstand != null && abstand > 0) return 'The business yes, the price no.'
+  return 'Yes, at this price.'
 }
 
 function margeVon(x: SecSegmentEintrag): number | null {

@@ -46,7 +46,7 @@ export async function ladeYahooHolders(symbol: string): Promise<YahooHoldersPake
       quoteSummary?: {
         result?: Array<{
           majorHoldersBreakdown?: Record<string, { raw?: number }>
-          institutionOwnership?: { ownershipList?: Array<{ organization?: string; position?: { raw?: number } }> }
+          institutionOwnership?: { ownershipList?: Array<{ organization?: string; position?: { raw?: number }; pctHeld?: { raw?: number } }> }
           defaultKeyStatistics?: Record<string, { raw?: number }>
         }>
       }
@@ -62,13 +62,33 @@ export async function ladeYahooHolders(symbol: string): Promise<YahooHoldersPake
     const instList = row.institutionOwnership?.ownershipList ?? []
     const instShares = instList.reduce((s, e) => s + (e.position?.raw ?? 0), 0) || null
 
+    const sharesOut = rawNum(dks, 'sharesOutstanding')
+    const institutionen = instList
+      .map((e) => {
+        const name = e.organization?.trim() ?? ''
+        const shares = e.position?.raw ?? 0
+        const pctDirekt = e.pctHeld?.raw
+        const anteilPct =
+          pctDirekt != null && pctDirekt > 0
+            ? pctDirekt <= 1
+              ? pctDirekt * 100
+              : pctDirekt
+            : sharesOut && sharesOut > 0 && shares > 0
+              ? (shares / sharesOut) * 100
+              : null
+        return { name, anteilPct }
+      })
+      .filter((e): e is { name: string; anteilPct: number } => Boolean(e.name) && e.anteilPct != null && e.anteilPct > 0)
+      .sort((a, b) => b.anteilPct - a.anteilPct)
+      .slice(0, 3)
     const data: YahooHoldersPaket = {
       insiderPct: rawNum(mh, 'insidersPercentHeld'),
       institutionenPct: rawNum(mh, 'institutionsPercentHeld'),
       insiderShares: null,
       institutionenShares: instShares,
       floatShares: rawNum(dks, 'floatShares'),
-      sharesOutstanding: rawNum(dks, 'sharesOutstanding'),
+      sharesOutstanding: sharesOut,
+      institutionen,
       quelle: 'yahoo',
     }
     cache.set(sym, { at: Date.now(), data })

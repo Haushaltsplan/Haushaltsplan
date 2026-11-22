@@ -1,5 +1,5 @@
 /** Gemeinsame Bausteine: Hintergrund mit Korn, Medienquellen, Zähl-Animation, Satz-Läufe. */
-import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame } from 'remotion'
+import { AbsoluteFill, Img, staticFile, useCurrentFrame } from 'remotion'
 import { logoPlaySrc } from '../../lib/youtube/moat-short-media-src'
 import type { LongformSzenenTyp } from '../../lib/youtube/longform/longform-types'
 import { LONG_BG, LONG_DISPLAY, LONG_TEXT, mitAlpha } from './long-look'
@@ -132,7 +132,13 @@ export function satzLaeufe({ p, t, block }: SzeneProps): SatzLauf[] {
     const z = t.saetze[i]!
     const rel = z.from - block.from
     const letzter = laeufe[laeufe.length - 1]
-    const einzeln = s.visual.szene === 'moat_pfeiler' || s.visual.szene === 'zahl_reihe'
+    const einzeln =
+      s.visual.szene === 'moat_pfeiler' ||
+      s.visual.szene === 'zahl_reihe' ||
+      s.visual.szene === 'bewertung_zahl' ||
+      s.visual.szene === 'risiko_karte' ||
+      s.visual.szene === 'inhaber_anteile' ||
+      s.visual.szene === 'fazit_antwort'
     const gleicherFokus =
       letzter != null &&
       (p.saetze[letzter.saetze[letzter.saetze.length - 1]!]!.visual.fokus ?? '') === (s.visual.fokus ?? '')
@@ -153,18 +159,9 @@ export function aktiverSatz({ t, block }: SzeneProps, relFrame: number): number 
   return aktiv
 }
 
-/**
- * Kurzer Soft-Cut statt Fade-to-Black.
- * Lange Ausblendungen + Satzlücken wirkten wie „hängende“ Pausen und schwarze Frames.
- */
+/** Harter Schnitt. Kein Fade auf Schwarz zwischen zwei Sätzen. */
 export function Blende({ von, bis, children }: { von: number; bis: number; children: React.ReactNode }) {
   const frame = useCurrentFrame()
   if (frame < von || frame > bis) return null
-  const span = Math.max(1, bis - von)
-  const fade = Math.min(4, Math.max(1, Math.floor(span / 5)))
-  const o = interpolate(frame, [von, von + fade, Math.max(von + fade + 1, bis - fade), bis], [von <= 1 ? 1 : 0, 1, 1, 0], {
-    extrapolateLeft: 'clamp',
-    extrapolateRight: 'clamp',
-  })
-  return <AbsoluteFill style={{ opacity: o }}>{children}</AbsoluteFill>
+  return <AbsoluteFill>{children}</AbsoluteFill>
 }

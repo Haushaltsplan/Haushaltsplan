@@ -6,6 +6,7 @@ import { LONGFORM_INVEST_USD } from '../../lib/youtube/longform/longform-types'
 import { aktiverSatz, ein, zaehleText, type SzeneProps } from './long-bausteine'
 import {
   LONG_DISPLAY,
+  LONG_GRUEN,
   LONG_LINIE,
   LONG_MONO,
   LONG_MUTED,
@@ -47,6 +48,16 @@ function logSchritte(boden: number, max: number): number[] {
 }
 
 type HudZeile = { id: string; label: string; text: string; art: 'haupt' | 'neben' | 'pct' }
+
+function ohneTausender(text: string): string {
+  return text.replace(/(\d),(\d{3})(?!\d)/g, '$1$2')
+}
+
+function pctFarbe(sp: SzeneProps, id: string): string {
+  if (id === 'k10.drawdown') return LONG_ROT
+  const wert = sp.p.fakten[id]?.wert
+  return wert != null && wert < 0 ? LONG_ROT : LONG_GRUEN
+}
 
 function hudAusSatz(sp: SzeneProps, satzIndex: number): HudZeile[] {
   const s = sp.p.saetze[satzIndex]!
@@ -319,13 +330,13 @@ export function LongChart(sp: SzeneProps) {
               fontWeight: 900,
               fontSize: satzHud[0].text.length > 10 ? 56 : satzHud[0].text.length > 8 ? 64 : 72,
               letterSpacing: -2,
-              color: satzHud[0].art === 'pct' ? LONG_ROT : LONG_TEXT,
+              color: satzHud[0].art === 'pct' ? pctFarbe(sp, satzHud[0].id) : LONG_TEXT,
               fontVariantNumeric: 'tabular-nums',
               lineHeight: 1,
               opacity: hudEin,
             }}
           >
-            {zaehleText(satzHud[0].text, hudEin)}
+            {zaehleText(ohneTausender(satzHud[0].text), hudEin)}
           </div>
         </div>
       ) : null}
