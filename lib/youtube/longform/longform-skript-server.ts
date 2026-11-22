@@ -488,8 +488,23 @@ export function setzeFazit(abschnitte: LongformAbschnitt[], fb: LongformFaktenbl
 
 const SCHLUSS_SZENEN = new Set(['abo_karte', 'disclaimer', 'schluss'])
 
-/** Like, gesprochener Disclaimer und Cheers ans Ende. Ein Abo-Satz mitten im Film fliegt raus. */
+/** Like, Disclaimer und Cheers gehören nur ans Fazit. An jedem früheren Kapitel fliegen sie raus. */
+export function entferneSchlussVorFazit(abschnitte: LongformAbschnitt[]): boolean {
+  let weg = false
+  for (const a of abschnitte) {
+    if (a.id === 'fazit') continue
+    const vorher = a.saetze.length
+    a.saetze = a.saetze.filter((s) => s.visual.fokus !== 'abo' && !SCHLUSS_SZENEN.has(s.visual.szene))
+    if (a.saetze.length !== vorher) weg = true
+  }
+  return weg
+}
+
+/** Like, gesprochener Disclaimer und Cheers ans Fazit. Solange das Fazit fehlt, nur entfernen. */
 export function haengeSchlussAn(abschnitte: LongformAbschnitt[], fb: LongformFaktenblatt, investiert: boolean | null) {
+  entferneSchlussVorFazit(abschnitte)
+  const ziel = abschnitte.find((a) => a.id === 'fazit')
+  if (!ziel) return
   const name = fb.firmenname.replace(/[.\s]+$/, '')
   const gewollt: { szene: 'abo_karte' | 'disclaimer' | 'schluss'; text: string }[] = [
     { szene: 'abo_karte', text: 'If this was useful, like and subscribe.' },
@@ -501,12 +516,8 @@ export function haengeSchlussAn(abschnitte: LongformAbschnitt[], fb: LongformFak
     })
   }
   gewollt.push({ szene: 'schluss', text: 'Cheers.' })
-  const vorhanden = abschnitte.flatMap((a) => a.saetze).filter((s) => SCHLUSS_SZENEN.has(s.visual.szene))
-  for (const a of abschnitte) {
-    a.saetze = a.saetze.filter((s) => s.visual.fokus !== 'abo' && !SCHLUSS_SZENEN.has(s.visual.szene))
-  }
-  const ziel = [...abschnitte].reverse().find((a) => a.saetze.length)
-  if (!ziel) return
+  const vorhanden = ziel.saetze.filter((s) => SCHLUSS_SZENEN.has(s.visual.szene))
+  ziel.saetze = ziel.saetze.filter((s) => s.visual.fokus !== 'abo' && !SCHLUSS_SZENEN.has(s.visual.szene))
   for (const g of gewollt) {
     const alt = vorhanden.find((s) => s.visual.szene === g.szene && s.text === g.text)
     ziel.saetze.push(

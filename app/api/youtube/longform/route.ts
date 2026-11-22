@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { ladeProjekt, listeProjekte, loescheProjekt, mitUrls, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
 import { erstelleProjekt, leseLongformExport } from '@/lib/youtube/longform/longform-projekt-server'
+import { entferneSchlussVorFazit } from '@/lib/youtube/longform/longform-skript-server'
 import type { LongformProjektZustand } from '@/lib/youtube/longform/longform-types'
 
 export const runtime = 'nodejs'
@@ -20,6 +21,20 @@ export async function GET(req: Request) {
       if (!id) return { ok: true as const, projekte: await listeProjekte() }
       const p = await ladeProjekt(id)
       if (!p) return { ok: false as const, fehler: 'Projekt nicht gefunden.' }
+      const skript = p.zustand.skript
+      if (skript && entferneSchlussVorFazit(skript.abschnitte)) {
+        const ids = new Set(skript.abschnitte.flatMap((a) => a.saetze.map((s) => s.id)))
+        p.zustand = {
+          ...p.zustand,
+          skript,
+          stimme: {
+            ...p.zustand.stimme,
+            saetze: Object.fromEntries(Object.entries(p.zustand.stimme.saetze).filter(([k]) => ids.has(k))),
+          },
+          bilder: Object.fromEntries(Object.entries(p.zustand.bilder).filter(([k]) => ids.has(k))),
+        }
+        await speichereProjekt(p.id, p.zustand)
+      }
       return { ok: true as const, projekt: { ...p, zustand: await mitUrls(p.zustand) } }
     } catch (e) {
       return { ok: false as const, fehler: e instanceof Error ? e.message : 'Laden fehlgeschlagen.' }

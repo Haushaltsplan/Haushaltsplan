@@ -38,6 +38,29 @@ const SCHRITTE: { id: Schritt; label: string }[] = [
   { id: 'vorschau', label: '6 · Video' },
 ]
 
+const SCHLUSS_SZENEN = new Set(['abo_karte', 'disclaimer', 'schluss'])
+
+/** Like, Disclaimer und Cheers nur am Fazit. Am Moat und davor haben sie nichts zu suchen. */
+function ohneSchlussVorFazit(z: LongformProjektZustand): LongformProjektZustand {
+  if (!z.skript) return z
+  let weg = false
+  const abschnitte = z.skript.abschnitte.map((a) => {
+    if (a.id === 'fazit') return a
+    const saetze = a.saetze.filter((s) => s.visual.fokus !== 'abo' && !SCHLUSS_SZENEN.has(s.visual.szene))
+    if (saetze.length === a.saetze.length) return a
+    weg = true
+    return { ...a, saetze }
+  })
+  if (!weg) return z
+  const ids = new Set(abschnitte.flatMap((a) => a.saetze.map((s) => s.id)))
+  return {
+    ...z,
+    skript: { ...z.skript, abschnitte },
+    stimme: { ...z.stimme, saetze: Object.fromEntries(Object.entries(z.stimme.saetze).filter(([k]) => ids.has(k))) },
+    bilder: Object.fromEntries(Object.entries(z.bilder).filter(([k]) => ids.has(k))),
+  }
+}
+
 function videoDauerMs(file: File): Promise<number> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file)
@@ -98,6 +121,16 @@ export function LongformStudio() {
   const dateiEingabe = useRef<HTMLInputElement>(null)
 
   const z = projekt?.zustand ?? null
+
+  useEffect(() => {
+    if (!projekt) return
+    const neu = ohneSchlussVorFazit(projekt.zustand)
+    if (neu === projekt.zustand) return
+    const id = projekt.id
+    setProjekt({ ...projekt, zustand: neu })
+    setDirty(false)
+    void lfApi('/api/youtube/longform', { method: 'PATCH', json: { id, zustand: neu } }).catch(() => undefined)
+  }, [projekt])
   const naechstesKapitel: LongformAbschnittId | null = z
     ? (LONGFORM_ABSCHNITTE.find((id) => !(z.freigegeben ?? []).includes(id)) ?? null)
     : null
