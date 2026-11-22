@@ -1,7 +1,7 @@
 /** Who owns it: eine Torte, der gerade gesprochene Anteil rückt heraus. */
 import { AbsoluteFill, Img, useCurrentFrame } from 'remotion'
 import { pct } from '../../lib/youtube/longform/longform-format'
-import { aktiverSatz, ein, logoSrc, type SzeneProps } from './long-bausteine'
+import { aktiverSatz, ein, oeffentlichSrc, type SzeneProps } from './long-bausteine'
 import { LONG_DISPLAY, LONG_MONO, LONG_MUTED, LONG_SANS, LONG_SERIF, LONG_TEXT } from './long-look'
 
 type Scheibe = {
@@ -148,7 +148,7 @@ function Marke({ url, farbe, name, groesse }: { url: string | null; farbe: strin
           flexShrink: 0,
         }}
       >
-        <Img src={logoSrc(url)} style={{ width: '76%', height: '76%', objectFit: 'contain' }} />
+        <Img src={oeffentlichSrc(url)} style={{ width: '76%', height: '76%', objectFit: 'contain' }} />
       </div>
     )
   }
