@@ -84,22 +84,30 @@ Qualitative claims must come from the company description, the moat check texts 
 Banned phrases: "let's dive in", "in today's video", "without further ado", "game changer", "buckle up", "at the end of the day", "it's worth noting", "delve", "testament to", "stay tuned", "no-brainer", "smash that like button", "now let's look at", "as you can see".
 Transitions grow out of the content (a number, a tension, a question).`
 
-function kontext(fb: LongformFaktenblatt, thema: string): string {
+function kontext(fb: LongformFaktenblatt, thema: string, opt?: { nurMoat?: boolean }): string {
   const m = fb.moat
+  const nurMoat = opt?.nurMoat === true
+  const blatt = nurMoat
+    ? { ...fb, fakten: fb.fakten.filter((f) => f.id.startsWith('moat.') || f.id.startsWith('km.') || f.id === 'sc.burggraben') }
+    : fb
   return [
     `COMPANY: ${fb.firmenname} (${fb.ticker})${fb.sektor ? `, sector ${fb.sektor}` : ''}${fb.branche ? `, industry ${fb.branche}` : ''}`,
     `VIDEO TOPIC FROM THE CREATOR: ${thema || '(none given, choose the most interesting angle the data supports)'}`,
-    fb.beschreibung ? `COMPANY DESCRIPTION (German source — translate into English meaning only, never quote German):\n${fb.beschreibung.slice(0, 2500)}` : '',
+    !nurMoat && fb.beschreibung ? `COMPANY DESCRIPTION (German source — translate into English meaning only, never quote German):\n${fb.beschreibung.slice(0, 2500)}` : '',
     m
-      ? `MOAT CHECK (pillar shape from app assessment, overall score locked to scorecard):\nOverall moat score: ${m.score}/10 (${m.urteil}). Pillar scores average to this overall score — use moat.score and the pillar scores as written, never invent a different total.\nBusiness model: ${m.geschaeftsmodell}\n${m.pfeiler
+      ? `MOAT CHECK (pillar shape from app assessment, overall score locked to scorecard):\nOverall moat score: ${m.score}/10 (${m.urteil}). Pillar scores average to this overall score — use moat.score and the pillar scores as written, never invent a different total.\n${nurMoat ? '' : `Business model: ${m.geschaeftsmodell}\n`}${m.pfeiler
           .map((p) => `- ${p.label} ${p.score}/10: ${p.begruendung} Risk: ${p.risiko}`)
           .join('\n')}\nWhat could break it: ${m.zerstoerung.join(' | ')}`
       : 'MOAT CHECK: not available.',
     fb.burggraben
       ? `SCORECARD MOAT COLUMN (quality ${fb.burggraben.score ?? 'n/a'}/10 — same number as moat.score):\n${fb.burggraben.balken.map((b) => `- ${b.label}: ${b.wertText}`).join('\n')}`
       : '',
-    fb.segmente ? `REVENUE MIX available (${fb.segmente.art}).` : 'REVENUE MIX: not available, do not use scene moat_segmente.',
-    `FACT SHEET (id | label | allowed text | date):\n${faktenFuerPrompt(fb)}`,
+    nurMoat
+      ? 'REVENUE MIX: forbidden in this chapter. How the company gets paid was the previous chapter. Do not mention customers, products, or segments.'
+      : fb.segmente
+        ? `REVENUE MIX available (${fb.segmente.art}).`
+        : 'REVENUE MIX: not available, do not use scene moat_segmente.',
+    `FACT SHEET (id | label | allowed text | date):\n${faktenFuerPrompt(blatt)}`,
   ]
     .filter(Boolean)
     .join('\n\n')
@@ -125,7 +133,7 @@ const SZENEN_JE_ABSCHNITT: Partial<Record<LongformAbschnittId, LongformSzenenTyp
   hook: ['hook_zahl', 'hook_frage', 'hook_bild', 'titel_karte'],
   chart10k: ['chart_linie', 'chart_endwert', 'chart_drawdown', 'chart_vergleich', 'bild'],
   geschaeft: ['moat_geschaeft', 'moat_segmente', 'bild'],
-  burggraben: ['moat_pfeiler', 'moat_scorecard', 'moat_finanzen', 'moat_segmente', 'bild'],
+  burggraben: ['moat_pfeiler', 'moat_scorecard', 'moat_finanzen', 'bild'],
   zahlen: ['zahl_reihe', 'bild'],
   inhaber: ['inhaber_anteile', 'bild'],
   bewertung: ['bewertung_zahl', 'bild'],
@@ -143,11 +151,12 @@ function neueSatzId(abschnitt: string): string {
 function satzAusRoh(r: SatzRoh, abschnitt: LongformAbschnittId, fb: LongformFaktenblatt): LongformSatz {
   const erlaubt = SZENEN_JE_ABSCHNITT[abschnitt] ?? [...LONGFORM_SZENEN]
   let szene = (LONGFORM_SZENEN as readonly string[]).includes(r.szene ?? '') ? (r.szene as LongformSzenenTyp) : erlaubt[0]!
-  if (!erlaubt.includes(szene)) szene = erlaubt[0]!
-  if (szene === 'moat_segmente' && !fb.segmente) szene = 'moat_geschaeft'
+  const geschaeftImMoat = abschnitt === 'burggraben' && (szene === 'moat_geschaeft' || szene === 'moat_segmente')
+  if (!erlaubt.includes(szene) && !geschaeftImMoat) szene = erlaubt[0]!
+  if (szene === 'moat_segmente' && !fb.segmente) szene = abschnitt === 'burggraben' ? 'moat_pfeiler' : 'moat_geschaeft'
   if (szene === 'chart_drawdown' && !fb.chart?.drawdown) szene = 'chart_linie'
   if (szene === 'chart_vergleich' && fb.chart?.endwertSpy == null) szene = 'chart_endwert'
-  if ((szene === 'moat_pfeiler' || szene === 'moat_scorecard') && !fb.moat && !fb.burggraben) szene = 'moat_geschaeft'
+  if (abschnitt !== 'burggraben' && (szene === 'moat_pfeiler' || szene === 'moat_scorecard') && !fb.moat && !fb.burggraben) szene = 'moat_geschaeft'
   const text = r.text.replace(/\s+/g, ' ').trim()
   const faktIds = [...new Set(r.faktIds ?? [])].filter((id) => !id.startsWith('hook.'))
   if (abschnitt === 'burggraben' && faktIds.some((id) => id.startsWith('km.'))) szene = 'moat_finanzen'
@@ -281,7 +290,8 @@ function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): str
     case 'geschaeft':
       return `geschaeft (about 70 to 90 seconds): how the company gets paid, in everyday English a non-investor understands. First 2 sentences: scene moat_geschaeft, who the customer is and what they pay for. If a segment name is only an acronym, put a short gloss immediately after it, taken from the business description already in the fact sheet, in the form "CMBU, the memory sold to phone makers". If you cannot ground that gloss, keep the acronym and do not invent a long name. No scores, no moat theory.${fb.segmente ? ` Then scene moat_segmente: one overview sentence with no fokus${fb.fakten.some((f) => f.id === 'seg.other') ? ', and that overview must mention faktId seg.other: the rest of revenue comes from other businesses, without inventing their names' : ''}, then 2 or 3 sentences on the largest segments. Each of those carries exactly one faktId (seg.N or seg.N.marge or seg.N.wachstum), fokus set to that same id, betonung on the spoken number. Never three numbers in one sentence.` : ' No revenue mix is available, do not use moat_segmente.'} A bild sentence only before the first line or after the last segment sentence, with a concrete English bildWunsch.`
     case 'burggraben':
-      return `burggraben (about 100 to 140 seconds): the moat, starting at the pillars. Do NOT re-explain how the company makes money. Say "moat", never the German word. Overall score is moat.score, said once. One sentence per pillar, scene moat_pfeiler, fokus = exactly one pillar id (preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte). Put a scene bild with a concrete English bildWunsch BETWEEN pillars so the same card is never on screen for the whole chapter. Then one moat_scorecard sentence for the overall score. ${fb.segmente ? 'At most one moat_segmente callback.' : ''} If you cite a km.* fact (operating margin, ROIC, net cash, interest coverage, and the other key metrics), that sentence is scene moat_finanzen with exactly one km.* id. Never leave those numbers on moat_scorecard. End on one threat, a single sentence. Do not add a like or subscribe sentence.`
+      return `burggraben (about 100 to 140 seconds): ONLY the moat. The previous chapter already explained how the company gets paid. Do not repeat it. Forbidden here: customers, what they buy, a product tour, revenue mix, segments, seg.* facts, scene moat_geschaeft, scene moat_segmente. Do not open with the business. Start at the first pillar.
+Say "moat", never the German word. Overall score is moat.score, said once. One sentence per pillar, scene moat_pfeiler, fokus = exactly one pillar id (preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte). A pillar sentence names the advantage, not the product line. Put a scene bild with a concrete English bildWunsch BETWEEN pillars so the same card is never on screen for the whole chapter. Then one moat_scorecard sentence for the overall score. If you cite a km.* fact (operating margin, ROIC, net cash, interest coverage), that sentence is scene moat_finanzen with exactly one km.* id, and it must support the moat, not describe a division. Never leave those numbers on moat_scorecard. End on one threat, a single sentence. Do not add a like or subscribe sentence.`
     case 'zahlen':
       return `zahlen (about 45 to 75 seconds): one chart per series, never combined. Scenes zahl_reihe with fokus umsatz, marge, gewinn, fcf — only for series that exist as reihe.* facts. One sentence per chart, faktIds = reihe.<id>, betonung on the latest figure. If a year is an outlier, say so only when a fact gives the company's own reason; otherwise just name the year. A bild sentence with bildWunsch may sit between two charts, never on top of the number.`
     case 'inhaber':
@@ -320,7 +330,7 @@ export async function erzeugeSkript(opts: {
   const z = opts.zustand
   const fb = z.faktenblatt
   const nutzer = [
-    kontext(fb, z.thema),
+    kontext(fb, z.thema, { nurMoat: (opts.nur ?? 'hook') === 'burggraben' }),
     `CHOSEN OPENING (type ${opts.hook.typ}):\nGuiding question: ${opts.hook.leitfrage}\n${opts.hook.saetze.map((s) => `- ${s.text} [${s.faktIds.join(', ')}]`).join('\n')}`,
     `PREFERRED HOOK SCENE: ${z.varianten.hookSzene}`,
     (opts.nur ?? 'hook') === 'hook' && z.hookHinweis?.trim()
@@ -356,6 +366,7 @@ kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks
   stelleBrollSicher(abschnitte, fb)
   stelleSegmentFokusSicher(abschnitte)
   stellePfeilerFokusSicher(abschnitte)
+  bereinigeBurggraben(abschnitte)
   if (nur === 'fazit') {
     setzeFazit(abschnitte, fb)
     haengeSchlussAn(abschnitte, fb, z.investiert)
@@ -433,6 +444,19 @@ function stelleSegmentFokusSicher(abschnitte: LongformAbschnitt[]) {
       if (id && !s.visual.fokus) s.visual.fokus = id
     }
   }
+}
+
+/** Sätze, die im Moat-Kapitel das Geschäft oder den Umsatzmix erzählen, fliegen raus. */
+function bereinigeBurggraben(abschnitte: LongformAbschnitt[]) {
+  const moat = abschnitte.find((a) => a.id === 'burggraben')
+  if (!moat) return
+  moat.saetze = moat.saetze.flatMap((s) => {
+    if (s.visual.szene === 'bild') return [s]
+    if (s.visual.szene === 'moat_geschaeft' || s.visual.szene === 'moat_segmente') return []
+    const faktIds = s.faktIds.filter((id) => !id.startsWith('seg.'))
+    if (s.faktIds.some((id) => id.startsWith('seg.')) && faktIds.length === 0) return []
+    return [{ ...s, faktIds }]
+  })
 }
 
 function stellePfeilerFokusSicher(abschnitte: LongformAbschnitt[]) {
@@ -632,7 +656,7 @@ export async function ueberarbeite(opts: {
     .map((s) => `${s.id === opts.satzId ? '>>> ' : ''}${s.text} [scene ${s.visual.szene}${s.visual.fokus ? ` / ${s.visual.fokus}` : ''}; facts ${s.faktIds.join(', ')}]`)
     .join('\n')
   const nutzer = [
-    kontext(fb, opts.zustand.thema),
+    kontext(fb, opts.zustand.thema, { nurMoat: opts.abschnittId === 'burggraben' }),
     `GUIDING QUESTION: ${opts.skript.leitfrage}`,
     `CURRENT SECTION "${abschnitt.titel}" (${abschnittAuftrag(opts.abschnittId, fb)}):\n${aktuell}`,
     ziel
@@ -650,6 +674,13 @@ export async function ueberarbeite(opts: {
     maxTokens: ziel ? 4_096 : 24_000,
   })
   const neu = (daten.saetze ?? []).filter((s) => s.text?.trim()).map((s) => satzAusRoh(s, opts.abschnittId, fb))
-  if (!neu.length) throw new Error('Gemini hat keinen Text geliefert.')
-  return neu
+  const fertig = opts.abschnittId === 'burggraben' ? ohneGeschaeftImMoat(neu) : neu
+  if (!fertig.length) throw new Error('Gemini hat keinen Text geliefert.')
+  return fertig
+}
+
+function ohneGeschaeftImMoat(saetze: LongformSatz[]): LongformSatz[] {
+  const huelle: LongformAbschnitt[] = [{ id: 'burggraben', titel: LONGFORM_ABSCHNITT_TITEL.burggraben, saetze }]
+  bereinigeBurggraben(huelle)
+  return huelle[0]!.saetze
 }
