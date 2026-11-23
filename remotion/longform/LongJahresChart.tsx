@@ -21,7 +21,7 @@ const ROT_EST = 'rgba(239, 106, 90, 0.42)'
 const LINIEN_FARBEN = [GOLD, BLAU, LILA]
 const ACHSE = 'rgba(243, 241, 236, 0.82)'
 
-const FOKUS = ['umsatz', 'gewinn', 'fcf', 'marge', 'roic', 'capex', 'schulden', 'aktien']
+const FOKUS = ['umsatz', 'gewinn', 'fcf', 'marge', 'roic', 'capex', 'schulden', 'aktien', 'kgv', 'ev_ebitda', 'ev_rev', 'fcf_rendite']
 
 type AltReihe = LongformJahresreihe & { punkte?: { jahr: number; wert: number }[] }
 
@@ -33,13 +33,14 @@ function reiheVon(sp: SzeneProps, index: number): LongformJahresreihe | null {
   if (!id) return null
   const treffer = sp.p.reihen.find((r) => r.id === id) as AltReihe | undefined
   if (!treffer) return null
-  if (treffer.linien?.length && treffer.art) return treffer
+  if (treffer.linien?.length && treffer.art) return { ...treffer, wacc: treffer.wacc ?? null, schnitt: treffer.schnitt ?? null }
   const alt = treffer.punkte ?? []
   return {
     ...treffer,
     art: treffer.art ?? 'balken',
     linien: [{ id: treffer.id, label: treffer.label, punkte: alt.map((p) => ({ ...p, schaetzung: false })) }],
     wacc: treffer.wacc ?? null,
+    schnitt: treffer.schnitt ?? null,
     quelle: treffer.quelle ?? 'Company filings',
     gross: treffer.gross ?? null,
   }
@@ -101,12 +102,17 @@ function achseText(wert: number, einheit: LongformJahresreihe['einheit']): strin
     const r = Math.abs(wert) >= 100 ? Math.round(wert) : Math.round(wert * 10) / 10
     return String(r)
   }
+  if (einheit === 'x') {
+    const r = Math.abs(wert) >= 100 ? Math.round(wert) : Math.round(wert * 10) / 10
+    return `${r}x`
+  }
   return usd(wert * 1_000_000)
 }
 
 function einheitTitel(einheit: LongformJahresreihe['einheit']): string {
   if (einheit === 'pct') return 'Percent'
   if (einheit === 'aktien') return 'Million shares'
+  if (einheit === 'x') return 'Multiple'
   return 'USD'
 }
 
@@ -159,6 +165,7 @@ export function LongJahresChart(sp: SzeneProps) {
     if (jahre.length < 2) return null
     const werte = reihe.linien.flatMap((l) => l.punkte.map((p) => p.wert))
     if (reihe.wacc != null) werte.push(reihe.wacc)
+    if (reihe.schnitt) werte.push(reihe.schnitt.wert)
     const min = Math.min(0, ...werte)
     const maxRoh = Math.max(0, ...werte)
     const { ticks, oben } = achsenTicks(min, maxRoh)
@@ -298,6 +305,22 @@ export function LongJahresChart(sp: SzeneProps) {
             <line x1={X0} x2={X1} y1={geo.y(reihe.wacc)} y2={geo.y(reihe.wacc)} stroke={BLAU} strokeWidth={2} strokeDasharray="10 7" />
             <text x={X1 - 8} y={geo.y(reihe.wacc) - 12} textAnchor="end" fill={BLAU} fontFamily={LONG_MONO} fontSize={16}>
               WACC
+            </text>
+          </g>
+        ) : null}
+        {reihe.schnitt ? (
+          <g>
+            <line x1={X0} x2={X1} y1={geo.y(reihe.schnitt.wert)} y2={geo.y(reihe.schnitt.wert)} stroke={ACHSE} strokeWidth={2} strokeDasharray="8 6" />
+            <text
+              x={X0 + 10}
+              y={geo.y(reihe.schnitt.wert) < Y0 + 36 ? geo.y(reihe.schnitt.wert) + 22 : geo.y(reihe.schnitt.wert) - 12}
+              fill={ACHSE}
+              fontFamily={LONG_MONO}
+              fontSize={16}
+            >
+              {reihe.schnitt.nurPositiv
+                ? `${reihe.schnitt.jahre} positive years of ${reihe.schnitt.fenster}`
+                : `${reihe.schnitt.jahre}-year average`}
             </text>
           </g>
         ) : null}

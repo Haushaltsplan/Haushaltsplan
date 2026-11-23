@@ -136,7 +136,7 @@ const SZENEN_JE_ABSCHNITT: Partial<Record<LongformAbschnittId, LongformSzenenTyp
   burggraben: ['moat_pfeiler', 'moat_scorecard', 'moat_finanzen', 'bild'],
   zahlen: ['zahl_reihe', 'bild'],
   inhaber: ['inhaber_anteile', 'bild'],
-  bewertung: ['bewertung_zahl', 'bild'],
+  bewertung: ['zahl_reihe', 'bild'],
   risiken: ['risiko_karte', 'bild'],
   scorecard: ['scorecard_spalten', 'bild'],
   fazit: ['fazit_antwort', 'bild'],
@@ -303,6 +303,28 @@ function stelleZahlenFokusSicher(abschnitte: LongformAbschnitt[]) {
   }
 }
 
+const BEWERTUNG_FOKUS = ['kgv', 'ev_ebitda', 'ev_rev', 'fcf_rendite'] as const
+
+function bewertungFokus(ids: string[]): string | null {
+  for (const id of ids) {
+    if (!id.startsWith('reihe.')) continue
+    const rest = id.slice('reihe.'.length)
+    const hit = BEWERTUNG_FOKUS.find((f) => rest === f || rest.startsWith(`${f}.`))
+    if (hit) return hit
+  }
+  return null
+}
+
+function stelleBewertungFokusSicher(abschnitte: LongformAbschnitt[]) {
+  const bewertung = abschnitte.find((a) => a.id === 'bewertung')
+  if (!bewertung) return
+  for (const s of bewertung.saetze) {
+    if (s.visual.szene !== 'zahl_reihe') continue
+    const ausFakt = bewertungFokus(s.faktIds)
+    if (ausFakt) s.visual.fokus = ausFakt
+  }
+}
+
 function zahlenAuftrag(fb: LongformFaktenblatt): string {
   const ids = new Set((fb.reihen ?? []).map((r) => r.id))
   const hat = (id: (typeof fb.reihen)[number]['id']) => ids.has(id)
@@ -354,6 +376,33 @@ function zahlenAuftrag(fb: LongformFaktenblatt): string {
   return `zahlen: this chapter may run past a minute. Scene zahl_reihe. One idea per sentence. Every number needs its fact id. Do not invent a year, a figure, or an estimate. The same fokus keeps one chart on screen. The next fokus cuts hard to the next chart. A scene bild may sit between two charts, never on top of one. No valuation multiples. Order:\n${schritte.join('\n')}`
 }
 
+function bewertungAuftrag(fb: LongformFaktenblatt): string {
+  const ids = new Set((fb.reihen ?? []).map((r) => r.id))
+  const schritte: string[] = []
+  const nr = () => String(schritte.length + 1)
+  const erklaer: Record<(typeof BEWERTUNG_FOKUS)[number], string> = {
+    kgv: 'Say once, in plain English, that P/E is the share price divided by one year of earnings. A higher line means the market pays more for each dollar of profit.',
+    ev_ebitda:
+      'Say once that EV/EBITDA prices the whole company, debt included, against profit before interest, tax, and depreciation.',
+    ev_rev: 'Say once that EV/Sales is that same company price divided by revenue, and that it ignores profit.',
+    fcf_rendite:
+      'Say once that free-cash-flow yield is the free cash flow divided by the market value. A higher line means more cash per dollar of price.',
+  }
+  for (const id of BEWERTUNG_FOKUS) {
+    if (!ids.has(id)) continue
+    const schnitt = fb.fakten.some((f) => f.id === `reihe.${id}.schnitt`)
+      ? `The dashed line is the average, reihe.${id}.schnitt. Use the year count from that fact's label. reihe.${id}.abstand says whether the last finished year sits above or below it.`
+      : 'There is no average line. Do not invent one.'
+    schritte.push(
+      `${nr()}. fokus ${id}. One line of the yearly figure. The big number is the last finished year, reihe.${id}. ${schnitt} ${erklaer[id]} A fact whose label says estimate (reihe.${id}.e.<year>) must be spoken as an estimate. If that fact is missing, do not mention a forecast.`,
+    )
+  }
+  if (!schritte.length) {
+    return 'bewertung: no yearly multiple series is in the fact sheet. Write one sentence that says the yearly multiples are not in the filing export. Scene zahl_reihe. Do not invent a chart or a number.'
+  }
+  return `bewertung: this chapter may run past a minute. Scene zahl_reihe. Line charts only. One idea per sentence. Every number needs its fact id. Do not invent a year, a figure, or an average. The same fokus keeps one chart on screen. The next fokus cuts hard to the next chart. A scene bild may sit between two charts, never on top of one. Do not cite val.ntm_pe, val.ltm_pe, val.ntm_ev_ebitda, val.ev_ebitda_mitte, val.ev_ebitda_abstand, val.ntm_fcf_rendite, or val.peg_ratio. Those are not the lines on screen. Do not call the stock cheap or expensive. Say above or below its own average. Order:\n${schritte.join('\n')}`
+}
+
 function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): string {
   switch (id) {
     case 'hook':
@@ -370,7 +419,7 @@ Say "moat", never the German word. Overall score is moat.score, said once. One s
     case 'inhaber':
       return `inhaber (about 45 to 75 seconds): who owns the shares. Scene inhaber_anteile. One sentence per fact that exists: own.insider, own.institutionen, then own.inst1, own.inst2, own.inst3, then own.insider_netto. Skip any id that is not in the fact sheet. fokus = that fact id. A bild sentence may sit between two cards. Do not invent a holder.`
     case 'bewertung':
-      return `bewertung (about 45 to 75 seconds): scene bewertung_zahl. One sentence per val.* fact that exists, in this order when present: val.ntm_pe, val.ltm_pe, val.ntm_ev_ebitda, val.ev_ebitda_mitte, val.ev_ebitda_abstand, val.ntm_fcf_rendite, val.peg_ratio. faktIds is exactly that one id. A bild sentence may sit between two numbers. Do not say cheap or expensive except through val.ev_ebitda_abstand.`
+      return bewertungAuftrag(fb)
     case 'risiken':
       return `risiken (about 45 to 75 seconds): scene risiko_karte. One sentence per risk.* fact and, if present, km.net_debt_ebitda and km.aktien_verwaesserung. faktIds is exactly one of those ids. Say only what that fact says. A bild sentence may sit between two cards.`
     case 'scorecard':
@@ -440,6 +489,7 @@ kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks
   stelleSegmentFokusSicher(abschnitte)
   stellePfeilerFokusSicher(abschnitte)
   stelleZahlenFokusSicher(abschnitte)
+  stelleBewertungFokusSicher(abschnitte)
   bereinigeBurggraben(abschnitte)
   if (nur === 'fazit') {
     setzeFazit(abschnitte, fb)
@@ -785,9 +835,10 @@ export async function ueberarbeite(opts: {
   })
   const neu = (daten.saetze ?? []).filter((s) => s.text?.trim()).map((s) => satzAusRoh(s, opts.abschnittId, fb))
   const fertig = opts.abschnittId === 'burggraben' ? ohneGeschaeftImMoat(neu) : neu
-  if (opts.abschnittId === 'zahlen') {
-    const huelle: LongformAbschnitt[] = [{ id: 'zahlen', titel: LONGFORM_ABSCHNITT_TITEL.zahlen, saetze: fertig }]
-    stelleZahlenFokusSicher(huelle)
+  if (opts.abschnittId === 'zahlen' || opts.abschnittId === 'bewertung') {
+    const huelle: LongformAbschnitt[] = [{ id: opts.abschnittId, titel: LONGFORM_ABSCHNITT_TITEL[opts.abschnittId], saetze: fertig }]
+    if (opts.abschnittId === 'zahlen') stelleZahlenFokusSicher(huelle)
+    else stelleBewertungFokusSicher(huelle)
     if (!huelle[0]!.saetze.length) throw new Error('Gemini hat keinen Text geliefert.')
     return huelle[0]!.saetze
   }

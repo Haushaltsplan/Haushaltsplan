@@ -107,7 +107,30 @@ export type LongformSegmente = {
   eintraege: LongformSegmentEintrag[]
 }
 
-export type LongformJahresreiheId = 'umsatz' | 'gewinn' | 'fcf' | 'marge' | 'roic' | 'capex' | 'schulden' | 'aktien'
+export type LongformJahresreiheId =
+  | 'umsatz'
+  | 'gewinn'
+  | 'fcf'
+  | 'marge'
+  | 'roic'
+  | 'capex'
+  | 'schulden'
+  | 'aktien'
+  | 'kgv'
+  | 'ev_ebitda'
+  | 'ev_rev'
+  | 'fcf_rendite'
+
+/** Durchschnitt der letzten abgeschlossenen Jahre. Höchstens zehn, mindestens drei. */
+export type LongformJahresSchnitt = {
+  wert: number
+  /** Jahre, die in den Durchschnitt eingingen. */
+  jahre: number
+  /** Abgeschlossene Jahre im Fenster, vor dem Ausfiltern. */
+  fenster: number
+  /** Negative Jahre sind aus dem Durchschnitt gefallen. */
+  nurPositiv: boolean
+}
 
 export type LongformJahrespunkt = {
   jahr: number
@@ -131,12 +154,14 @@ export type LongformJahresGross = {
 export type LongformJahresreihe = {
   id: LongformJahresreiheId
   label: string
-  einheit: 'usd' | 'pct' | 'aktien'
-  /** balken: eine Geldreihe. linien: Margen oder Aktienzahl. doppel: Schulden und Bargeld. roic: Linie plus eine WACC-Linie. */
+  einheit: 'usd' | 'pct' | 'aktien' | 'x'
+  /** balken: eine Geldreihe. linien: Margen, Aktienzahl oder ein Multiple. doppel: Schulden und Bargeld. roic: Linie plus eine WACC-Linie. */
   art: 'balken' | 'linien' | 'doppel' | 'roic'
   linien: LongformJahreslinie[]
   /** Aktuelle WACC-Schätzung in Prozent. Nur beim ROIC-Chart, keine Jahresreihe. */
   wacc: number | null
+  /** Waagerechte Referenz. Bei Bewertungs-Charts der Durchschnitt der letzten bis zu zehn Jahre. */
+  schnitt: LongformJahresSchnitt | null
   quelle: string
   gross: LongformJahresGross | null
 }

@@ -5,13 +5,14 @@
  */
 import type { FundamentaldatenPaket, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { istFundamentalSchaetzungIso } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { pct, usd } from '@/lib/youtube/longform/longform-format'
+import { multiple, pct, usd } from '@/lib/youtube/longform/longform-format'
 import type {
   LongformEinheit,
   LongformJahreslinie,
   LongformJahrespunkt,
   LongformJahresreihe,
   LongformJahresreiheId,
+  LongformJahresSchnitt,
 } from '@/lib/youtube/longform/longform-types'
 
 /** Unter einem Prozent gilt die Aktienzahl als unverändert. */
@@ -129,8 +130,9 @@ function reihe(
   quelle: string,
   gross: LongformJahresreihe['gross'],
   wacc: number | null = null,
+  schnitt: LongformJahresSchnitt | null = null,
 ): LongformJahresreihe {
-  return { id, label, einheit, art, linien, wacc, quelle, gross }
+  return { id, label, einheit, art, linien, wacc, schnitt, quelle, gross }
 }
 
 /** True, wenn zwischen dem ersten und dem letzten Jahr ein Kalenderjahr ohne Punkt liegt. */
@@ -248,7 +250,57 @@ export function reihenAusZeilen(paket: FundamentaldatenPaket): LongformJahresrei
     )
   }
 
+  const multipleLinie = (
+    id: LongformJahresreiheId,
+    label: string,
+    zeileId: string,
+    einheit: 'x' | 'pct',
+  ) => {
+    const punkte = punkteAus(paket, zeileId)
+    if (!punkte) return
+    const schnitt = jahresSchnitt(punkte, einheit === 'x')
+    const l = letzterIst(punkte)
+    const linien = [{ id, label, punkte }]
+    out.push(
+      reihe(
+        id,
+        label,
+        einheit,
+        'linien',
+        linien,
+        quellenZeile(paket, hatSchaetzung(linien)),
+        l ? { text: einheit === 'pct' ? pct(l.wert) : multiple(l.wert), wert: l.wert, farbig: 'hell' } : null,
+        null,
+        schnitt,
+      ),
+    )
+  }
+
+  multipleLinie('kgv', 'P/E', 'kgv', 'x')
+  multipleLinie('ev_ebitda', 'EV/EBITDA', 'ev_ebitda', 'x')
+  multipleLinie('ev_rev', 'EV/Sales', 'ev_rev', 'x')
+  multipleLinie('fcf_rendite', 'Free cash flow yield', 'fcf_rendite', 'pct')
+
   return out
+}
+
+function schnittName(s: LongformJahresSchnitt): string {
+  if (s.nurPositiv) return `average of ${s.jahre} positive years in the last ${s.fenster}`
+  return s.jahre === 10 ? '10-year average' : `${s.jahre}-year average`
+}
+
+/** Mittel der letzten bis zu zehn abgeschlossenen Jahre. Unter drei Werten keine Linie. */
+function jahresSchnitt(punkte: Punkt[], nurPositiv: boolean): LongformJahresSchnitt | null {
+  const fenster = ist(punkte).slice(-10)
+  const nutzbar = fenster.filter((p) => Number.isFinite(p.wert) && (!nurPositiv || p.wert > 0))
+  if (nutzbar.length < MIN_JAHRE) return null
+  const summe = nutzbar.reduce((s, p) => s + p.wert, 0)
+  return {
+    wert: Math.round((summe / nutzbar.length) * 10) / 10,
+    jahre: nutzbar.length,
+    fenster: fenster.length,
+    nurPositiv: nutzbar.length < fenster.length,
+  }
 }
 
 function deckungVon(debt: Punkt[], cash: Punkt[]): { jahr: number; pct: number } | null {
@@ -308,7 +360,7 @@ function geldText(mioWert: number): { wert: number; text: string } {
 function faktenEinerLinie(
   prefix: string,
   name: string,
-  einheit: 'usd' | 'pct' | 'aktien',
+  einheit: 'usd' | 'pct' | 'aktien' | 'x',
   punkte: Punkt[],
   quelle: string,
   vorzeichen = false,
@@ -326,6 +378,8 @@ function faktenEinerLinie(
       out.push({ id, label, wert: g.wert, text: g.text, einheit: 'usd', quelle })
     } else if (einheit === 'pct') {
       out.push({ id, label, wert: p.wert, text: pct(p.wert, { vorzeichen }), einheit: 'pct', quelle })
+    } else if (einheit === 'x') {
+      out.push({ id, label, wert: p.wert, text: multiple(p.wert), einheit: 'x', quelle })
     } else {
       out.push({ id, label, wert: p.wert, text: mio(p.wert), einheit: 'zahl', quelle })
     }
@@ -436,6 +490,45 @@ export function faktenAusReihen(reihen: LongformJahresreihe[], paket: Fundamenta
           einheit: 'pct',
           quelle: 'keyMetrics.ltm_value_spread',
         })
+      }
+      continue
+    }
+    if (reihe.id === 'kgv' || reihe.id === 'ev_ebitda' || reihe.id === 'ev_rev' || reihe.id === 'fcf_rendite') {
+      const linie = reihe.linien[0]
+      if (!linie) continue
+      const e = reihe.einheit === 'pct' ? 'pct' : 'x'
+      out.push(...faktenEinerLinie(`reihe.${reihe.id}`, reihe.label, e, linie.punkte, q))
+      if (reihe.schnitt) {
+        const name = schnittName(reihe.schnitt)
+        out.push({
+          id: `reihe.${reihe.id}.schnitt`,
+          label: `${reihe.label}, ${name}.`,
+          wert: reihe.schnitt.wert,
+          text: e === 'pct' ? pct(reihe.schnitt.wert) : multiple(reihe.schnitt.wert),
+          einheit: e === 'pct' ? 'pct' : 'x',
+          quelle: q,
+        })
+        const letzter = ist(linie.punkte)[ist(linie.punkte).length - 1]
+        if (letzter && reihe.schnitt.wert !== 0) {
+          const abstand = Math.round(((letzter.wert - reihe.schnitt.wert) / Math.abs(reihe.schnitt.wert)) * 1000) / 10
+          const drueber = abstand > 0
+          const richtung =
+            reihe.id === 'fcf_rendite'
+              ? drueber
+                ? 'above its own average yield'
+                : 'below its own average yield'
+              : drueber
+                ? 'above its own average multiple'
+                : 'below its own average multiple'
+          out.push({
+            id: `reihe.${reihe.id}.abstand`,
+            label: `${reihe.label} in ${letzter.jahr} sits ${richtung}. ${name}.`,
+            wert: abstand,
+            text: pct(abstand, { vorzeichen: true }),
+            einheit: 'pct',
+            quelle: q,
+          })
+        }
       }
       continue
     }
