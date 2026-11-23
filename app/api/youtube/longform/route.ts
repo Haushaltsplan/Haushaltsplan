@@ -1,12 +1,13 @@
 /**
  * Long-Form-Projekte.
  * GET (ohne id) = Liste, GET ?id= = Projekt mit signierten URLs,
- * POST { export, thema } = neues Projekt, PATCH { id, zustand } = speichern, DELETE ?id= = löschen.
+ * POST { export, thema } = neues Projekt, POST { id, export } = JSON nachladen,
+ * PATCH { id, zustand } = speichern, DELETE ?id= = löschen.
  */
 import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { ladeProjekt, listeProjekte, loescheProjekt, mitUrls, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
-import { ergaenzeKapitelAusExport, erstelleProjekt, leseLongformExport } from '@/lib/youtube/longform/longform-projekt-server'
+import { ergaenzeKapitelAusExport, erstelleProjekt, ersetzeExport, leseLongformExport } from '@/lib/youtube/longform/longform-projekt-server'
 import { hatKalenderluecke } from '@/lib/youtube/longform/longform-reihen'
 import { entferneSchlussVorFazit } from '@/lib/youtube/longform/longform-skript-server'
 import type { LongformProjektZustand } from '@/lib/youtube/longform/longform-types'
@@ -52,7 +53,7 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const out = await jsonMitOwner(req, async () => {
-    let body: { export?: unknown; thema?: unknown }
+    let body: { id?: unknown; export?: unknown; thema?: unknown }
     try {
       body = (await req.json()) as typeof body
     } catch {
@@ -60,7 +61,12 @@ export async function POST(req: Request) {
     }
     const eingabe = leseLongformExport(body.export)
     if (typeof eingabe === 'string') return { ok: false as const, fehler: eingabe }
+    const id = typeof body.id === 'string' ? body.id : ''
     try {
+      if (id) {
+        const projekt = await ersetzeExport(id, eingabe)
+        return { ok: true as const, projekt: { ...projekt, zustand: await mitUrls(projekt.zustand) } }
+      }
       const projekt = await erstelleProjekt(eingabe, typeof body.thema === 'string' ? body.thema : '')
       return { ok: true as const, projekt }
     } catch (e) {

@@ -234,6 +234,25 @@ export function LongformStudio() {
       toast.success(`${r.projekt.ticker} geladen.`)
     })
 
+  const jsonErsetzen = (datei: File | undefined) => {
+    if (!projekt || !datei) return
+    void aktion('json', async () => {
+      let exportJson: unknown
+      try {
+        exportJson = JSON.parse(await datei.text())
+      } catch {
+        throw new Error('Kein gültiges JSON. Bitte Fundamentaldaten → Export JSON hochladen.')
+      }
+      const r = await lfApi<{ projekt: LongformProjekt }>('/api/youtube/longform', {
+        json: { id: projekt.id, export: exportJson },
+      })
+      setProjekt(r.projekt)
+      setThema(r.projekt.zustand.thema)
+      setDirty(false)
+      toast.success('JSON übernommen. Die Charts nutzen die neuen Jahre.')
+    })
+  }
+
   const quelleHochladen = (datei: File | undefined) => {
     if (!projekt || !datei) return
     void aktion('quelle', async () => {
@@ -654,6 +673,20 @@ export function LongformStudio() {
           <span className="font-semibold text-[var(--app-text)]">
             {projekt.ticker} · {projekt.firmenname}
           </span>
+          <label className={`${LF_KNOPF} cursor-pointer`}>
+            {laeuft === 'json' ? 'Liest JSON…' : 'Neue JSON'}
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              disabled={laeuft != null}
+              onChange={(e) => {
+                const datei = e.target.files?.[0]
+                e.target.value = ''
+                jsonErsetzen(datei)
+              }}
+            />
+          </label>
           <span className="text-[var(--app-text-muted)]">
             {alleFrei ? 'Alle Kapitel frei' : `Kapitel: ${naechstesKapitel ? LONGFORM_ABSCHNITT_TITEL[naechstesKapitel] : ''}`}
           </span>

@@ -135,6 +135,27 @@ export async function ladeDokumente(zustand: LongformProjektZustand): Promise<Lo
   return out
 }
 
+/**
+ * Neue Fundamentaldaten-JSON ins bestehende Projekt.
+ * Skript, Stimme und Bilder bleiben. Die Jahrescharts werden neu aus der JSON gebaut.
+ */
+export async function ersetzeExport(id: string, eingabe: LongformExportEingabe): Promise<LongformProjekt> {
+  const alt = await ladeProjekt(id)
+  if (!alt) throw new Error('Projekt nicht gefunden.')
+  const neuTicker = (eingabe.paket.symbolYahoo?.split('.')[0] || eingabe.paket.ticker || '').trim().toUpperCase()
+  if (!neuTicker || neuTicker !== alt.ticker.trim().toUpperCase()) {
+    throw new Error(`Die JSON gehört zu ${neuTicker || 'einem anderen Ticker'}, dieses Projekt ist ${alt.ticker}.`)
+  }
+  await ladeHoch(projektPfad(id, 'export', 'fundamentaldaten.json'), JSON.stringify(eingabe.paket), 'application/json')
+  const z = await ergaenzeKapitelAusExport(id, alt.zustand)
+  z.faktenblatt.exportDatum = eingabe.exportDatum
+  if (eingabe.isin) z.faktenblatt.isin = eingabe.isin
+  await speichereProjekt(id, z)
+  const neu = await ladeProjekt(id)
+  if (!neu) throw new Error('Projekt nicht gefunden.')
+  return neu
+}
+
 /** Neue Kapitel-Fakten aus der gespeicherten JSON. Skript, Stimme und Bilder bleiben. */
 export async function ergaenzeKapitelAusExport(id: string, z: LongformProjektZustand): Promise<LongformProjektZustand> {
   const buf = await ladeHerunter(projektPfad(id, 'export', 'fundamentaldaten.json'))
