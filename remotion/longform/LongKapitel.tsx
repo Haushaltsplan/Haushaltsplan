@@ -89,15 +89,77 @@ function Scorecard({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   )
 }
 
+const FAZIT_LABEL: Record<string, string> = {
+  'sc.dividendenertrag': 'Dividend yield',
+  'sc.dividendenwachstum': 'Dividend growth',
+  'sc.gewinnwachstum': 'Earnings growth',
+  'sc.burggraben': 'Moat',
+  'val.ev_ebitda_abstand': 'vs 5-year middle',
+}
+
+function fazitLabel(id: string, label: string): string {
+  return FAZIT_LABEL[id] ?? label.replace(/^Scorecard:\s*/i, '').replace(/\s*\([^)]*\)\s*$/, '').trim()
+}
+
+/** Nur die Zahl oder der kurze Fakt, nie den gesprochenen Satz. */
+function fazitKarte(id: string, fakt: { text: string; label: string; wert: number | null }): { label: string; zahl: string; score: boolean } | null {
+  if (id === 'fazit.urteil') return null
+  const woerter = fakt.text.trim().split(/\s+/).filter(Boolean)
+  if (id.startsWith('sc.') && fakt.wert != null && Number.isFinite(fakt.wert)) {
+    return { label: fazitLabel(id, fakt.label), zahl: String(Math.round(fakt.wert)), score: true }
+  }
+  if (woerter.length > 4) return null
+  const zahl = fakt.text.trim()
+  if (!zahl) return null
+  return { label: fazitLabel(id, fakt.label), zahl, score: false }
+}
+
 function Fazit({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   const frame = useCurrentFrame()
-  const satz = sp.p.saetze[lauf.saetze[lauf.saetze.length - 1]!]
-  const urteil = satz?.faktIds.includes('fazit.urteil') ? satz.text : (sp.p.fakten['fazit.urteil']?.text ?? satz?.text ?? '')
+  const jetzt = sp.block.from + lauf.from + frame
+  const gesehen = new Set<string>()
+  const roh: { key: string; label: string; zahl: string; wert: number | null; score: boolean; ab: number; satz: number }[] = []
+  for (const i of sp.block.saetze) {
+    const s = sp.p.saetze[i]
+    const z = sp.t.saetze[i]
+    if (!s || !z || s.visual.szene !== 'fazit_antwort' || z.from > jetzt + 1) continue
+    const ab = z.from - (sp.block.from + lauf.from)
+    for (const id of s.faktIds) {
+      if (gesehen.has(id)) continue
+      const fakt = sp.p.fakten[id]
+      const karte = fakt ? fazitKarte(id, fakt) : null
+      if (!karte) continue
+      gesehen.add(id)
+      roh.push({ key: id, ...karte, wert: fakt!.wert, ab: Math.max(0, ab), satz: i })
+    }
+  }
+  const aktivSatz = roh.length ? roh[roh.length - 1]!.satz : -1
+  const karten = roh.map((k) => ({ ...k, aktiv: k.satz === aktivSatz }))
+  const gross = karten.length > 4 ? 72 : 108
   return (
-    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', paddingLeft: 140, paddingRight: 140 }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontFamily: LONG_SERIF, fontSize: 36, color: LONG_MUTED, opacity: ein(frame, 0, 10) }}>{sp.p.leitfrage}</div>
-        <div style={{ marginTop: 36, fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 84, lineHeight: 1.05, color: LONG_TEXT, opacity: ein(frame, 8, 14) }}>{urteil}</div>
+    <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', paddingLeft: 80, paddingRight: 80 }}>
+      <div style={{ display: 'flex', gap: 36, alignItems: 'stretch', justifyContent: 'center', width: '100%' }}>
+        {karten.map((k) => (
+          <div
+            key={k.key}
+            style={{
+              flex: '1 1 0',
+              maxWidth: 380,
+              textAlign: 'center',
+              opacity: ein(frame, k.ab, 16),
+              transform: `translateY(${(1 - ein(frame, k.ab, 16)) * 18}px)`,
+              padding: '28px 16px',
+              borderRadius: 24,
+              outline: k.aktiv ? `2px solid ${sp.p.varianten.akzent}` : '2px solid transparent',
+            }}
+          >
+            <div style={{ fontFamily: LONG_MONO, fontSize: 18, letterSpacing: 2, color: LONG_MUTED }}>{k.label.toUpperCase()}</div>
+            <div style={{ marginTop: 12, fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: gross, lineHeight: 0.95, color: LONG_TEXT }}>
+              <FarbeZahl text={k.zahl} wert={k.wert} />
+            </div>
+            {k.score ? <div style={{ marginTop: 8, fontFamily: LONG_MONO, fontSize: 16, color: LONG_MUTED }}>/10</div> : null}
+          </div>
+        ))}
       </div>
     </AbsoluteFill>
   )

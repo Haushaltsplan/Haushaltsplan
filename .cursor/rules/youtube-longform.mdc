@@ -19,7 +19,7 @@ Composition: `AktienAnalyse` in `remotion/Root.tsx`.
 | Feature | Key | Flag |
 |---------|-----|------|
 | Long-Form Skript / Faktencheck / Bildprüfung / Chat | `GEMINI_API_KEY` (Billing) | `geminiForcePaidApiKey: true` |
-| Moat-Shorts Script | `GEMINI_API_KEY` (Billing) | `gemini-3.5-flash-lite` |
+| Moat-Shorts Script | `GEMINI_API_KEY_FREE` | `gemini-3.5-flash-lite` |
 | Portfolio-Berater, Finanz-Coach | nur Free | Billing **verboten** |
 
 ### Modelle (Long-Form)

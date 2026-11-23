@@ -1,10 +1,10 @@
 /**
  * Englisches ~32-Sekunden-Script für loopbare Moat-Shorts.
- * Modell: gemini-3.5-flash-lite über den Billing-Key. Der Free-Key liefert dafür oft 503.
+ * Modell: gemini-3.5-flash-lite über den Free-Key, kein Billing.
  */
 import 'server-only'
 
-import { resolveCoachProviderFromMode, runCoachCompletion } from '@/lib/ki-coach-backend'
+import { resolveGeminiFreeTierProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { generiereMoatKiBewertung, ladeMoatKiCache } from '@/lib/portfolio-analyse/moat-ki-server'
 import { gesamtScoreAusPfeilern, type MoatKiBewertung, type MoatPfeilerId } from '@/lib/portfolio-analyse/moat-ki-types'
@@ -330,7 +330,7 @@ async function heroPruefen(
     [{ role: 'user', content: `On screen: ${label} = ${value}\nSpoken now: ${proof}` }],
     {
       geminiModels: [SHORT_GEMINI_MODELL],
-      geminiForcePaidApiKey: true,
+      geminiForceFreeApiKey: true,
       jsonResponse: {
         schema: {
           type: 'object',
@@ -387,7 +387,7 @@ export async function generiereMoatShort(opts: {
 
   let moat = opts.moatNeu ? null : await ladeMoatKiCache(ticker)
   const moatAusCache = moat != null
-  if (!moat) moat = await generiereMoatKiBewertung(paket, isin, [SHORT_GEMINI_MODELL], true)
+  if (!moat) moat = await generiereMoatKiBewertung(paket, isin, [SHORT_GEMINI_MODELL])
   if (opts.moatRichtung) moat = moatMitRichtung(moat, opts.moatRichtung)
 
   const metriken = metrikenAusPaket(paket)
@@ -396,8 +396,8 @@ export async function generiereMoatShort(opts: {
     throw new Error('Im Export fehlen Margen- und Rendite-Kennzahlen (z. B. Bruttomarge, ROIC) für die Hook-Zahl.')
   }
 
-  const provider = resolveCoachProviderFromMode('gemini')
-  if (!provider) throw new Error('GEMINI_API_KEY fehlt — das Short-Script nutzt den Billing-Key.')
+  const provider = resolveGeminiFreeTierProvider()
+  if (!provider) throw new Error('GEMINI_API_KEY_FREE fehlt — das Script nutzt den Free-Key.')
 
   const suchphrasen = await sucheYoutubePhrasen(ticker, paket.firmenname)
 
@@ -408,7 +408,7 @@ export async function generiereMoatShort(opts: {
     [{ role: 'user', content: baueUserPrompt(paket, moat, metriken, suchphrasen, opts.moatRichtung) }],
     {
       geminiModels: [SHORT_GEMINI_MODELL],
-      geminiForcePaidApiKey: true,
+      geminiForceFreeApiKey: true,
       jsonResponse: { schema: baueSchema(hookMetriken.map((m) => m.id), metriken.map((m) => m.id)) },
       thinkingMinimal: true,
       maxOutputTokens: 6144,
