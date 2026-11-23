@@ -1,5 +1,6 @@
 /** Who owns it, Valuation, Risiken, Scorecard, Would I buy. Eine Zahl pro Satz, Besitz als Torte. */
 import { AbsoluteFill, Sequence, useCurrentFrame } from 'remotion'
+import { dollarImText } from '../../lib/youtube/longform/longform-format'
 import { Blende, ein, satzLaeufe, type SatzLauf, type SzeneProps } from './long-bausteine'
 import { besitzBereit, LongBesitz } from './LongBesitz'
 import { LONG_DISPLAY, LONG_GRUEN, LONG_MONO, LONG_MUTED, LONG_RAND_X, LONG_ROT, LONG_SERIF, LONG_TEXT } from './long-look'
@@ -17,12 +18,14 @@ function FarbeZahl({ text, wert }: { text: string; wert: number | null }) {
 
 function GrosseZahl({ label, text, wert }: { label: string; text: string; wert: number | null }) {
   const frame = useCurrentFrame()
+  const anzeige = dollarImText(text, wert)
+  const schrift = anzeige.length > 18 ? 72 : anzeige.length > 12 ? 96 : 128
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', paddingLeft: LONG_RAND_X, paddingRight: LONG_RAND_X }}>
-      <div style={{ textAlign: 'center', opacity: ein(frame, 0, 10) }}>
+      <div style={{ textAlign: 'center', opacity: ein(frame, 0, 10), maxWidth: 1500 }}>
         <div style={{ fontFamily: LONG_MONO, fontSize: 22, letterSpacing: 4, color: LONG_MUTED }}>{label.toUpperCase()}</div>
-        <div style={{ marginTop: 18, fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 140, lineHeight: 0.95, color: LONG_TEXT }}>
-          <FarbeZahl text={text} wert={wert} />
+        <div style={{ marginTop: 18, fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: schrift, lineHeight: 0.95, color: LONG_TEXT }}>
+          <FarbeZahl text={anzeige} wert={wert} />
         </div>
       </div>
     </AbsoluteFill>
@@ -109,7 +112,7 @@ function fazitKarte(id: string, fakt: { text: string; label: string; wert: numbe
     return { label: fazitLabel(id, fakt.label), zahl: String(Math.round(fakt.wert)), score: true }
   }
   if (woerter.length > 4) return null
-  const zahl = fakt.text.trim()
+  const zahl = dollarImText(fakt.text.trim(), fakt.wert)
   if (!zahl) return null
   return { label: fazitLabel(id, fakt.label), zahl, score: false }
 }
@@ -135,26 +138,28 @@ function Fazit({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   }
   const aktivSatz = roh.length ? roh[roh.length - 1]!.satz : -1
   const karten = roh.map((k) => ({ ...k, aktiv: k.satz === aktivSatz }))
-  const gross = karten.length > 4 ? 72 : 108
+  const laengste = karten.reduce((n, k) => Math.max(n, k.zahl.length), 0)
+  const gross = laengste >= 12 ? 56 : laengste >= 9 ? 68 : laengste >= 7 ? 80 : 92
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', paddingLeft: 80, paddingRight: 80 }}>
-      <div style={{ display: 'flex', gap: 36, alignItems: 'stretch', justifyContent: 'center', width: '100%' }}>
+      <div style={{ display: 'flex', gap: 28, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap', maxWidth: 1680 }}>
         {karten.map((k) => (
           <div
             key={k.key}
             style={{
-              flex: '1 1 0',
-              maxWidth: 380,
+              flex: '0 0 auto',
+              width: 'max-content',
               textAlign: 'center',
               opacity: ein(frame, k.ab, 16),
               transform: `translateY(${(1 - ein(frame, k.ab, 16)) * 18}px)`,
-              padding: '28px 16px',
-              borderRadius: 24,
-              outline: k.aktiv ? `2px solid ${sp.p.varianten.akzent}` : '2px solid transparent',
+              padding: '28px 56px 26px',
+              borderRadius: 28,
+              boxSizing: 'border-box',
+              border: k.aktiv ? `2px solid ${sp.p.varianten.akzent}` : '2px solid transparent',
             }}
           >
-            <div style={{ fontFamily: LONG_MONO, fontSize: 18, letterSpacing: 2, color: LONG_MUTED }}>{k.label.toUpperCase()}</div>
-            <div style={{ marginTop: 12, fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: gross, lineHeight: 0.95, color: LONG_TEXT }}>
+            <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 1.4, color: LONG_MUTED, whiteSpace: 'nowrap' }}>{k.label.toUpperCase()}</div>
+            <div style={{ marginTop: 14, fontFamily: LONG_DISPLAY, fontWeight: 800, fontSize: gross, lineHeight: 1, color: LONG_TEXT, whiteSpace: 'nowrap' }}>
               <FarbeZahl text={k.zahl} wert={k.wert} />
             </div>
             {k.score ? <div style={{ marginTop: 8, fontFamily: LONG_MONO, fontSize: 16, color: LONG_MUTED }}>/10</div> : null}

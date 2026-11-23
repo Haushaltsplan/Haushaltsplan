@@ -1,12 +1,58 @@
 /** Englische Zahlenformate fürs Video. Dieselben Funktionen bauen Fakten und prüfen das Skript. */
 
+function usdZahl(v: number): string {
+  const gerundet = Math.round(v * 10) / 10
+  const ganz = Number.isInteger(gerundet)
+  return gerundet.toLocaleString('en-US', {
+    minimumFractionDigits: ganz ? 0 : 1,
+    maximumFractionDigits: ganz ? 0 : 1,
+  })
+}
+
+/** $12.4 billion, $860 million, $34,210 — nicht $12.40B. */
 export function usd(n: number): string {
   const abs = Math.abs(n)
   const vz = n < 0 ? '-' : ''
-  if (abs >= 1e12) return `${vz}$${(abs / 1e12).toFixed(abs >= 1e13 ? 1 : 2)}T`
-  if (abs >= 1e9) return `${vz}$${(abs / 1e9).toFixed(abs >= 1e10 ? 1 : 2)}B`
-  if (abs >= 1e7) return `${vz}$${(abs / 1e6).toFixed(1)}M`
+  const wort = (div: number, name: string) => {
+    return `${vz}$${usdZahl(abs / div)} ${name}`
+  }
+  if (abs >= 1e12) return wort(1e12, 'trillion')
+  if (abs >= 1e9) return wort(1e9, 'billion')
+  if (abs >= 1e6) return wort(1e6, 'million')
   return `${vz}$${Math.round(abs).toLocaleString('en-US')}`
+}
+
+/** Chart-Achse: $12.4B, eine Nachkommastelle, kein $12.40B. */
+export function usdKurz(n: number): string {
+  const abs = Math.abs(n)
+  const vz = n < 0 ? '-' : ''
+  if (abs >= 1e12) return `${vz}$${usdZahl(abs / 1e12)}T`
+  if (abs >= 1e9) return `${vz}$${usdZahl(abs / 1e9)}B`
+  if (abs >= 1e6) return `${vz}$${usdZahl(abs / 1e6)}M`
+  return `${vz}$${Math.round(abs).toLocaleString('en-US')}`
+}
+
+const USD_SUFFIX: Record<string, number> = { k: 1e3, m: 1e6, b: 1e9, t: 1e12 }
+
+/** $12.40B im schon gespeicherten Text → $12.4 billion. Der Suffix trägt die Größenordnung. */
+export function dollarKompakt(text: string): string {
+  return text.replace(/-?\$[\d,.]+\s*[KMBT]\b/gi, (token) => {
+    const m = token.match(/^(-?)\$([\d,.]+)\s*([KMBT])$/i)
+    if (!m) return token
+    const n = Number(m[2]!.replace(/,/g, ''))
+    const mult = USD_SUFFIX[m[3]!.toLowerCase()]
+    if (!Number.isFinite(n) || mult == null) return token
+    return usd((m[1] ? -1 : 1) * n * mult)
+  })
+}
+
+/** Kompakte $-Kürzel ausschreiben. Ein nacktes $10,000 bleibt über den Rohwert gruppiert. */
+export function dollarImText(text: string, wert: number | null): string {
+  if (!text.includes('$')) return text
+  const ausgeschrieben = dollarKompakt(text)
+  if (ausgeschrieben !== text) return ausgeschrieben
+  if (wert != null && Number.isFinite(wert) && /^\s*-?\$[\d,.]+\s*$/.test(text)) return usd(wert)
+  return text
 }
 
 export function pct(n: number, opts?: { vorzeichen?: boolean }): string {

@@ -2,7 +2,7 @@
 import { Audio } from '@remotion/media'
 import { useMemo } from 'react'
 import { AbsoluteFill, Img, Sequence, interpolate, useCurrentFrame } from 'remotion'
-import { Hintergrund, Korn, oeffentlichSrc, type SzeneProps } from './long-bausteine'
+import { Hintergrund, Korn, easeOut, oeffentlichSrc, type SzeneProps } from './long-bausteine'
 import { LONG_MUSIK_FREI, LONG_MUSIK_UNTER_STIMME } from './long-look'
 import { berechneLongTimeline, LONG_KAPITEL_REIHE, type LongBlock, type LongTimeline } from './long-timeline'
 import type { AktienAnalyseProps } from './long-types'
@@ -167,11 +167,12 @@ function KonkurrentenWurf({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) 
       const spanne = namensSpanne(z.woerter, logo.name)
       if (!spanne || frame < spanne.von || frame >= spanne.bis) return []
       const dauer = spanne.bis - spanne.von
-      const kante = Math.min(8, Math.max(3, Math.floor(dauer * 0.28)))
+      const kante = Math.min(16, Math.max(8, Math.floor(dauer * 0.32)))
       const lokal = frame - spanne.von
-      const rein = interpolate(lokal, [0, kante], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-      const raus = interpolate(lokal, [Math.max(kante, dauer - kante), dauer], [0, 1], { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' })
-      return [{ url: logo.url, x: (1 - rein) * 900 + raus * -900 }]
+      const rein = easeOut(lokal / kante)
+      const rausStart = Math.max(kante, dauer - kante)
+      const raus = lokal <= rausStart ? 0 : easeOut((lokal - rausStart) / Math.max(1, dauer - rausStart))
+      return [{ url: logo.url, name: logo.name, alpha: rein * (1 - raus), x: (1 - rein) * 48 - raus * 20, scale: 0.96 + 0.04 * rein }]
     })
   })
   if (!sichtbar.length) return null
@@ -192,20 +193,22 @@ function KonkurrentenWurf({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) 
     >
       {sichtbar.map((l) => (
         <div
-          key={l.url}
+          key={`${l.name}-${l.url}`}
           style={{
-            width: 220,
-            height: 220,
-            borderRadius: 36,
-            background: 'rgba(12,12,14,0.9)',
+            height: 118,
+            maxWidth: 460,
+            borderRadius: 24,
+            background: '#F3F1EC',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: 28,
-            transform: `translateX(${l.x}px)`,
+            padding: '16px 32px',
+            boxSizing: 'border-box',
+            opacity: l.alpha,
+            transform: `translateX(${l.x}px) scale(${l.scale})`,
           }}
         >
-          <Img src={oeffentlichSrc(l.url)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          <Img src={oeffentlichSrc(l.url)} style={{ height: 72, width: 'auto', maxWidth: 380, objectFit: 'contain' }} />
         </div>
       ))}
     </div>

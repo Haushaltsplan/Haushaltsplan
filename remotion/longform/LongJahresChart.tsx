@@ -1,7 +1,7 @@
 /** Jahreschart des Zahlen-Kapitels. Balken, Linien oder zwei Reihen, Schätzjahre blasser. */
 import { useMemo } from 'react'
 import { AbsoluteFill, useCurrentFrame } from 'remotion'
-import { pct, usd } from '../../lib/youtube/longform/longform-format'
+import { pct, usd, usdKurz } from '../../lib/youtube/longform/longform-format'
 import type { LongformJahresGross, LongformJahreslinie, LongformJahrespunkt, LongformJahresreihe } from '../../lib/youtube/longform/longform-types'
 import { aktiverSatz, ein, zaehleText, type SzeneProps } from './long-bausteine'
 import { LONG_DISPLAY, LONG_GRUEN, LONG_LINIE, LONG_MONO, LONG_MUTED, LONG_RAND_X, LONG_ROT, LONG_SERIF, LONG_TEXT, mitAlpha } from './long-look'
@@ -106,7 +106,7 @@ function achseText(wert: number, einheit: LongformJahresreihe['einheit']): strin
     const r = Math.abs(wert) >= 100 ? Math.round(wert) : Math.round(wert * 10) / 10
     return `${r}x`
   }
-  return usd(wert * 1_000_000)
+  return usdKurz(wert * 1_000_000)
 }
 
 function einheitTitel(einheit: LongformJahresreihe['einheit']): string {
@@ -208,9 +208,9 @@ export function LongJahresChart(sp: SzeneProps) {
         </div>
       </div>
       {reihe.gross ? (
-        <div style={{ position: 'absolute', right: LONG_RAND_X, top: 88, textAlign: 'right', opacity: fort }}>
-          <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 80, color: grossFarbe(reihe.gross), letterSpacing: -2 }}>
-            {zaehleText(reihe.gross.text, fort)}
+        <div style={{ position: 'absolute', right: LONG_RAND_X, top: 88, textAlign: 'right', opacity: fort, maxWidth: 720 }}>
+          <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: reihe.einheit === 'usd' ? 64 : 80, color: grossFarbe(reihe.gross), letterSpacing: -1, lineHeight: 1, whiteSpace: 'nowrap' }}>
+            {zaehleText(reihe.einheit === 'usd' ? usd(reihe.gross.wert * 1_000_000) : reihe.gross.text, fort)}
           </div>
         </div>
       ) : (

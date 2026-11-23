@@ -57,11 +57,12 @@ export function logoSrc(url: string): string {
 }
 
 export function Logo({ url, groesse, ticker }: { url: string | null; groesse: number; ticker: string }) {
+  const breite = Math.round(groesse * 1.72)
   if (!url) {
     return (
       <div
         style={{
-          width: groesse,
+          width: breite,
           height: groesse,
           borderRadius: groesse * 0.22,
           background: 'rgba(243,241,236,0.08)',
@@ -81,7 +82,7 @@ export function Logo({ url, groesse, ticker }: { url: string | null; groesse: nu
   return (
     <div
       style={{
-        width: groesse,
+        width: breite,
         height: groesse,
         borderRadius: groesse * 0.22,
         background: '#F3F1EC',
@@ -89,9 +90,11 @@ export function Logo({ url, groesse, ticker }: { url: string | null; groesse: nu
         alignItems: 'center',
         justifyContent: 'center',
         overflow: 'hidden',
+        padding: groesse * 0.14,
+        boxSizing: 'border-box',
       }}
     >
-      <Img src={logoSrc(url)} style={{ width: '74%', height: '74%', objectFit: 'contain' }} />
+      <Img src={logoSrc(url)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
     </div>
   )
 }

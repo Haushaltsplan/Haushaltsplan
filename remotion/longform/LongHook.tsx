@@ -1,6 +1,7 @@
 /** Hook: cold open — große Zahl, Leitfrage oder Foto. Professioneller Einstieg ohne leere Flächen. */
 import { Video } from '@remotion/media'
 import { AbsoluteFill, Img, Sequence, interpolate, useCurrentFrame } from 'remotion'
+import { dollarImText, dollarKompakt } from '../../lib/youtube/longform/longform-format'
 import { Blende, Logo, aktiverSatz, ein, oeffentlichSrc, satzLaeufe, type SatzLauf, type SzeneProps } from './long-bausteine'
 import { LONG_DISPLAY, LONG_MONO, LONG_MUTED, LONG_RAND_X, LONG_SERIF, LONG_SERIF_KURSIV, LONG_TEXT } from './long-look'
 
@@ -35,7 +36,8 @@ function HookZahl({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
   const linie = cover ? ein(frame, Math.max(0, satzStart - 10), 10) : 1
   const sichtbar = cover ? ein(frame, Math.max(0, satzStart), 8) : 1
   const wander = cover ? 0 : ein(frame, Math.max(0, satzStart), 14)
-  const groesse = zahlGroesse(f.text) + (72 - zahlGroesse(f.text)) * wander
+  const zahl = dollarImText(f.text, f.wert)
+  const groesse = zahlGroesse(zahl) + (72 - zahlGroesse(zahl)) * wander
   const left = 240 + (220 - 240) * wander
   const top = 340 + (188 - 340) * wander
   return (
@@ -62,7 +64,7 @@ function HookZahl({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
             fontVariantNumeric: 'tabular-nums',
           }}
         >
-          {f.text}
+          {zahl}
         </div>
         <div style={{ marginTop: 22, fontFamily: LONG_MONO, fontSize: 22, letterSpacing: 4, color: LONG_MUTED, opacity: 1 - wander }}>
           {f.label.toUpperCase()}
@@ -125,7 +127,7 @@ function HookRuhe({ sp }: { sp: SzeneProps }) {
 
 function basisZeile(sp: SzeneProps): string | null {
   const b = sp.p.hookBasis
-  const teile = [b?.marketCap ? `Market cap ${b.marketCap}` : null, b?.wkn ? `WKN ${b.wkn}` : null, b?.isin ? `ISIN ${b.isin}` : null].filter(
+  const teile = [b?.marketCap ? `Market cap ${dollarKompakt(b.marketCap)}` : null, b?.wkn ? `WKN ${b.wkn}` : null, b?.isin ? `ISIN ${b.isin}` : null].filter(
     (t): t is string => !!t,
   )
   return teile.length ? teile.join('   ·   ') : null

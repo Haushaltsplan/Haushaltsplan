@@ -1,7 +1,7 @@
 /** 10.000-$-Chart: Aktie (Total + Price), S&P, Sektor-ETF — Zahlen erst beim gesprochenen Fakt. */
 import { useMemo } from 'react'
 import { AbsoluteFill, interpolate, useCurrentFrame } from 'remotion'
-import { monatJahr, pct, usd } from '../../lib/youtube/longform/longform-format'
+import { dollarImText, monatJahr, pct, usd } from '../../lib/youtube/longform/longform-format'
 import { LONGFORM_INVEST_USD } from '../../lib/youtube/longform/longform-types'
 import { aktiverSatz, ein, zaehleText, type SzeneProps } from './long-bausteine'
 import {
@@ -49,10 +49,6 @@ function logSchritte(boden: number, max: number): number[] {
 
 type HudZeile = { id: string; label: string; text: string; art: 'haupt' | 'neben' | 'pct' }
 
-function ohneTausender(text: string): string {
-  return text.replace(/(\d),(\d{3})(?!\d)/g, '$1$2')
-}
-
 function pctFarbe(sp: SzeneProps, id: string): string {
   if (id === 'k10.drawdown') return LONG_ROT
   const wert = sp.p.fakten[id]?.wert
@@ -66,7 +62,7 @@ function hudAusSatz(sp: SzeneProps, satzIndex: number): HudZeile[] {
   const push = (id: string, art: HudZeile['art'] = 'haupt') => {
     const f = sp.p.fakten[id]
     if (!f || zeilen.some((z) => z.id === id)) return
-    zeilen.push({ id, label: f.label, text: f.text, art })
+    zeilen.push({ id, label: f.label, text: dollarImText(f.text, f.wert), art })
   }
   // Priorität: Betonung → explizite Kern-IDs → erstes $-/%-Fakt
   const kern = ['k10.nur_kurs', 'k10.dividenden_usd', 'k10.endwert', 'k10.rendite', 'k10.cagr', 'k10.spy_endwert', 'k10.spy_rendite', 'k10.vs_spy', 'k10.sektor_endwert', 'k10.sektor_rendite', 'k10.vs_sektor', 'k10.drawdown', 'k10.drawdown_wert']
@@ -336,7 +332,7 @@ export function LongChart(sp: SzeneProps) {
               opacity: hudEin,
             }}
           >
-            {zaehleText(ohneTausender(satzHud[0].text), hudEin)}
+            {zaehleText(satzHud[0].text, hudEin)}
           </div>
         </div>
       ) : null}

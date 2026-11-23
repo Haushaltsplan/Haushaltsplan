@@ -1,7 +1,7 @@
 /** Burggraben: Geschäft, Pfeiler (Karten oder Balken), Scorecard-Spalte, Umsatzmix. Nur Zahlen und Labels, kein KI-Fließtext. */
 import { AbsoluteFill, Sequence, useCurrentFrame } from 'remotion'
 import { englischOderLeer } from '../../lib/youtube/longform/longform-en'
-import { pct } from '../../lib/youtube/longform/longform-format'
+import { dollarImText, pct } from '../../lib/youtube/longform/longform-format'
 import { Logo, aktiverSatz, ein, satzLaeufe, zaehleText, type SatzLauf, type SzeneProps } from './long-bausteine'
 import {
   LONG_DISPLAY,
@@ -305,19 +305,21 @@ function Finanzen({ sp, lauf }: { sp: SzeneProps; lauf: SatzLauf }) {
       return fid && f && fid !== id ? [{ id: fid, ...f }] : []
     })
   if (!fakt) return null
+  const anzeige = dollarImText(fakt.text, fakt.wert)
+  const schrift = anzeige.length > 16 ? 88 : anzeige.length > 10 ? 120 : 168
   return (
     <AbsoluteFill style={{ justifyContent: 'center', alignItems: 'center', paddingLeft: LONG_RAND_X, paddingRight: LONG_RAND_X }}>
-      <div style={{ width: 1200, textAlign: 'center' }}>
+      <div style={{ width: 1400, textAlign: 'center' }}>
         <div style={{ fontFamily: LONG_MONO, fontSize: 22, letterSpacing: 4, color: LONG_MUTED }}>{fakt.label.toUpperCase()}</div>
-        <div style={{ marginTop: 18, fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: 168, lineHeight: 0.9, color: LONG_TEXT, fontVariantNumeric: 'tabular-nums' }}>
-          {zaehleText(fakt.text, fort)}
+        <div style={{ marginTop: 18, fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: schrift, lineHeight: 0.9, color: LONG_TEXT, fontVariantNumeric: 'tabular-nums' }}>
+          {zaehleText(anzeige, fort)}
         </div>
         {bisher.length ? (
           <div style={{ marginTop: 64, display: 'flex', justifyContent: 'center', gap: 48, flexWrap: 'wrap' }}>
             {bisher.map((f) => (
               <div key={f.id} style={{ minWidth: 180 }}>
                 <div style={{ fontFamily: LONG_MONO, fontSize: 16, letterSpacing: 2, color: LONG_MUTED }}>{f.label.toUpperCase()}</div>
-                <div style={{ marginTop: 8, fontFamily: LONG_DISPLAY, fontWeight: 800, fontSize: 36, color: LONG_TEXT }}>{f.text}</div>
+                <div style={{ marginTop: 8, fontFamily: LONG_DISPLAY, fontWeight: 800, fontSize: 36, color: LONG_TEXT }}>{dollarImText(f.text, f.wert)}</div>
               </div>
             ))}
           </div>
