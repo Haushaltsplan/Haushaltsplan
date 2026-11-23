@@ -193,8 +193,22 @@ export function cagrJaehrlichAusSerie(
   return cagrProzent(fenster, fenster.length - 1)
 }
 
-/** Consensus vs. letztes Ist: Sprung >75 % YoY ist fast immer Einheiten- oder Perioden-Mix. */
+/**
+ * Consensus vs. letztes Ist. Sprung über 75 % ist meist Einheiten- oder Perioden-Mix.
+ * Hat das letzte gemeldete Jahr selbst stärker zugelegt oder nachgegeben, gilt derselbe
+ * Spielraum für die nächste Schätzung (zyklische Titel, z. B. Speicher). Darüber bleiben
+ * nur noch Größenordnungs-Fehler draußen.
+ */
 export const SCHAETZUNG_VS_IST_MAX_FAKTOR = 1.75
+const SCHAETZUNG_FAKTOR_HARD_CAP = 12
+
+export function schaetzFaktorDeckel(letzterIstFaktor: number | null): number {
+  const basis = SCHAETZUNG_VS_IST_MAX_FAKTOR
+  if (letzterIstFaktor == null || !Number.isFinite(letzterIstFaktor) || letzterIstFaktor <= 0) return basis
+  const extrem = Math.max(letzterIstFaktor, 1 / letzterIstFaktor)
+  if (extrem <= basis) return basis
+  return Math.min(SCHAETZUNG_FAKTOR_HARD_CAP, extrem * 1.25)
+}
 
 export function istSchaetzungZumVorjahrPlausibel(
   aktuell: number,
@@ -204,6 +218,22 @@ export function istSchaetzungZumVorjahrPlausibel(
   if (!(aktuell > 0) || !(vorjahr > 0)) return false
   const r = aktuell / vorjahr
   return r <= maxFaktor && r >= 1 / maxFaktor
+}
+
+function letzterPositiverIstFaktor(
+  werte: Record<string, number | null>,
+  histKeys: string[],
+): number | null {
+  const positiv: number[] = []
+  for (const k of histKeys) {
+    const v = werte[k]
+    if (v != null && Number.isFinite(v) && v > 0) positiv.push(v)
+  }
+  if (positiv.length < 2) return null
+  const alt = positiv[positiv.length - 2]!
+  const neu = positiv[positiv.length - 1]!
+  if (!(alt > 0)) return null
+  return neu / alt
 }
 
 function istNiveauSchaetzZeile(z: FundamentalMetrikZeile): boolean {
@@ -274,10 +304,11 @@ export function bereinigeSchaetzungsniveausInZeilen(
       }
     }
     let prev = lastHist
+    const deckel = schaetzFaktorDeckel(letzterPositiverIstFaktor(werte, histKeys))
     for (const k of jahresSchaetzKeys) {
       const v = werte[k]
       if (v == null || !Number.isFinite(v) || v <= 0) continue
-      if (prev != null && !istSchaetzungZumVorjahrPlausibel(v, prev)) {
+      if (prev != null && !istSchaetzungZumVorjahrPlausibel(v, prev, deckel)) {
         werte[k] = null
         changed = true
         nulled.add(k)

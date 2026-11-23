@@ -6,7 +6,7 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { ergaenzeFcfRenditeKeyMetrics, ergaenzeFcfRenditeZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-fcf-rendite-zeilen'
 
-const LS_KEY = 'pa-fundamentaldaten-v65'
+const LS_KEY = 'pa-fundamentaldaten-v66'
 const LS_MAX_AGE_MS = 24 * 60 * 60 * 1000
 /** Mehr Titel lokal halten, sonst jeder Switch = Server-Roundtrip. */
 const LS_MAX_TITEL = 48

@@ -4,7 +4,10 @@
  *   npx tsx --conditions=react-server --require ./scripts/mock-server-only.cjs scripts/verify-sec-fundamentaldaten.ts
  */
 import { readFileSync } from 'fs'
-import { cagrJaehrlichAusSerie } from '../lib/portfolio-analyse/fundamentaldaten-format'
+import {
+  bereinigeSchaetzungsniveausInZeilen,
+  cagrJaehrlichAusSerie,
+} from '../lib/portfolio-analyse/fundamentaldaten-format'
 import {
   bereinigeUmsatzGrossVsNet,
   merkeBesserenUmsatz,
@@ -112,6 +115,37 @@ function pruefeUmsatzNettoHelfer(): number {
   })
   if (dicht) {
     console.log('FAIL dichte Jahre als Lücke gemeldet')
+    fail++
+  }
+  const schaetzPerioden = [
+    { iso: '2025-08-28', label: '2025' },
+    { iso: '2026-09-03', label: '2026' },
+    { iso: '__fy2027e__', label: 'FY27E', istSchaetzung: true },
+  ]
+  const zyklus = bereinigeSchaetzungsniveausInZeilen(schaetzPerioden, [
+    {
+      id: 'umsatz',
+      label: 'Umsatz',
+      gruppe: 'finanzdaten',
+      einheit: 'waehrung_usd_mio',
+      werte: { '2025-08-28': 37_378, '2026-09-03': 133_188, __fy2027e__: 276_018 },
+    },
+  ])
+  if (zyklus[0]?.werte.__fy2027e__ == null) {
+    console.log('FAIL zyklische Folgeschätzung wurde gelöscht', zyklus[0]?.werte.__fy2027e__)
+    fail++
+  }
+  const ruhig = bereinigeSchaetzungsniveausInZeilen(schaetzPerioden, [
+    {
+      id: 'umsatz',
+      label: 'Umsatz',
+      gruppe: 'finanzdaten',
+      einheit: 'waehrung_usd_mio',
+      werte: { '2025-08-28': 100, '2026-09-03': 110, __fy2027e__: 400 },
+    },
+  ])
+  if (ruhig[0]?.werte.__fy2027e__ != null) {
+    console.log('FAIL Einheiten-Sprung bei stabilem Ist blieb stehen', ruhig[0]?.werte.__fy2027e__)
     fail++
   }
   return fail

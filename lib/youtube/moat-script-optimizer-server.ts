@@ -182,6 +182,7 @@ async function kiFix(opts: OptimiererKontext): Promise<string> {
           required: ['text'],
         },
       },
+      thinkingMinimal: true,
       maxOutputTokens: 512,
       timeoutMs: 45_000,
       geminiTotalBudgetMs: 55_000,

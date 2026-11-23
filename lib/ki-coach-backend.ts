@@ -332,20 +332,24 @@ function buildGeminiModelChain(opts: {
   return out
 }
 
-/** Free-Tier Flash: 3.8 → 3.5-Lite (kein Full-3.5: oft stundenlang 503 high demand). */
+/**
+ * Free-Tier Flash. 3.8 hat nur ~20 Anfragen/Tag und hängt ohne thinkingLevel.
+ * Lite-Modelle haben ein eigenes Kontingent. Kein Full-3.5: der liefert oft stundenlang 503.
+ */
 export const GEMINI_FREE_FLASH_PRIMARY = 'gemini-3.8-flash'
 export const GEMINI_FREE_FLASH_FALLBACK = 'gemini-3.5-flash-lite'
+export const GEMINI_FREE_FLASH_FALLBACK_2 = 'gemini-3.1-flash-lite'
 
 /**
  * Flash-Modelle mit Google-AI-Studio-Tageskontingent — kein Pro, kein Billing-Fallback.
- * Kette: gemini-3.8-flash, dann gemini-3.5-flash-lite (eigenes Kontingent, aktuell verfügbar).
+ * Kette: 3.8-flash (Qualität, kleines Tageslimit), dann 3.5-flash-lite, dann 3.1-flash-lite.
  * `opts` bleibt für Call-Sites kompatibel, steuert die Reihenfolge aber nicht mehr.
  */
 export function geminiFreeTierFlashModelKandidaten(_opts?: {
   primaryEnvKeys?: string[]
   fallbackEnvKey?: string
 }): string[] {
-  return [GEMINI_FREE_FLASH_PRIMARY, GEMINI_FREE_FLASH_FALLBACK]
+  return [GEMINI_FREE_FLASH_PRIMARY, GEMINI_FREE_FLASH_FALLBACK, GEMINI_FREE_FLASH_FALLBACK_2]
 }
 
 /**
@@ -485,7 +489,7 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
   if (raw.includes('no longer available') || raw.includes('not longer available')) {
     return (
       'Google hat dieses Gemini-Modell für neue Free-Projekte abgeschaltet. ' +
-      'Die App nutzt 3.8 Flash mit Rückfall auf 3.5 Flash — bitte erneut senden.'
+      'Die App wechselt auf Flash-Lite — bitte erneut senden.'
     )
   }
   if (art === 'capacity') {
@@ -497,14 +501,14 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
       )
     }
     return (
-      `Google Gemini ist gerade überlastet (Kapazität/high demand) — das ist nicht dein Tageskontingent.${mehr} ` +
-      'Bitte 1–2 Minuten warten und erneut senden.'
+      `Google blockiert die probierten Gemini-Modelle gerade (Kapazität/high demand) — das ist nicht dein Tageskontingent.${mehr} ` +
+      'Bitte direkt nochmal senden.'
     )
   }
   if (art === 'limit_zero') {
     return (
       'Google hat dieses Modell im kostenlosen Projekt nicht freigeschaltet (Limit 0). ' +
-      '3.8 Flash / 3.5 Flash haben in der Regel noch Kontingent — bitte gleich nochmal senden.'
+      'Flash-Lite hat ein eigenes Kontingent — bitte gleich nochmal senden.'
     )
   }
   if (art === 'per_day') {
@@ -591,7 +595,9 @@ async function callGeminiEinModell(
   }
   if (opts.thinkingLevelOverride) {
     generationConfig.thinkingConfig = { thinkingLevel: opts.thinkingLevelOverride }
-  } else if (opts.thinkingMinimal) {
+  } else if (opts.thinkingMinimal || geminiMinimalThinkingNichtUnterstuetzt(model)) {
+    // 3.7+/3.8 ohne thinkingLevel hängt bei JSON-Antworten bis zum Timeout, statt das
+    // leere Tageslimit sofort zu melden. Dann startet der Lite-Fallback nie.
     generationConfig.thinkingConfig = geminiThinkingConfig(model)
   }
   if (opts.jsonResponse?.schema) {
@@ -726,6 +732,7 @@ async function callGemini(
 
   let lastHint = 'Unbekannter Fehler.'
   let lastHttp = 502
+  let versucht = 0
   const perModelTimeout = callOpts.timeoutMs ?? 90_000
   const started = Date.now()
   const deadline = started + (totalBudgetMs ?? perModelTimeout)
@@ -739,6 +746,7 @@ async function callGemini(
       break
     }
     const model = models[i]!
+    versucht += 1
     // Nächstes Modell braucht noch ein eigenes Fenster. Sonst frisst der Primär-Timeout das Budget
     // und die Meldung „Fallback wird versucht“ geht raus, ohne dass der Fallback startet.
     const reserve = models[i + 1] ? 40_000 : 0
@@ -780,9 +788,17 @@ async function callGemini(
     }
 
     // Kurze Backoffs bei Overload/RPM — oft kein Tageskontingent, sondern Kapazität.
+    // Tageslimit (Retry in vielen Stunden) nicht nochmal anfragen: sofort das nächste Modell.
     // Bei 503 und vorhandenem Fallback nur 1 Retry, dann schnell zum nächsten Modell
     // (sonst frisst die Retry-Schleife das Gesamtbudget und der Fallback startet nie).
-    if (!r.ok && r.quotaOderRateLimit && (r.httpStatus === 503 || r.httpStatus === 429) && restMs() > 12_000) {
+    const tageslimit = !r.ok && klassifiziereGeminiLimit(r.hint) === 'per_day'
+    if (
+      !r.ok &&
+      !tageslimit &&
+      r.quotaOderRateLimit &&
+      (r.httpStatus === 503 || r.httpStatus === 429) &&
+      restMs() > 12_000
+    ) {
       const hatFallback = Boolean(models[i + 1])
       const pauses =
         r.httpStatus === 503 ? (hatFallback ? [2000] : [2500, 4500]) : [2000]
@@ -813,6 +829,9 @@ async function callGemini(
         `${r.hint} (Modell ${model}).` +
         (fallbackStartet ? ` Fallback ${models[i + 1]} wird versucht.` : '')
       lastHttp = r.httpStatus
+    } else if (i > 0 && /Zeitlimit|Zeitbudget|überschritten/.test(lastHint)) {
+      lastHint = `${lastHint} ${r.hint}`
+      lastHttp = r.httpStatus
     } else {
       lastHint = r.hint
       lastHttp = r.httpStatus
@@ -833,21 +852,25 @@ async function callGemini(
         modellAbgeschaltet)
     if (naechstesModellMoeglich) {
       console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): ${r.hint.slice(0, 220)} — versuche „${naechstes}“.`)
-      // Bei Primär-Timeout: sofort Fallback, kein Extra-Wait (Budget schon verbraucht)
-      if ((r.quotaOderRateLimit || r.httpStatus === 503) && r.httpStatus !== 504) await sleepMs(1500)
+      // Bei Primär-Timeout oder leerem Tageslimit: sofort Fallback, kein Extra-Wait
+      const warten =
+        klassifiziereGeminiLimit(r.hint) !== 'per_day' &&
+        (r.quotaOderRateLimit || r.httpStatus === 503) &&
+        r.httpStatus !== 504
+      if (warten) await sleepMs(1500)
       continue
     }
     return {
       ok: false,
       status: lastHttp >= 400 && lastHttp < 600 ? lastHttp : 502,
-      hint: formatCoachFehlerHint(lastHint, i + 1),
+      hint: formatCoachFehlerHint(lastHint, versucht),
     }
   }
 
   return {
     ok: false,
     status: lastHttp >= 400 && lastHttp < 600 ? lastHttp : 502,
-    hint: formatCoachFehlerHint(lastHint, models.length),
+    hint: formatCoachFehlerHint(lastHint, Math.max(versucht, 1)),
   }
 }
 
