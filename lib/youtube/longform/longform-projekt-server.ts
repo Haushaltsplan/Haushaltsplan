@@ -156,6 +156,52 @@ export async function ersetzeExport(id: string, eingabe: LongformExportEingabe):
   return neu
 }
 
+/**
+ * 10-Jahres-Chart neu rechnen. Symbol und Sektor kommen aus der gespeicherten JSON,
+ * die Kurse sind die aktuellen Yahoo-Tageskurse. Nur dieses Kapitel wird geleert.
+ */
+export async function erneuereChart10k(id: string, z: LongformProjektZustand): Promise<LongformProjektZustand> {
+  const buf = await ladeHerunter(projektPfad(id, 'export', 'fundamentaldaten.json'))
+  const gelesen = buf ? leseLongformExport(JSON.parse(buf.toString('utf8'))) : 'Keine gespeicherte JSON.'
+  if (typeof gelesen === 'string') throw new Error(gelesen)
+  const symbol = (gelesen.paket.symbolYahoo || z.faktenblatt.symbolYahoo || '').trim()
+  if (!symbol) throw new Error('Kein Yahoo-Symbol für den 10-Jahres-Chart.')
+  const chart = await ladeChart10k(symbol, 10, gelesen.paket.sektor ?? z.faktenblatt.sektor)
+  if (!chart) throw new Error('Die 10-Jahres-Kurse konnten nicht geladen werden.')
+  const probe = baueFaktenblatt({
+    paket: gelesen.paket,
+    isin: z.faktenblatt.isin,
+    exportDatum: gelesen.exportDatum || z.faktenblatt.exportDatum,
+    chart,
+    moatKi: null,
+    logoUrl: z.faktenblatt.logoUrl,
+    imDepot: z.faktenblatt.imDepot,
+  })
+  const weg = new Set(z.skript?.abschnitte.find((a) => a.id === 'chart10k')?.saetze.map((s) => s.id) ?? [])
+  const saetze = { ...z.stimme.saetze }
+  const bilder = { ...z.bilder }
+  for (const sid of weg) {
+    delete saetze[sid]
+    delete bilder[sid]
+  }
+  const kapitelDateien = { ...z.kapitelDateien }
+  delete kapitelDateien.chart10k
+  return {
+    ...z,
+    faktenblatt: {
+      ...z.faktenblatt,
+      chart,
+      kursDatum: chart.endDatum,
+      fakten: [...z.faktenblatt.fakten.filter((f) => !f.id.startsWith('k10.')), ...probe.fakten.filter((f) => f.id.startsWith('k10.'))],
+    },
+    skript: z.skript ? { ...z.skript, abschnitte: z.skript.abschnitte.filter((a) => a.id !== 'chart10k') } : null,
+    stimme: { ...z.stimme, saetze },
+    bilder,
+    kapitelDateien,
+    freigegeben: (z.freigegeben ?? []).filter((kapitel) => kapitel !== 'chart10k'),
+  }
+}
+
 /** Neue Kapitel-Fakten aus der gespeicherten JSON. Skript, Stimme und Bilder bleiben. */
 export async function ergaenzeKapitelAusExport(id: string, z: LongformProjektZustand): Promise<LongformProjektZustand> {
   const buf = await ladeHerunter(projektPfad(id, 'export', 'fundamentaldaten.json'))

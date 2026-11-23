@@ -9,7 +9,7 @@ import { NextResponse } from 'next/server'
 import { jsonMitOwner } from '@/lib/request-owner'
 import { gesperrteHookTypen } from '@/lib/youtube/longform/longform-abwechslung'
 import { ladeProjekt, ladeVerlauf, mitUrls, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
-import { ergaenzeKapitelAusExport, ladeDokumente } from '@/lib/youtube/longform/longform-projekt-server'
+import { ergaenzeKapitelAusExport, erneuereChart10k, ladeDokumente } from '@/lib/youtube/longform/longform-projekt-server'
 import { pruefeSkript } from '@/lib/youtube/longform/longform-pruefung'
 import { erzeugeHooks, erzeugeSkript, haengeLikeAnMoat, haengeSchlussAn, logosFuerKonkurrenten, pruefeBehauptungen, setzeFazit, ueberarbeite } from '@/lib/youtube/longform/longform-skript-server'
 import {
@@ -91,6 +91,10 @@ export async function POST(req: Request) {
           const probleme = await pruefeBehauptungen({ zustand: z, skript, dokumente }).catch(() => ({}))
           skript = mitBehauptungen(skript, probleme)
           z = aufraeumen({ ...z, gewaehlterHook: idx, skript })
+          break
+        }
+        case 'chart10k-neu': {
+          z = await erneuereChart10k(id, z)
           break
         }
         case 'kapitel': {

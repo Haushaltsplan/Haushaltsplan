@@ -512,6 +512,20 @@ export function LongformStudio() {
     return { ...props, filmStartFrame: start ?? -1 }
   }, [z, naechstesKapitel, katalog])
 
+  const chart10kNeu = () => {
+    if (!projekt) return
+    if (!window.confirm('Der 10-Jahres-Chart wird mit den aktuellen Kursen neu gerechnet. Das Skript und die MP4 von „10 years, $10,000“ werden gelöscht. Die anderen Kapitel bleiben. Danach oben auf Kapitel schreiben.')) return
+    void aktion('chart10k', async () => {
+      const r = await lfApi<ZustandAntwort>('/api/youtube/longform/skript', {
+        json: { id: projekt.id, aktion: 'chart10k-neu' },
+      })
+      setProjekt({ ...projekt, zustand: r.zustand })
+      setDirty(false)
+      const endwert = r.zustand.faktenblatt.fakten.find((f) => f.id === 'k10.endwert')?.text
+      toast.success(endwert ? `10.000 $ sind jetzt ${endwert}. Oben auf Kapitel schreiben.` : 'Chart aktualisiert. Oben auf Kapitel schreiben.')
+    })
+  }
+
   const kapitelSchreiben = () =>
     aktion('kapitel', async () => {
       if (!projekt || !naechstesKapitel) return
@@ -673,6 +687,9 @@ export function LongformStudio() {
           <span className="font-semibold text-[var(--app-text)]">
             {projekt.ticker} · {projekt.firmenname}
           </span>
+          <button type="button" className={LF_KNOPF} disabled={laeuft != null} onClick={chart10kNeu}>
+            {laeuft === 'chart10k' ? 'Rechnet Kurse…' : '10 years neu'}
+          </button>
           <label className={`${LF_KNOPF} cursor-pointer`}>
             {laeuft === 'json' ? 'Liest JSON…' : 'Neue JSON'}
             <input
