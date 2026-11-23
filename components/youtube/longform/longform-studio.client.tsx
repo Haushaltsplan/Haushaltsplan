@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import { HOOK_KATALOG } from '@/lib/youtube/longform/longform-abwechslung'
 import type { LongformMusikTrack } from '@/lib/youtube/longform/longform-musik'
 import { baueAnalyseProps } from '@/lib/youtube/longform/longform-props'
-import { rendereAktienAnalyseImBrowser, rendereZusammenschnittImBrowser } from '@/lib/youtube/longform/longform-render-web'
+import { rendereAktienAnalyseImBrowser } from '@/lib/youtube/longform/longform-render-web'
 import {
   LONGFORM_ABSCHNITTE,
   LONGFORM_ABSCHNITT_TITEL,
@@ -109,10 +109,6 @@ function kapitelStimmenFertig(zustand: LongformProjektZustand): boolean {
     const abschnitt = skript.abschnitte.find((a) => a.id === id)
     return !!abschnitt?.saetze.length && abschnitt.saetze.every((s) => zustand.stimme.saetze[s.id]?.aktiv)
   })
-}
-
-function kapitelDateienFertig(zustand: LongformProjektZustand): boolean {
-  return LONGFORM_ABSCHNITTE.every((id) => Boolean(zustand.kapitelDateien?.[id]?.url))
 }
 
 function formatDauer(ms: number): string {
@@ -479,7 +475,7 @@ export function LongformStudio() {
       setDirty(false)
     })
 
-  /** Ein MP4 aus allen Kapiteln. Hochgeladene Dateien werden aneinandergelegt, sonst der ganze Film in einem Stück. */
+  /** Ein MP4 aus Skript, Stimme und Bildern in der Cloud. Keine Kapitel-MP4 nötig. */
   const setzeFilmZusammen = () =>
     aktion('film', async () => {
       await speichereLokal()
@@ -488,26 +484,15 @@ export function LongformStudio() {
       setProjekt(frisch.projekt)
       const stand = frisch.projekt.zustand
       if (!stand.skript) throw new Error('Noch kein Skript.')
+      if (!kapitelStimmenFertig(stand)) throw new Error('Erst alle Sätze in allen Kapiteln sprechen.')
+      if (stand.investiert == null) throw new Error('Vor dem ganzen Video die Disclosure wählen.')
+      const props = baueAnalyseProps(stand, katalog)
+      if (!props) throw new Error('Film lässt sich nicht bauen.')
       const ticker = frisch.projekt.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'LF'
       setRenderProzent(0)
-      const onProgress = (p: number) => {
+      const blob = await rendereAktienAnalyseImBrowser({ ...props, filmStartFrame: null }, (p) => {
         if (Number.isFinite(p)) setRenderProzent(Math.max(0, Math.min(100, Math.round(p * 100))))
-      }
-      let blob: Blob
-      if (kapitelDateienFertig(stand)) {
-        const teile = LONGFORM_ABSCHNITTE.map((id) => {
-          const datei = stand.kapitelDateien?.[id]
-          if (!datei?.url) throw new Error('Kapiteldatei fehlt.')
-          return { src: datei.url, dauerMs: datei.dauerMs }
-        })
-        blob = await rendereZusammenschnittImBrowser({ teile }, onProgress)
-      } else {
-        if (!kapitelStimmenFertig(stand)) throw new Error('Erst alle Sätze in allen Kapiteln sprechen.')
-        if (stand.investiert == null) throw new Error('Vor dem ganzen Video die Disclosure wählen.')
-        const props = baueAnalyseProps(stand, katalog)
-        if (!props) throw new Error('Film lässt sich nicht bauen.')
-        blob = await rendereAktienAnalyseImBrowser({ ...props, filmStartFrame: null }, onProgress)
-      }
+      })
       speichereDatei(blob, `${ticker}-LF.mp4`)
       setRenderProzent(100)
       toast.success(`${ticker}-LF.mp4 heruntergeladen.`)
@@ -731,7 +716,7 @@ export function LongformStudio() {
           <button
             type="button"
             className={LF_KNOPF_PRIMAER}
-            disabled={laeuft != null || !(kapitelDateienFertig(z) || (kapitelStimmenFertig(z) && z.investiert != null))}
+            disabled={laeuft != null || !kapitelStimmenFertig(z) || z.investiert == null}
             onClick={() => void setzeFilmZusammen()}
           >
             {laeuft === 'film' ? `Ganzes Video… ${renderProzent ?? 0}%` : 'Ganzes Video laden'}
@@ -1053,7 +1038,7 @@ export function LongformStudio() {
             <button
               type="button"
               className={LF_KNOPF_PRIMAER}
-              disabled={laeuft != null || !(kapitelDateienFertig(z) || (kapitelStimmenFertig(z) && z.investiert != null))}
+              disabled={laeuft != null || !kapitelStimmenFertig(z) || z.investiert == null}
               onClick={() => void setzeFilmZusammen()}
             >
               {laeuft === 'film' ? `Ganzes Video… ${renderProzent ?? 0}%` : 'Ganzes Video laden'}
@@ -1061,7 +1046,7 @@ export function LongformStudio() {
           </div>
           <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
             <p className="text-sm text-[var(--app-text-muted)]">
-              Ganzes Video laden schreibt eine Datei. Liegen alle Kapitel-MP4s schon hier, werden die aneinandergehängt. Der Abspann-Halt am Ende jedes Kapitels fällt weg, er bleibt nur nach dem letzten Kapitel. Ohne hochgeladene Dateien entsteht der Film in einem Stück aus den gesprochenen Sätzen, dann gibt es diese Zwischenpause gar nicht.
+              Ganzes Video laden nimmt Skript, Stimme und Bilder aus der Cloud und schreibt eine Datei. Die Kapitel musst du vorher nicht herunterladen oder wieder hochladen. Der Film ist ein Stück, der Abspann-Halt liegt nur am Schluss.
             </p>
             <p className="text-sm text-[var(--app-text-muted)]">
               Musik und Disclosure stecken in der Kapiteldatei. Stell sie ein, bevor du das Kapitel lädst. Das Fazit erst laden, wenn die Disclosure gewählt ist.
