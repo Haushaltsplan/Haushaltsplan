@@ -75,10 +75,12 @@ export function cagrProzent(werte: number[], jahre: number): number | null {
 }
 
 /**
- * Aufeinanderfolgende Jahre mit Sprung > `maxFaktor` sind typisch Einheiten-/Perioden-Mix
- * (Mio. vs. USD, Quartal vs. GJ). Behält die jüngste zusammenhängende Reihe.
+ * Aufeinanderfolgende Jahre mit Sprung ≥ `maxFaktor` sind Einheiten-Mix
+ * (Mio. vs. USD, etwa 1000×). Ein zyklisches Boom-Jahr (Speicher, Rohstoffe)
+ * bleibt in der Reihe — sonst ist die CAGR leer, obwohl der 10-K den Sprung ausweist.
+ * Aktien-Splits laufen über den eigenen Faktor 1,85, nicht über diesen Default.
  */
-export function werteOhneNiveauSprung(werte: number[], maxFaktor = 2.8): number[] {
+export function werteOhneNiveauSprung(werte: number[], maxFaktor = 15): number[] {
   const roh = werte.filter((v) => Number.isFinite(v) && v > 0)
   if (roh.length < 2) return roh
   const out: number[] = []
@@ -130,25 +132,44 @@ export function aktienreiheSplitBereinigt(werte: number[]): number[] {
   return out
 }
 
+/**
+ * Jahres-CAGR über ein festes Fenster (3J = 4 Punkte, 5J = 6 Punkte).
+ * Verlustjahre in der Mitte bleiben als Jahr stehen und kürzen die Spanne nicht.
+ * Start oder Ende ≤ 0 → keine CAGR (keine Basis). Ein einzelner Sprung ≥ `maxFaktor`
+ * ist Einheiten-Mix; ein zyklischer Swing darunter (Speicher-FCF) bleibt drin.
+ */
+function cagrAusJahresfenster(werte: number[], punkte: number, jahre: number, maxFaktor = 50): number | null {
+  const fenster = werte.filter((v) => Number.isFinite(v)).slice(-punkte)
+  if (fenster.length < 2) return null
+  const start = fenster[0]!
+  const end = fenster[fenster.length - 1]!
+  if (!(start > 0) || !(end > 0)) return null
+  for (let i = 1; i < fenster.length; i++) {
+    const prev = fenster[i - 1]!
+    const cur = fenster[i]!
+    if (!(prev > 0) || !(cur > 0)) continue
+    const ratio = cur / prev
+    if (ratio > maxFaktor || ratio < 1 / maxFaktor) return null
+  }
+  return cagrProzent([start, end], Math.min(jahre, fenster.length - 1))
+}
+
 export function cagr3AusSerie(werte: number[], opts?: { quartal?: boolean }): number | null {
-  const clean = werteOhneNiveauSprung(werte)
-  if (clean.length < 2) return null
   if (opts?.quartal) {
-    // YoY: Punkt t vs t−12 Quartale (= 3 Jahre)
+    const clean = werteOhneNiveauSprung(werte)
     if (clean.length < 13) return null
     return cagrProzent([clean[clean.length - 13]!, clean[clean.length - 1]!], 3)
   }
-  return cagrProzent(clean.slice(-4), Math.min(3, clean.length - 1))
+  return cagrAusJahresfenster(werte, 4, 3)
 }
 
 export function cagr5AusSerie(werte: number[], opts?: { quartal?: boolean }): number | null {
-  const clean = werteOhneNiveauSprung(werte)
-  if (clean.length < 2) return null
   if (opts?.quartal) {
+    const clean = werteOhneNiveauSprung(werte)
     if (clean.length < 21) return null
     return cagrProzent([clean[clean.length - 21]!, clean[clean.length - 1]!], 5)
   }
-  return cagrProzent(clean.slice(-6), Math.min(5, clean.length - 1))
+  return cagrAusJahresfenster(werte, 6, 5)
 }
 
 /** 5J-Schnitt auf Quartal: jeder 4. TTM-Snapshot (≈ Jahresabstand). */

@@ -6,6 +6,7 @@ import 'server-only'
 import { dateiCachePfad } from '@/lib/datei-cache-pfad'
 import {
   geminiFreeTierFlashModelKandidaten,
+  resolveCoachProviderFromMode,
   resolveGeminiFreeTierProvider,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
@@ -309,10 +310,15 @@ export async function generiereMoatKiBewertung(
   paket: FundamentaldatenPaket,
   isin?: string | null,
   modelle?: string[],
+  forcePaid?: boolean,
 ): Promise<MoatKiBewertung> {
-  const provider = resolveGeminiFreeTierProvider()
+  const provider = forcePaid ? resolveCoachProviderFromMode('gemini') : resolveGeminiFreeTierProvider()
   if (!provider) {
-    throw new Error('GEMINI_API_KEY_FREE fehlt — Moat-KI nutzt den Free-Key (kein Billing).')
+    throw new Error(
+      forcePaid
+        ? 'GEMINI_API_KEY fehlt — diese Moat-Bewertung nutzt den Billing-Key.'
+        : 'GEMINI_API_KEY_FREE fehlt — Moat-KI nutzt den Free-Key (kein Billing).',
+    )
   }
 
   const ticker = tickerNorm(paket.symbolYahoo?.split('.')[0] || paket.ticker)
@@ -341,12 +347,13 @@ export async function generiereMoatKiBewertung(
     {
       temperature: 0.2,
       geminiModels: models,
-      geminiForceFreeApiKey: true,
+      geminiForceFreeApiKey: forcePaid !== true,
+      geminiForcePaidApiKey: forcePaid === true,
       jsonResponse: { schema: MOAT_KI_JSON_SCHEMA },
       maxOutputTokens: 4096,
       thinkingMinimal: true,
-      timeoutMs: 90_000,
-      geminiTotalBudgetMs: 120_000,
+      timeoutMs: forcePaid ? 45_000 : 90_000,
+      geminiTotalBudgetMs: forcePaid ? 50_000 : 120_000,
     },
   )
 

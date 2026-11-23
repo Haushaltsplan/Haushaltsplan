@@ -3,6 +3,7 @@ import {
   cagr5AusSerie,
   cagrProzent,
   formatFundamentalWert,
+  schaetzFaktorDeckel,
 } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import {
   fcfRenditeAusPfcf,
@@ -83,34 +84,67 @@ function jahresSchaetzKeys(perioden: FundamentalPeriode[]): string[] {
   return perioden.filter((p) => !istFundamentalQuartalSchaetzungIso(p.iso)).map((p) => p.iso)
 }
 
-/** Erwartetes 2J-Wachstum: darüber liegt fast immer Einheiten-Mix, nicht Consensus. */
-/** Erw. 2J: echte High-Growth-Jahre durchlassen; 3–4×-Sprünge bleiben Einheiten-Mix. */
+/** Erw. 2J: echte High-Growth-Jahre durchlassen; erst ab diesem Vielfachen Einheiten-Mix. */
 const FWD_CAGR_ABS_MAX = 90
 const FWD_CAGR_NIVEAU_FAKTOR = 2.2
 
+function zeileMitWert(
+  bevorzugt: FundamentalMetrikZeile | undefined,
+  ersatz: FundamentalMetrikZeile | undefined,
+  keys: string[],
+): FundamentalMetrikZeile | undefined {
+  const hat = (z: FundamentalMetrikZeile | undefined) =>
+    keys.some((k) => {
+      const v = z?.werte[k]
+      return v != null && v > 0
+    })
+  if (hat(bevorzugt)) return bevorzugt
+  if (hat(ersatz)) return ersatz
+  return bevorzugt ?? ersatz
+}
+
+function istNiveauBasis(
+  zeile: FundamentalMetrikZeile | undefined,
+  perioden: FundamentalPeriode[] | undefined,
+): { wert: number | null; faktor: number | null } {
+  const werte = historischeWerteAusZeile(zeile, perioden).filter((v) => v > 0)
+  if (werte.length === 0) return { wert: null, faktor: null }
+  const wert = werte[werte.length - 1]!
+  const alt = werte.length >= 2 ? werte[werte.length - 2]! : null
+  return { wert, faktor: alt != null && alt > 0 ? wert / alt : null }
+}
+
 /**
- * YoY aus den ersten zwei Jahres-Schätzungen.
- * Quartals-Spalten und Einheiten-Mix (z. B. Jahres-EPS vs. Quartals-EPS → −80 %)
- * werden verworfen; Fallback: Consensus-Wachstumsfeld derselben Spalte.
+ * YoY aus zwei Jahres-Schätzungen, sonst aus letztem Ist und der einen verbleibenden Schätzung
+ * (laufendes Geschäftsjahr ist schon berichtet).
+ * Die 90-%-Grenze weitet sich, wenn das letzte Ist-Jahr selbst stärker gesprungen ist.
  */
 function fwdCagrZweiJahre(
   niveau: FundamentalMetrikZeile | undefined,
   wachstum: FundamentalMetrikZeile | undefined,
   jahresKeys: string[],
   referenzCagr: number | null,
+  basis?: { wert: number | null; faktor: number | null },
 ): number | null {
+  const deckel = schaetzFaktorDeckel(basis?.faktor ?? null)
+  const absMax = Math.max(FWD_CAGR_ABS_MAX, (deckel - 1) * 100)
+  const niveauFaktor = Math.max(FWD_CAGR_NIVEAU_FAKTOR, deckel)
   const k0 = jahresKeys[0]
   const k1 = jahresKeys[1]
-  const a = k0 ? wertAnPeriode(niveau, k0) : null
-  const b = k1 ? wertAnPeriode(niveau, k1) : null
+  let a = k0 ? wertAnPeriode(niveau, k0) : null
+  let b = k1 ? wertAnPeriode(niveau, k1) : null
+  if (!(b != null && b > 0) && a != null && a > 0 && basis?.wert != null && basis.wert > 0) {
+    b = a
+    a = basis.wert
+  }
   const ausNiveau = a != null && b != null && a > 0 && b > 0 ? cagrProzent([a, b], 1) : null
   const ausFeld = k1 ? wertAnPeriode(wachstum, k1) : k0 ? wertAnPeriode(wachstum, k0) : null
-  const feldOk = ausFeld != null && Number.isFinite(ausFeld) && Math.abs(ausFeld) <= FWD_CAGR_ABS_MAX
+  const feldOk = ausFeld != null && Number.isFinite(ausFeld) && Math.abs(ausFeld) <= absMax
 
   const niveausMix =
     ausNiveau != null &&
-    (Math.abs(ausNiveau) > FWD_CAGR_ABS_MAX ||
-      (a != null && b != null && a > 0 && b > 0 && (b / a > FWD_CAGR_NIVEAU_FAKTOR || a / b > FWD_CAGR_NIVEAU_FAKTOR)) ||
+    (Math.abs(ausNiveau) > absMax ||
+      (a != null && b != null && a > 0 && b > 0 && (b / a > niveauFaktor || a / b > niveauFaktor)) ||
       (ausNiveau < -35 && referenzCagr != null && referenzCagr > 0))
   if (ausNiveau != null && !niveausMix) return ausNiveau
   if (feldOk) return ausFeld
@@ -592,9 +626,27 @@ export function baueKeyMetrics(
   const umsatzWachstumZ = schaetzungen.zeilen.find((z) => z.id === 'umsatz_wachstum_schaetzung')
   const epsWachstumZ = schaetzungen.zeilen.find((z) => z.id === 'eps_wachstum_schaetzung')
   const jahresKeys = jahresSchaetzKeys(schaetzungen.perioden)
+  const umsatzZeileHist = roh?.zeilen.find((z) => z.id === 'umsatz')
+  const epsZeileHist = roh?.zeilen.find((z) => z.id === 'eps')
+  const ebitdaZeileHist = roh?.zeilen.find((z) => z.id === 'ebitda')
+  const umsatzBasis = istNiveauBasis(umsatzZeileHist, perioden)
+  const epsBasis = istNiveauBasis(epsZeileHist, perioden)
+  const ebitdaBasis = istNiveauBasis(ebitdaZeileHist, perioden)
 
-  const revCagr2 = fwdCagrZweiJahre(umsatzSchaetz0, umsatzWachstumZ, jahresKeys, null)
-  const epsCagr2 = fwdCagrZweiJahre(epsSchaetz0, epsWachstumZ, jahresKeys, revCagr2)
+  const revCagr2 = fwdCagrZweiJahre(
+    zeileMitWert(umsatzSchaetz0, umsatzZeileHist, jahresKeys),
+    umsatzWachstumZ,
+    jahresKeys,
+    null,
+    umsatzBasis,
+  )
+  const epsCagr2 = fwdCagrZweiJahre(
+    zeileMitWert(epsSchaetz0, epsZeileHist, jahresKeys),
+    epsWachstumZ,
+    jahresKeys,
+    revCagr2,
+    epsBasis,
+  )
 
   // Yahoo: FY0/FY1-EBITDA (nicht NTM↔FY1 — das ist kein sauberes 1J-Fenster).
   const ebitdaCagr2Yahoo =
@@ -604,11 +656,18 @@ export function baueKeyMetrics(
     yahoo.fy1EbitdaUsd > 0
       ? cagrProzent([yahoo.ntmEbitdaUsd, yahoo.fy1EbitdaUsd], 1)
       : null
+  const ebitdaAbsMax = Math.max(FWD_CAGR_ABS_MAX, (schaetzFaktorDeckel(ebitdaBasis.faktor) - 1) * 100)
   const ebitdaCagr2YahooOk =
-    ebitdaCagr2Yahoo != null && Math.abs(ebitdaCagr2Yahoo) <= FWD_CAGR_ABS_MAX
+    ebitdaCagr2Yahoo != null && Math.abs(ebitdaCagr2Yahoo) <= ebitdaAbsMax
       ? ebitdaCagr2Yahoo
       : null
-  const ebitdaCagr2Ms = fwdCagrZweiJahre(ebitdaSchaetz0, undefined, jahresKeys, revCagr2)
+  const ebitdaCagr2Ms = fwdCagrZweiJahre(
+    zeileMitWert(ebitdaSchaetz0, ebitdaZeileHist, jahresKeys),
+    undefined,
+    jahresKeys,
+    revCagr2,
+    ebitdaBasis,
+  )
   // Ohne EBITDA-Consensus: bei stabilen Compoundern ≈ Umsatz-CAGR (besser als „–“).
   const ebitdaCagr2 = ebitdaCagr2YahooOk ?? ebitdaCagr2Ms ?? revCagr2
 
@@ -985,23 +1044,39 @@ export function korrigiereFwdWachstumKeyMetrics(
   historisch?: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] },
 ): FundamentalKeyMetric[] {
   const jahresKeys = jahresSchaetzKeys(schaetzungen.perioden)
+  const histZeile = (id: string) => historisch?.zeilen.find((z) => z.id === id)
   const rev = fwdCagrZweiJahre(
-    schaetzungen.zeilen.find((z) => z.id === 'umsatz_schaetzung'),
+    zeileMitWert(
+      schaetzungen.zeilen.find((z) => z.id === 'umsatz_schaetzung'),
+      histZeile('umsatz'),
+      jahresKeys,
+    ),
     schaetzungen.zeilen.find((z) => z.id === 'umsatz_wachstum_schaetzung'),
     jahresKeys,
     null,
+    istNiveauBasis(histZeile('umsatz'), historisch?.perioden),
   )
   const eps = fwdCagrZweiJahre(
-    schaetzungen.zeilen.find((z) => z.id === 'eps_schaetzung'),
+    zeileMitWert(
+      schaetzungen.zeilen.find((z) => z.id === 'eps_schaetzung'),
+      histZeile('eps'),
+      jahresKeys,
+    ),
     schaetzungen.zeilen.find((z) => z.id === 'eps_wachstum_schaetzung'),
     jahresKeys,
     rev,
+    istNiveauBasis(histZeile('eps'), historisch?.perioden),
   )
   const ebitda = fwdCagrZweiJahre(
-    schaetzungen.zeilen.find((z) => z.id === 'ebitda_schaetzung'),
+    zeileMitWert(
+      schaetzungen.zeilen.find((z) => z.id === 'ebitda_schaetzung'),
+      histZeile('ebitda'),
+      jahresKeys,
+    ),
     undefined,
     jahresKeys,
     rev,
+    istNiveauBasis(histZeile('ebitda'), historisch?.perioden),
   )
   const rev3 = cagr3AusPaketZeile('umsatz', historisch)
   const ebitda3 = cagr3AusPaketZeile('ebitda', historisch)

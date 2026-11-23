@@ -1,7 +1,7 @@
 /** Einzelne Script-Felder mit Free-Key Gemini nachziehen — nie Billing-Key. */
 import 'server-only'
 
-import { resolveGeminiFreeTierProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
+import { resolveCoachProviderFromMode, runCoachCompletion } from '@/lib/ki-coach-backend'
 import { branchenAnker } from '@/lib/youtube/moat-branchen-anker'
 import {
   antwortFuerKennzahl,
@@ -164,8 +164,8 @@ function nachziehen(feld: StudioFeldId, roh: string, props: MoatShortProps): str
 }
 
 async function kiFix(opts: OptimiererKontext): Promise<string> {
-  const provider = resolveGeminiFreeTierProvider()
-  if (!provider) throw new Error('GEMINI_API_KEY_FREE fehlt.')
+  const provider = resolveCoachProviderFromMode('gemini')
+  if (!provider) throw new Error('GEMINI_API_KEY fehlt.')
 
   const result = await runCoachCompletion(
     provider.provider,
@@ -174,7 +174,7 @@ async function kiFix(opts: OptimiererKontext): Promise<string> {
     [{ role: 'user', content: userFuer(opts) }],
     {
       geminiModels: ['gemini-3.5-flash-lite'],
-      geminiForceFreeApiKey: true,
+      geminiForcePaidApiKey: true,
       jsonResponse: {
         schema: {
           type: 'object',

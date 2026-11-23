@@ -6,6 +6,8 @@
 import { readFileSync } from 'fs'
 import {
   bereinigeSchaetzungsniveausInZeilen,
+  cagr3AusSerie,
+  cagr5AusSerie,
   cagrJaehrlichAusSerie,
 } from '../lib/portfolio-analyse/fundamentaldaten-format'
 import {
@@ -146,6 +148,26 @@ function pruefeUmsatzNettoHelfer(): number {
   ])
   if (ruhig[0]?.werte.__fy2027e__ != null) {
     console.log('FAIL Einheiten-Sprung bei stabilem Ist blieb stehen', ruhig[0]?.werte.__fy2027e__)
+    fail++
+  }
+  const boom = cagr3AusSerie([15_540, 25_111, 37_378, 133_188])
+  if (boom == null || boom < 90 || boom > 120) {
+    console.log('FAIL Umsatz-CAGR 3J nach Boom-Jahr leer oder falsch', boom)
+    fail++
+  }
+  const einheit = cagr3AusSerie([10, 12, 11, 12_000])
+  if (einheit != null) {
+    console.log('FAIL 1000×-Einheitenbruch blieb in der CAGR', einheit)
+    fail++
+  }
+  const fcf5 = cagr5AusSerie([2_438, 3_114, -6_117, 121, 1_668, 58_963])
+  if (fcf5 == null || fcf5 < 70 || fcf5 > 110) {
+    console.log('FAIL FCF-CAGR 5J durch Tief leer oder falsch', fcf5)
+    fail++
+  }
+  const epsVerlust = cagr3AusSerie([-5.34, 0.7, 7.59, 74.33])
+  if (epsVerlust != null) {
+    console.log('FAIL EPS-CAGR 3J trotz Verlustbasis', epsVerlust)
     fail++
   }
   return fail
