@@ -308,6 +308,7 @@ export async function speichereMoatKiCache(bewertung: MoatKiBewertung): Promise<
 export async function generiereMoatKiBewertung(
   paket: FundamentaldatenPaket,
   isin?: string | null,
+  modelle?: string[],
 ): Promise<MoatKiBewertung> {
   const provider = resolveGeminiFreeTierProvider()
   if (!provider) {
@@ -326,9 +327,11 @@ export async function generiereMoatKiBewertung(
     kennzahlenKontext: kennzahlenKontextAusPaket(paket),
   })
 
-  const models = geminiFreeTierFlashModelKandidaten({
-    primaryEnvKeys: ['MOAT_KI_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
-  })
+  const models = modelle?.length
+    ? modelle
+    : geminiFreeTierFlashModelKandidaten({
+        primaryEnvKeys: ['MOAT_KI_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
+      })
 
   const result = await runCoachCompletion(
     provider.provider,

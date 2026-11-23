@@ -3,11 +3,7 @@
  */
 import 'server-only'
 
-import {
-  geminiFreeTierFlashModelKandidaten,
-  resolveGeminiFreeTierProvider,
-  runCoachCompletion,
-} from '@/lib/ki-coach-backend'
+import { resolveGeminiFreeTierProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { generiereMoatKiBewertung, ladeMoatKiCache } from '@/lib/portfolio-analyse/moat-ki-server'
 import { gesamtScoreAusPfeilern, type MoatKiBewertung, type MoatPfeilerId } from '@/lib/portfolio-analyse/moat-ki-types'
@@ -59,6 +55,7 @@ const VERDICT_SATZ: Record<MoatShortVerdict, string> = {
   none: 'No real moat.',
 }
 
+const SHORT_GEMINI_MODELL = 'gemini-3.5-flash-lite'
 const KEINE_METRIK = 'none'
 const MAX_WOERTER_GESAMT = 78
 
@@ -331,7 +328,7 @@ async function heroPruefen(
     HERO_CHECK,
     [{ role: 'user', content: `On screen: ${label} = ${value}\nSpoken now: ${proof}` }],
     {
-      geminiModels: geminiFreeTierFlashModelKandidaten(),
+      geminiModels: [SHORT_GEMINI_MODELL],
       geminiForceFreeApiKey: true,
       jsonResponse: {
         schema: {
@@ -389,7 +386,7 @@ export async function generiereMoatShort(opts: {
 
   let moat = opts.moatNeu ? null : await ladeMoatKiCache(ticker)
   const moatAusCache = moat != null
-  if (!moat) moat = await generiereMoatKiBewertung(paket, isin)
+  if (!moat) moat = await generiereMoatKiBewertung(paket, isin, [SHORT_GEMINI_MODELL])
   if (opts.moatRichtung) moat = moatMitRichtung(moat, opts.moatRichtung)
 
   const metriken = metrikenAusPaket(paket)
@@ -409,13 +406,13 @@ export async function generiereMoatShort(opts: {
     SYSTEM,
     [{ role: 'user', content: baueUserPrompt(paket, moat, metriken, suchphrasen, opts.moatRichtung) }],
     {
-      geminiModels: geminiFreeTierFlashModelKandidaten(),
+      geminiModels: [SHORT_GEMINI_MODELL],
       geminiForceFreeApiKey: true,
       jsonResponse: { schema: baueSchema(hookMetriken.map((m) => m.id), metriken.map((m) => m.id)) },
       thinkingMinimal: true,
       maxOutputTokens: 6144,
-      timeoutMs: 90_000,
-      geminiTotalBudgetMs: 120_000,
+      timeoutMs: 45_000,
+      geminiTotalBudgetMs: 100_000,
     },
   )
   if (!result.ok) throw new Error(result.hint || 'Script-Generierung fehlgeschlagen')

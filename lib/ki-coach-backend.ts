@@ -333,16 +333,17 @@ function buildGeminiModelChain(opts: {
 }
 
 /**
- * Free-Tier Flash. 3.8 hat nur ~20 Anfragen/Tag und hängt ohne thinkingLevel.
- * Lite-Modelle haben ein eigenes Kontingent. Kein Full-3.5: der liefert oft stundenlang 503.
+ * Free-Tier Flash. 3.8 hat nur ~20 Anfragen/Tag und ist danach bis zum Reset tot.
+ * 3.5-Flash-Lite hat ein eigenes Kontingent und antwortet. 3.1-Flash-Lite hängt bei Last
+ * oft bis zum Abbruch, statt 503 zu liefern. Kein Full-3.5: der liefert oft stundenlang 503.
  */
-export const GEMINI_FREE_FLASH_PRIMARY = 'gemini-3.8-flash'
-export const GEMINI_FREE_FLASH_FALLBACK = 'gemini-3.5-flash-lite'
-export const GEMINI_FREE_FLASH_FALLBACK_2 = 'gemini-3.1-flash-lite'
+export const GEMINI_FREE_FLASH_PRIMARY = 'gemini-3.5-flash-lite'
+export const GEMINI_FREE_FLASH_FALLBACK = 'gemini-3.1-flash-lite'
+export const GEMINI_FREE_FLASH_FALLBACK_2 = 'gemini-3.8-flash'
 
 /**
  * Flash-Modelle mit Google-AI-Studio-Tageskontingent — kein Pro, kein Billing-Fallback.
- * Kette: 3.8-flash (Qualität, kleines Tageslimit), dann 3.5-flash-lite, dann 3.1-flash-lite.
+ * Kette: 3.5-flash-lite, dann 3.1-flash-lite (kurz gedeckelt), dann 3.8-flash.
  * `opts` bleibt für Call-Sites kompatibel, steuert die Reihenfolge aber nicht mehr.
  */
 export function geminiFreeTierFlashModelKandidaten(_opts?: {
@@ -565,6 +566,12 @@ function geminiMinimalThinkingNichtUnterstuetzt(model: string): boolean {
   return major > 3 || (major === 3 && minor >= 7)
 }
 
+/** 3.1-Flash-Lite und flash-lite-latest bleiben bei Last hängen, statt schnell 503 zu melden. */
+function geminiHaengtBeiLast(model: string): boolean {
+  const m = model.toLowerCase().replace(/^models\//, '')
+  return m.includes('3.1-flash-lite') || m.includes('flash-lite-latest')
+}
+
 /** Nur thinkingLevel — thinkingBudget ist deprecated und liefert bald 400. */
 function geminiThinkingConfig(model: string): Record<string, unknown> {
   if (geminiMinimalThinkingNichtUnterstuetzt(model)) return { thinkingLevel: 'low' }
@@ -750,7 +757,10 @@ async function callGemini(
     // Nächstes Modell braucht noch ein eigenes Fenster. Sonst frisst der Primär-Timeout das Budget
     // und die Meldung „Fallback wird versucht“ geht raus, ohne dass der Fallback startet.
     const reserve = models[i + 1] ? 40_000 : 0
-    const thisTimeout = Math.min(perModelTimeout, Math.max(12_000, remaining - reserve))
+    // 3.1-Flash-Lite nicht 90s hängen lassen: das Zeitlimit ist dann die einzige Meldung,
+    // obwohl 3.5-Flash-Lite oft schon in wenigen Sekunden fertig wäre.
+    const deckel = geminiHaengtBeiLast(model) && models[i + 1] ? 18_000 : perModelTimeout
+    const thisTimeout = Math.min(perModelTimeout, deckel, Math.max(12_000, remaining - reserve))
     const modellKey = geminiKeyFuerModell(model, apiKey, { forcePaid: forcePaidKey, forceFree: forceFreeKey })
     const optsMitTimeout = { ...callOpts, timeoutMs: thisTimeout }
     let r = await callGeminiEinModell(modellKey, model, systemText, userMessages, optsMitTimeout)

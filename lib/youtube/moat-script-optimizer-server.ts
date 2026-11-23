@@ -1,7 +1,7 @@
 /** Einzelne Script-Felder mit Free-Key Gemini nachziehen — nie Billing-Key. */
 import 'server-only'
 
-import { geminiFreeTierFlashModelKandidaten, resolveGeminiFreeTierProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
+import { resolveGeminiFreeTierProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
 import { branchenAnker } from '@/lib/youtube/moat-branchen-anker'
 import {
   antwortFuerKennzahl,
@@ -173,7 +173,7 @@ async function kiFix(opts: OptimiererKontext): Promise<string> {
     systemFuer(opts.feld),
     [{ role: 'user', content: userFuer(opts) }],
     {
-      geminiModels: geminiFreeTierFlashModelKandidaten(),
+      geminiModels: ['gemini-3.5-flash-lite'],
       geminiForceFreeApiKey: true,
       jsonResponse: {
         schema: {
