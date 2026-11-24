@@ -54,7 +54,8 @@ export function baueAnalyseProps(z: LongformProjektZustand, katalog: LongformMus
   const saetze: LongSatzProps[] = skript.abschnitte.flatMap((a) =>
     a.saetze.map((s) => {
       const st = z.stimme.saetze[s.id]
-      const take = st?.takes.find((t) => t.id === st.aktiv) ?? null
+      const takes = st?.takes ?? []
+      const take = takes.find((t) => t.id === st?.aktiv) ?? takes[takes.length - 1] ?? null
       const bild = z.bilder[s.id] ?? null
       return {
         id: s.id,

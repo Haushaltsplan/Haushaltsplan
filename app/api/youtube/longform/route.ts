@@ -9,7 +9,7 @@ import { jsonMitOwner } from '@/lib/request-owner'
 import { ladeProjekt, listeProjekte, loescheProjekt, mitUrls, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
 import { ergaenzeKapitelAusExport, erstelleProjekt, ersetzeExport, leseLongformExport } from '@/lib/youtube/longform/longform-projekt-server'
 import { hatKalenderluecke } from '@/lib/youtube/longform/longform-reihen'
-import { entferneSchlussVorFazit } from '@/lib/youtube/longform/longform-skript-server'
+import { entferneSchlussVorFazit, haengeLikeAnMoat } from '@/lib/youtube/longform/longform-skript-server'
 import type { LongformProjektZustand } from '@/lib/youtube/longform/longform-types'
 
 export const runtime = 'nodejs'
@@ -29,7 +29,9 @@ export async function GET(req: Request) {
         await speichereProjekt(p.id, p.zustand)
       }
       const skript = p.zustand.skript
-      if (skript && entferneSchlussVorFazit(skript.abschnitte)) {
+      const schlussWeg = Boolean(skript && entferneSchlussVorFazit(skript.abschnitte))
+      const likeNeu = Boolean(skript && haengeLikeAnMoat(skript.abschnitte))
+      if (skript && (schlussWeg || likeNeu)) {
         const ids = new Set(skript.abschnitte.flatMap((a) => a.saetze.map((s) => s.id)))
         p.zustand = {
           ...p.zustand,

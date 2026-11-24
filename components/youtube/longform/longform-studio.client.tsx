@@ -418,7 +418,7 @@ export function LongformStudio() {
       if (!roh) throw new Error('Kapitel lässt sich nicht bauen.')
       const start = filmStartFuerKapitel(frisch.projekt.zustand, abschnittId, katalog)
       const props = { ...roh, filmStartFrame: start ?? -1 }
-      const hatAbo = berechneLongTimeline(props).abo != null
+      const hatAbo = berechneLongTimeline(props).abos.length > 0
       const ticker = frisch.projekt.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'LF'
       const dateiname = `${ticker}-${abschnittId}.mp4`
       setRenderId(abschnittId)
@@ -481,13 +481,19 @@ export function LongformStudio() {
       await speichereLokal()
       if (!projekt) throw new Error('Kein Projekt.')
       const frisch = await lfApi<{ projekt: LongformProjekt }>(`/api/youtube/longform?id=${encodeURIComponent(projekt.id)}`)
-      setProjekt(frisch.projekt)
       const stand = frisch.projekt.zustand
       if (!stand.skript) throw new Error('Noch kein Skript.')
       if (!kapitelStimmenFertig(stand)) throw new Error('Erst alle Sätze in allen Kapiteln sprechen.')
       if (stand.investiert == null) throw new Error('Vor dem ganzen Video die Disclosure wählen.')
       const props = baueAnalyseProps(stand, katalog)
       if (!props) throw new Error('Film lässt sich nicht bauen.')
+      const ohneStimme = props.saetze.filter((s) => !s.audioUrl).length
+      if (ohneStimme > 0) {
+        throw new Error(
+          `Stimme fehlt bei ${ohneStimme} von ${props.saetze.length} Sätzen. Die Audiodateien sind gespeichert, aber die Links kamen nicht an. Es wird kein stummes Video geschrieben.`,
+        )
+      }
+      setProjekt(frisch.projekt)
       const ticker = frisch.projekt.ticker.replace(/[^A-Z0-9]/gi, '').toUpperCase() || 'LF'
       setRenderProzent(0)
       const blob = await rendereAktienAnalyseImBrowser({ ...props, filmStartFrame: null }, (p) => {
@@ -1046,7 +1052,7 @@ export function LongformStudio() {
           </div>
           <div className="space-y-3 px-4 py-3 sm:px-5 sm:py-4">
             <p className="text-sm text-[var(--app-text-muted)]">
-              Ganzes Video laden nimmt Skript, Stimme und Bilder aus der Cloud und schreibt eine Datei. Die Kapitel musst du vorher nicht herunterladen oder wieder hochladen. Der Film ist ein Stück, der Abspann-Halt liegt nur am Schluss.
+              Ganzes Video laden nimmt Skript, Stimme und Bilder aus der Cloud und schreibt eine Datei. Fehlt eine Stimme, bricht es sofort ab, statt einen stummen Film zu speichern. Die Kapitel musst du vorher nicht herunterladen oder wieder hochladen. Der Film ist ein Stück, der Abspann-Halt liegt nur am Schluss.
             </p>
             <p className="text-sm text-[var(--app-text-muted)]">
               Musik und Disclosure stecken in der Kapiteldatei. Stell sie ein, bevor du das Kapitel lädst. Das Fazit erst laden, wenn die Disclosure gewählt ist.

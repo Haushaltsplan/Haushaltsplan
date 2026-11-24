@@ -413,7 +413,7 @@ function abschnittAuftrag(id: LongformAbschnittId, fb: LongformFaktenblatt): str
       return `geschaeft (about 70 to 90 seconds): how the company gets paid, in everyday English a non-investor understands. First 2 sentences: scene moat_geschaeft, who the customer is and what they pay for. If a segment name is only an acronym, put a short gloss immediately after it, taken from the business description already in the fact sheet, in the form "CMBU, the memory sold to phone makers". If you cannot ground that gloss, keep the acronym and do not invent a long name. No scores, no moat theory.${fb.segmente ? ` Then scene moat_segmente: one overview sentence with no fokus${fb.fakten.some((f) => f.id === 'seg.other') ? ', and that overview must mention faktId seg.other: the rest of revenue comes from other businesses, without inventing their names' : ''}, then 2 or 3 sentences on the largest segments. Each of those carries exactly one faktId (seg.N or seg.N.marge or seg.N.wachstum), fokus set to that same id, betonung on the spoken number. Never three numbers in one sentence.` : ' No revenue mix is available, do not use moat_segmente.'} A bild sentence only before the first line or after the last segment sentence, with a concrete English bildWunsch.`
     case 'burggraben':
       return `burggraben (about 100 to 140 seconds): ONLY the moat. The previous chapter already explained how the company gets paid. Do not repeat it. Forbidden here: customers, what they buy, a product tour, revenue mix, segments, seg.* facts, scene moat_geschaeft, scene moat_segmente. Do not open with the business. Start at the first pillar.
-Say "moat", never the German word. Overall score is moat.score, said once. One sentence per pillar, scene moat_pfeiler, fokus = exactly one pillar id (preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte). A pillar sentence names the advantage, not the product line. Put a scene bild with a concrete English bildWunsch BETWEEN pillars so the same card is never on screen for the whole chapter. Then one moat_scorecard sentence for the overall score. If you cite a km.* fact (operating margin, ROIC, net cash, interest coverage), that sentence is scene moat_finanzen with exactly one km.* id, and it must support the moat, not describe a division. Never leave those numbers on moat_scorecard. End on one threat, a single sentence. Do not add a like or subscribe sentence.`
+Say "moat", never the German word. Overall score is moat.score, said once. One sentence per pillar, scene moat_pfeiler, fokus = exactly one pillar id (preissetzungsmacht, replikationsbarriere, wechselkosten, marktdichte). A pillar sentence names the advantage, not the product line. Between two pillars, write exactly one sentence with scene bild. It is one complete English sentence, about 8 to 16 words, with a subject and a verb. It makes the advantage of the pillar just finished concrete, and it uses only wording from that pillar's reason in the moat check. No new number, no new company, no image caption, and do not restart who pays for what. bildWunsch is an English search query for that same picture. Then one moat_scorecard sentence for the overall score. If you cite a km.* fact (operating margin, ROIC, net cash, interest coverage), that sentence is scene moat_finanzen with exactly one km.* id, and it must support the moat, not describe a division. Never leave those numbers on moat_scorecard. End on one threat, a single sentence. Do not add a like or subscribe sentence.`
     case 'zahlen':
       return zahlenAuftrag(fb)
     case 'inhaber':
@@ -459,7 +459,7 @@ export async function erzeugeSkript(opts: {
       ? `CREATOR NOTES FOR THIS OPENING (shape the spoken lines to these notes. Every number still needs a fact id. Leave out any number the notes ask for that is not in the fact sheet):\n${z.hookHinweis.trim()}`
       : '',
     `TASK: Write only this section. ${opts.nur && opts.nur !== 'fazit' ? 'Keep the guiding question alive without answering it.' : opts.nur === 'fazit' ? 'This is the final section. Do not write the verdict sentence.' : 'Keep the guiding question alive without answering it.'}\n- ${abschnittAuftrag(opts.nur ?? 'hook', fb)}${(opts.nur ?? 'hook') === 'hook' && z.hookHinweis?.trim() ? ' The creator notes outrank keeping the opening word for word: keep its angle, change the lines so the notes are met.' : ''}
-For every sentence choose the scene that best shows what is being said. Consecutive sentences may share a scene. For moat: change visuals / insert scene bild about every 20–25 seconds. For chart10k: keep ONE unbroken chart sequence (no mid-chapter bild). One core number per sentence; faktIds + betonung must match that spoken number so on-screen HUD syncs with the voice. Every bild / hook_bild sentence MUST include a concrete English bildWunsch (image brief a human can search or shoot).
+For every sentence choose the scene that best shows what is being said. Consecutive sentences may share a scene. For moat: between pillars, exactly one scene bild, one complete English sentence of about 8 to 16 words with a subject and a verb, about the advantage of the pillar just finished, using only that pillar's reason. No new number, no new company, no caption, and do not restart who pays for what. bildWunsch is a search query for that same picture. Pillar sentences, the closing threat, and the like line stay as they are. Do not add an extra bild on a timer. For chart10k: keep ONE unbroken chart sequence (no mid-chapter bild). One core number per sentence; faktIds + betonung must match that spoken number so on-screen HUD syncs with the voice. Every bild / hook_bild sentence MUST include a concrete English bildWunsch (image brief a human can search or shoot).
 Never cite a hook.* fact in any section. When a sentence names rival companies, set konkurrenten to those exact spoken names, at most four, and repeat that same list on the following sentences while you are still talking about them. Otherwise leave konkurrenten empty. Do not add a company you do not say.
 kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks in later videos).`,
   ].join('\n\n')
@@ -612,7 +612,7 @@ export function setzeFazit(abschnitte: LongformAbschnitt[], fb: LongformFaktenbl
 
 const SCHLUSS_SZENEN = new Set(['abo_karte', 'disclaimer', 'schluss'])
 
-export const LIKE_AM_MOAT = "If you've liked this so far, leave a like and subscribe for more stock analyses."
+export const LIKE_AM_MOAT = "If you've liked the video so far, I'd appreciate a like and a subscribe."
 
 function istSchlussSatz(abschnittId: LongformAbschnittId, szene: string, fokus: string | null | undefined): boolean {
   if (abschnittId === 'burggraben' && szene === 'abo_karte') return false
@@ -631,22 +631,22 @@ export function entferneSchlussVorFazit(abschnitte: LongformAbschnitt[]): boolea
   return weg
 }
 
-/** Gesprochener Like-Hinweis ans Ende vom Moat, solange das Fazit noch nicht existiert. */
-export function haengeLikeAnMoat(abschnitte: LongformAbschnitt[]) {
+/** Gesprochener Like-Hinweis ans Ende vom Moat, auch wenn das Fazit schon existiert. */
+export function haengeLikeAnMoat(abschnitte: LongformAbschnitt[]): boolean {
   const moat = abschnitte.find((a) => a.id === 'burggraben')
-  if (!moat?.saetze.length) return
-  const fazitFertig = abschnitte.some((a) => a.id === 'fazit' && a.saetze.some((s) => s.visual.szene !== 'abo_karte'))
+  if (!moat?.saetze.length) return false
   const alt = moat.saetze.find((s) => s.visual.szene === 'abo_karte' && s.text === LIKE_AM_MOAT)
-  moat.saetze = moat.saetze.filter((s) => s.visual.szene !== 'abo_karte')
-  if (fazitFertig) return
-  moat.saetze.push(
-    alt ?? {
-      id: neueSatzId('burggraben'),
-      text: LIKE_AM_MOAT,
-      faktIds: [],
-      visual: { szene: 'abo_karte', fokus: null, betonung: null, bildWunsch: null },
-    },
-  )
+  const letzte = moat.saetze[moat.saetze.length - 1]
+  const nurEiner = moat.saetze.filter((s) => s.visual.szene === 'abo_karte').length === 1
+  if (alt && nurEiner && letzte?.id === alt.id) return false
+  const satz = alt ?? {
+    id: neueSatzId('burggraben'),
+    text: LIKE_AM_MOAT,
+    faktIds: [],
+    visual: { szene: 'abo_karte', fokus: null, betonung: null, bildWunsch: null },
+  }
+  moat.saetze = [...moat.saetze.filter((s) => s.visual.szene !== 'abo_karte'), satz]
+  return true
 }
 
 /** Like, gesprochener Disclaimer und Cheers ans Fazit. Solange das Fazit fehlt, nur entfernen. */
@@ -680,7 +680,7 @@ export function haengeSchlussAn(abschnitte: LongformAbschnitt[], fb: LongformFak
   }
 }
 
-/** B-Roll absichern: Chart nie in der Mitte zerreißen; Moat mind. 2 Schnitte. */
+/** B-Roll absichern: Chart nie in der Mitte zerreißen. Beim Moat bleiben die geschriebenen Bildsätze, es wird keiner nachträglich umetikettiert. */
 function stelleBrollSicher(abschnitte: LongformAbschnitt[], fb: LongformFaktenblatt) {
   let pool = 0
   for (const a of abschnitte) {
@@ -732,6 +732,7 @@ function stelleBrollSicher(abschnitte: LongformAbschnitt[], fb: LongformFaktenbl
     for (const s of bilder) {
       if (!s.visual.bildWunsch && s.visual.fokus !== 'abo') s.visual.bildWunsch = brollSuchbegriff(fb, pool++)
     }
+    if (a.id === 'burggraben') continue
     const fehlt = Math.max(0, 2 - bilder.length)
     if (!fehlt) continue
     const kandidaten = a.saetze

@@ -166,15 +166,34 @@ export async function ladeHerunter(pfad: string): Promise<Buffer | null> {
   return Buffer.from(await data.arrayBuffer())
 }
 
-/** Signierte URLs für alle Pfade; nur Pfade des eigenen Kontos. */
+const SIGNIER_BATCH = 40
+
+/**
+ * Signierte URLs für alle Pfade; nur Pfade des eigenen Kontos.
+ * Eine einzige große Anfrage darf nicht alle Stimmen verwerfen: bei Fehler oder
+ * fehlender URL wird der Pfad einzeln nachsigniert.
+ */
 export async function signiereUrls(pfade: string[]): Promise<Record<string, string>> {
   const owner = requireOwnerUserId()
   const eigene = [...new Set(pfade.filter((p) => p.startsWith(`${owner}/`)))]
   if (!eigene.length) return {}
-  const { data, error } = await createSupabaseAdmin().storage.from(LONGFORM_BUCKET).createSignedUrls(eigene, URL_GUELTIG_S)
-  if (error || !data) return {}
+  const admin = createSupabaseAdmin().storage.from(LONGFORM_BUCKET)
   const out: Record<string, string> = {}
-  for (const d of data) if (d.path && d.signedUrl) out[d.path] = d.signedUrl
+  for (let i = 0; i < eigene.length; i += SIGNIER_BATCH) {
+    const chunk = eigene.slice(i, i + SIGNIER_BATCH)
+    const { data, error } = await admin.createSignedUrls(chunk, URL_GUELTIG_S)
+    if (!error && data) {
+      data.forEach((d, j) => {
+        const key = d.path && chunk.includes(d.path) ? d.path : chunk[j]
+        if (key && d.signedUrl) out[key] = d.signedUrl
+      })
+    }
+    for (const pfad of chunk) {
+      if (out[pfad]) continue
+      const einzeln = await admin.createSignedUrl(pfad, URL_GUELTIG_S)
+      if (einzeln.data?.signedUrl) out[pfad] = einzeln.data.signedUrl
+    }
+  }
   return out
 }
 

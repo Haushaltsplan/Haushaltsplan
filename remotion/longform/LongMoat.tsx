@@ -19,21 +19,31 @@ import {
   mitAlpha,
 } from './long-look'
 
-function stichpunkte(begruendung: string, risiko: string): string[] {
-  const teile = [begruendung, risiko]
-    .map((t) => englischOderLeer(t))
-    .filter((t): t is string => Boolean(t))
-    .flatMap((t) => t.split(/(?<=[,.;])\s+/))
-    .map((t) => t.replace(/[.,;]+$/g, '').trim())
-    .filter((t) => t.length > 8)
-  return teile.slice(0, 3).map((t) => kuerzeAufWort(t, 72))
+const SATZ_WEITER = /^(?:allowing|and|or|which)\b/i
+
+function ganzeSaetze(text: string): string[] {
+  const roh = text
+    .split(/(?<=[.!?])\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0)
+  const saetze: string[] = []
+  for (const teil of roh) {
+    const letzter = saetze.length > 0 ? saetze[saetze.length - 1] : null
+    if (letzter && (SATZ_WEITER.test(teil) || /^[a-z]/.test(teil))) {
+      saetze[saetze.length - 1] = `${letzter} ${teil}`
+    } else {
+      saetze.push(teil)
+    }
+  }
+  return saetze
 }
 
-function kuerzeAufWort(t: string, max: number): string {
-  if (t.length <= max) return t
-  const schnitt = t.lastIndexOf(' ', max)
-  const basis = (schnitt > 24 ? t.slice(0, schnitt) : t.slice(0, max)).trim()
-  return `${basis}…`
+function stichpunkte(begruendung: string, risiko: string): string[] {
+  const grund = englischOderLeer(begruendung)
+  const risikoText = englischOderLeer(risiko)
+  const ausGrund = grund ? ganzeSaetze(grund) : []
+  const ausRisiko = risikoText ? ganzeSaetze(risikoText) : []
+  return [...ausGrund, ...ausRisiko].slice(0, 3)
 }
 
 function istKuerzel(name: string): boolean {

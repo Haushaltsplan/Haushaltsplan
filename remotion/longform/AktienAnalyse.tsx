@@ -111,7 +111,7 @@ function Ton({ p, t }: { p: AktienAnalyseProps; t: LongTimeline }) {
         const fenster = satzFenster(t, i)
         return (
           <Sequence key={s.id} from={fenster.start} durationInFrames={fenster.laenge} layout="none">
-            <Audio src={s.audioUrl} volume={1} />
+            <Audio src={s.audioUrl} volume={1} disallowFallbackToHtml5Audio />
           </Sequence>
         )
       })}
@@ -240,11 +240,11 @@ export function AktienAnalyse(p: AktienAnalyseProps) {
       ))}
       <KornAbSekunde />
       <KonkurrentenWurf p={p} t={t} />
-      {t.abo ? (
-        <Sequence from={t.abo.from} durationInFrames={t.abo.dauer}>
-          <LongAbo dauer={t.abo.dauer} text={p.varianten.aboText} akzent={p.varianten.akzent} kanalName={p.kanalName} kanalLogoUrl={p.kanalLogoUrl} />
+      {t.abos.map((abo) => (
+        <Sequence key={abo.from} from={abo.from} durationInFrames={abo.dauer}>
+          <LongAbo dauer={abo.dauer} text={p.varianten.aboText} akzent={p.varianten.akzent} kanalName={p.kanalName} kanalLogoUrl={p.kanalLogoUrl} />
         </Sequence>
-      ) : null}
+      ))}
       <Ton p={p} t={t} />
     </AbsoluteFill>
   )

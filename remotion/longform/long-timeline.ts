@@ -31,7 +31,7 @@ export type LongTimeline = {
   bumper: LongBumper[]
   abschnitte: { id: LongformAbschnittId; from: number; bis: number }[]
   sprechen: [number, number][]
-  abo: { from: number; dauer: number } | null
+  abos: { from: number; dauer: number }[]
   disclosure: { from: number; dauer: number } | null
 }
 
@@ -173,10 +173,11 @@ export function berechneLongTimeline(p: AktienAnalyseProps): LongTimeline {
     }
   }
 
-  const like = saetze.find((z) => p.saetze[z.index]?.visual.szene === 'abo_karte')
-  const abo = like ? { from: like.from, dauer: Math.max(like.dauer, LONG_ABO_DAUER) } : null
+  const abos = saetze
+    .filter((z) => p.saetze[z.index]?.visual.szene === 'abo_karte')
+    .map((z) => ({ from: z.from, dauer: z.dauer }))
 
-  return { durationInFrames, saetze, bloecke, bumper, abschnitte, sprechen, abo, disclosure }
+  return { durationInFrames, saetze, bloecke, bumper, abschnitte, sprechen, abos, disclosure }
 }
 
 /** Volle Datei, wenn die Länge bekannt ist. Alte Takes enden am letzten Wort und bekommen den Ausklang dazu. */
@@ -184,6 +185,7 @@ function satzDauerFrames(s: LongSatzProps): number {
   const ms = s.dauerMs > 0 ? s.dauerMs : geschaetzteDauerMs(s.text)
   const letztesEnde = s.woerter.reduce((m, w) => Math.max(m, w.endMs), 0)
   const abgeschnitten = Boolean(s.audioUrl) && letztesEnde > 0 && ms <= letztesEnde + 90
-  const gesamt = abgeschnitten ? letztesEnde + 280 : ms
+  const mindest = s.visual.szene === 'abo_karte' ? (LONG_ABO_DAUER / LONG_FPS) * 1000 : 0
+  const gesamt = Math.max(abgeschnitten ? letztesEnde + 280 : ms, mindest)
   return Math.max(18, Math.ceil((gesamt / 1000) * LONG_FPS))
 }
