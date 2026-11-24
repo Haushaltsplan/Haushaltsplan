@@ -84,29 +84,87 @@ Qualitative claims must come from the company description, the moat check texts 
 Banned phrases: "let's dive in", "in today's video", "without further ado", "game changer", "buckle up", "at the end of the day", "it's worth noting", "delve", "testament to", "stay tuned", "no-brainer", "smash that like button", "now let's look at", "as you can see".
 Transitions grow out of the content (a number, a tension, a question).`
 
-function kontext(fb: LongformFaktenblatt, thema: string, opt?: { nurMoat?: boolean }): string {
+const KAPITEL_MIT_DOKUMENTEN = new Set<LongformAbschnittId>(['hook', 'geschaeft', 'burggraben', 'risiken', 'fazit'])
+const ZAHLEN_REIHEN = new Set(['umsatz', 'gewinn', 'fcf', 'capex', 'schulden', 'aktien', 'marge', 'roic'])
+const BEWERTUNG_REIHEN = new Set(['kgv', 'ev_ebitda', 'ev_rev', 'fcf_rendite'])
+
+/** PDFs nur bei den Kapiteln, deren Geschichte nicht vollständig im Faktenblatt steht. */
+export function kapitelMitDokumenten(id: LongformAbschnittId): boolean {
+  return KAPITEL_MIT_DOKUMENTEN.has(id)
+}
+
+function reiheBasis(id: string): string | null {
+  if (!id.startsWith('reihe.')) return null
+  const rest = id.slice('reihe.'.length)
+  if (rest.startsWith('marge.')) return 'marge'
+  if (rest.startsWith('fcf_rendite')) return 'fcf_rendite'
+  if (rest.startsWith('ev_ebitda')) return 'ev_ebitda'
+  if (rest.startsWith('ev_rev')) return 'ev_rev'
+  return rest.split('.')[0] ?? null
+}
+
+function faktPasst(id: string, abschnitt: LongformAbschnittId): boolean {
+  const reihe = reiheBasis(id)
+  switch (abschnitt) {
+    case 'hook':
+      return reihe == null
+    case 'chart10k':
+      return id.startsWith('k10.')
+    case 'geschaeft':
+      return id.startsWith('seg.')
+    case 'burggraben':
+      return id.startsWith('moat.') || id.startsWith('km.') || id === 'sc.burggraben'
+    case 'zahlen':
+      return reihe != null && ZAHLEN_REIHEN.has(reihe)
+    case 'inhaber':
+      return id.startsWith('own.')
+    case 'bewertung':
+      return reihe != null && BEWERTUNG_REIHEN.has(reihe)
+    case 'risiken':
+      return id.startsWith('risk.') || id === 'km.net_debt_ebitda' || id === 'km.aktien_verwaesserung'
+    case 'scorecard':
+      return id.startsWith('sc.')
+    case 'fazit':
+      return id.startsWith('sc.') || id === 'val.ev_ebitda_abstand' || id === 'moat.score'
+    default:
+      return true
+  }
+}
+
+function moatFuerKapitel(fb: LongformFaktenblatt, abschnitt?: LongformAbschnittId): string {
   const m = fb.moat
-  const nurMoat = opt?.nurMoat === true
-  const blatt = nurMoat
-    ? { ...fb, fakten: fb.fakten.filter((f) => f.id.startsWith('moat.') || f.id.startsWith('km.') || f.id === 'sc.burggraben') }
-    : fb
+  if (abschnitt === 'chart10k' || abschnitt === 'zahlen' || abschnitt === 'inhaber' || abschnitt === 'bewertung' || abschnitt === 'scorecard') return ''
+  if (!m) return abschnitt == null || abschnitt === 'hook' || abschnitt === 'burggraben' ? 'MOAT CHECK: not available.' : ''
+  if (abschnitt === 'geschaeft') return m.geschaeftsmodell ? `BUSINESS MODEL:\n${m.geschaeftsmodell}` : ''
+  if (abschnitt === 'fazit') return `MOAT SCORE: ${m.score}/10 (${m.urteil}). Use moat.score as written.`
+  if (abschnitt === 'risiken') return m.zerstoerung.length ? `WHAT COULD BREAK IT:\n${m.zerstoerung.join(' | ')}` : ''
+  const nurMoat = abschnitt === 'burggraben'
+  return `MOAT CHECK (pillar shape from app assessment, overall score locked to scorecard):\nOverall moat score: ${m.score}/10 (${m.urteil}). Pillar scores average to this overall score — use moat.score and the pillar scores as written, never invent a different total.\n${nurMoat ? '' : `Business model: ${m.geschaeftsmodell}\n`}${m.pfeiler
+    .map((p) => `- ${p.label} ${p.score}/10: ${p.begruendung} Risk: ${p.risiko}`)
+    .join('\n')}\nWhat could break it: ${m.zerstoerung.join(' | ')}`
+}
+
+function kontext(fb: LongformFaktenblatt, thema: string, opt?: { abschnitt?: LongformAbschnittId }): string {
+  const abschnitt = opt?.abschnitt
+  const nurMoat = abschnitt === 'burggraben'
+  const mitBeschreibung = abschnitt == null || abschnitt === 'hook' || abschnitt === 'geschaeft'
+  const mitMix = abschnitt == null || abschnitt === 'hook' || abschnitt === 'geschaeft'
+  const blatt = abschnitt ? { ...fb, fakten: fb.fakten.filter((f) => faktPasst(f.id, abschnitt)) } : fb
   return [
     `COMPANY: ${fb.firmenname} (${fb.ticker})${fb.sektor ? `, sector ${fb.sektor}` : ''}${fb.branche ? `, industry ${fb.branche}` : ''}`,
     `VIDEO TOPIC FROM THE CREATOR: ${thema || '(none given, choose the most interesting angle the data supports)'}`,
-    !nurMoat && fb.beschreibung ? `COMPANY DESCRIPTION (German source — translate into English meaning only, never quote German):\n${fb.beschreibung.slice(0, 2500)}` : '',
-    m
-      ? `MOAT CHECK (pillar shape from app assessment, overall score locked to scorecard):\nOverall moat score: ${m.score}/10 (${m.urteil}). Pillar scores average to this overall score — use moat.score and the pillar scores as written, never invent a different total.\n${nurMoat ? '' : `Business model: ${m.geschaeftsmodell}\n`}${m.pfeiler
-          .map((p) => `- ${p.label} ${p.score}/10: ${p.begruendung} Risk: ${p.risiko}`)
-          .join('\n')}\nWhat could break it: ${m.zerstoerung.join(' | ')}`
-      : 'MOAT CHECK: not available.',
-    fb.burggraben
+    mitBeschreibung && fb.beschreibung ? `COMPANY DESCRIPTION (German source — translate into English meaning only, never quote German):\n${fb.beschreibung.slice(0, 2500)}` : '',
+    moatFuerKapitel(fb, abschnitt),
+    (abschnitt == null || abschnitt === 'burggraben') && fb.burggraben
       ? `SCORECARD MOAT COLUMN (quality ${fb.burggraben.score ?? 'n/a'}/10 — same number as moat.score):\n${fb.burggraben.balken.map((b) => `- ${b.label}: ${b.wertText}`).join('\n')}`
       : '',
     nurMoat
       ? 'REVENUE MIX: forbidden in this chapter. How the company gets paid was the previous chapter. Do not mention customers, products, or segments.'
-      : fb.segmente
-        ? `REVENUE MIX available (${fb.segmente.art}).`
-        : 'REVENUE MIX: not available, do not use scene moat_segmente.',
+      : mitMix
+        ? fb.segmente
+          ? `REVENUE MIX available (${fb.segmente.art}).`
+          : 'REVENUE MIX: not available, do not use scene moat_segmente.'
+        : '',
     `FACT SHEET (id | label | allowed text | date):\n${faktenFuerPrompt(blatt)}`,
   ]
     .filter(Boolean)
@@ -233,7 +291,7 @@ export async function erzeugeHooks(opts: {
 }): Promise<LongformHookVorschlag[]> {
   const fb = opts.zustand.faktenblatt
   const nutzer = [
-    kontext(fb, opts.zustand.thema),
+    kontext(fb, opts.zustand.thema, { abschnitt: 'hook' }),
     `ALLOWED HOOK TYPES (pick three different ones that the data genuinely supports):\n${hookKatalogFuerPrompt(opts.gesperrt)}`,
     opts.fruehereLeitfragen.length ? `GUIDING QUESTIONS OF RECENT VIDEOS (do not reuse their angle or wording):\n${opts.fruehereLeitfragen.map((q) => `- ${q}`).join('\n')}` : '',
     opts.zustand.hookHinweis?.trim()
@@ -274,6 +332,7 @@ begruendung: one German sentence for the creator (studio only) explaining why th
     dokumente: opts.dokumente,
     schema,
     denkstufe: opts.zustand.denkstufe ?? 'medium',
+    maxTokens: 12_000,
   })
   return (daten.hooks ?? [])
     .filter((h) => h.saetze?.length && !opts.gesperrt.includes(h.typ))
@@ -452,7 +511,7 @@ export async function erzeugeSkript(opts: {
   const z = opts.zustand
   const fb = z.faktenblatt
   const nutzer = [
-    kontext(fb, z.thema, { nurMoat: (opts.nur ?? 'hook') === 'burggraben' }),
+    kontext(fb, z.thema, { abschnitt: opts.nur ?? 'hook' }),
     `CHOSEN OPENING (type ${opts.hook.typ}):\nGuiding question: ${opts.hook.leitfrage}\n${opts.hook.saetze.map((s) => `- ${s.text} [${s.faktIds.join(', ')}]`).join('\n')}`,
     `PREFERRED HOOK SCENE: ${z.varianten.hookSzene}`,
     (opts.nur ?? 'hook') === 'hook' && z.hookHinweis?.trim()
@@ -473,10 +532,10 @@ kernphrasen: 5 to 10 distinctive phrases from your script (for repetition checks
     rolle: 'schreiben',
     system: STIL,
     nutzer,
-    dokumente: opts.dokumente,
+    dokumente: kapitelMitDokumenten(nur) ? opts.dokumente : [],
     schema,
     denkstufe: z.denkstufe,
-    maxTokens: 48_000,
+    maxTokens: 12_000,
   })
   const abschnitte: LongformAbschnitt[] = [nur].map((id) => {
     const roh = daten.abschnitte?.find((a) => a.id === id)
@@ -765,15 +824,17 @@ function stelleBrollSicher(abschnitte: LongformAbschnitt[], fb: LongformFaktenbl
   }
 }
 
-/** Carbon prüft qualitative Aussagen gegen die Quellen. Zahlen prüft der Code. */
+/** Carbon prüft qualitative Aussagen gegen die Quellen. Zahlen prüft der Code. Ein Kapitel prüft nur seine neuen Sätze. */
 export async function pruefeBehauptungen(opts: {
   zustand: LongformProjektZustand
   skript: LongformSkript
   dokumente: LongformDokument[]
+  /** Fehlt das, prüft der Aufruf das ganze Skript in einer Runde. */
+  nur?: LongformAbschnittId
 }): Promise<Record<string, string>> {
-  const saetze = opts.skript.abschnitte.flatMap((a) => a.saetze)
+  const saetze = opts.skript.abschnitte.filter((a) => !opts.nur || a.id === opts.nur).flatMap((a) => a.saetze)
   const nutzer = [
-    kontext(opts.zustand.faktenblatt, opts.zustand.thema),
+    kontext(opts.zustand.faktenblatt, opts.zustand.thema, opts.nur ? { abschnitt: opts.nur } : undefined),
     `SCRIPT SENTENCES (id: text):\n${saetze.map((s) => `${s.id}: ${s.text}`).join('\n')}`,
     `TASK: You are a strict fact checker. List every sentence that states something the sources above (fact sheet, description, moat check, scorecard, attached documents) do not support, or that overstates them. Ignore style and opinions clearly framed as opinion. Numbers that appear in the fact sheet are fine. Write each problem as one short German sentence for the creator. Return an empty list if everything is supported.`,
   ].join('\n\n')
@@ -788,10 +849,10 @@ export async function pruefeBehauptungen(opts: {
     rolle: 'pruefen',
     system: 'You verify scripts against sources. You never add information.',
     nutzer,
-    dokumente: opts.dokumente,
+    dokumente: opts.nur && !kapitelMitDokumenten(opts.nur) ? [] : opts.dokumente,
     schema,
-    denkstufe: 'high',
-    maxTokens: 16_000,
+    denkstufe: 'low',
+    maxTokens: opts.nur ? 4_096 : 8_000,
   })
   const out: Record<string, string> = {}
   for (const p of daten.probleme ?? []) if (p.satzId && p.problem) out[p.satzId] = p.problem
@@ -817,7 +878,7 @@ export async function ueberarbeite(opts: {
     .map((s) => `${s.id === opts.satzId ? '>>> ' : ''}${s.text} [scene ${s.visual.szene}${s.visual.fokus ? ` / ${s.visual.fokus}` : ''}; facts ${s.faktIds.join(', ')}]`)
     .join('\n')
   const nutzer = [
-    kontext(fb, opts.zustand.thema, { nurMoat: opts.abschnittId === 'burggraben' }),
+    kontext(fb, opts.zustand.thema, { abschnitt: opts.abschnittId }),
     `GUIDING QUESTION: ${opts.skript.leitfrage}`,
     `CURRENT SECTION "${abschnitt.titel}" (${abschnittAuftrag(opts.abschnittId, fb)}):\n${aktuell}`,
     ziel
@@ -829,10 +890,10 @@ export async function ueberarbeite(opts: {
     rolle: ziel ? 'klein' : 'schreiben',
     system: STIL,
     nutzer,
-    dokumente: ziel ? [] : opts.dokumente,
+    dokumente: ziel || !kapitelMitDokumenten(opts.abschnittId) ? [] : opts.dokumente,
     schema,
     denkstufe: ziel ? 'low' : opts.zustand.denkstufe,
-    maxTokens: ziel ? 4_096 : 24_000,
+    maxTokens: ziel ? 4_096 : 12_000,
   })
   const neu = (daten.saetze ?? []).filter((s) => s.text?.trim()).map((s) => satzAusRoh(s, opts.abschnittId, fb))
   const fertig = opts.abschnittId === 'burggraben' ? ohneGeschaeftImMoat(neu) : neu

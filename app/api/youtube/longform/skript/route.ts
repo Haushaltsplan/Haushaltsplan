@@ -11,7 +11,7 @@ import { gesperrteHookTypen } from '@/lib/youtube/longform/longform-abwechslung'
 import { ladeProjekt, ladeVerlauf, mitUrls, speichereProjekt } from '@/lib/youtube/longform/longform-db-server'
 import { ergaenzeKapitelAusExport, erneuereChart10k, ladeDokumente } from '@/lib/youtube/longform/longform-projekt-server'
 import { pruefeSkript } from '@/lib/youtube/longform/longform-pruefung'
-import { erzeugeHooks, erzeugeSkript, haengeLikeAnMoat, haengeSchlussAn, logosFuerKonkurrenten, pruefeBehauptungen, setzeFazit, ueberarbeite } from '@/lib/youtube/longform/longform-skript-server'
+import { erzeugeHooks, erzeugeSkript, haengeLikeAnMoat, haengeSchlussAn, kapitelMitDokumenten, logosFuerKonkurrenten, pruefeBehauptungen, setzeFazit, ueberarbeite } from '@/lib/youtube/longform/longform-skript-server'
 import {
   LONGFORM_ABSCHNITTE,
   type LongformAbschnittId,
@@ -23,12 +23,13 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-function mitBehauptungen(skript: LongformSkript, probleme: Record<string, string>): LongformSkript {
+function mitBehauptungen(skript: LongformSkript, probleme: Record<string, string>, nur?: LongformAbschnittId): LongformSkript {
   return {
     ...skript,
     abschnitte: skript.abschnitte.map((a) => ({
       ...a,
       saetze: a.saetze.map((s) => {
+        if (nur && a.id !== nur) return s
         const ohne = (s.hinweise ?? []).filter((h) => h.art !== 'behauptung')
         const p = probleme[s.id]
         return { ...s, hinweise: p ? [...ohne, { art: 'behauptung' as const, text: p }] : ohne }
@@ -88,8 +89,8 @@ export async function POST(req: Request) {
           const neu = await erzeugeSkript({ zustand: z, hook, dokumente, nur: 'hook' })
           const behalten = (z.skript?.abschnitte ?? []).filter((a) => a.id !== 'hook')
           let skript = pruefeSkript({ ...neu, abschnitte: [...neu.abschnitte, ...behalten] }, ctx)
-          const probleme = await pruefeBehauptungen({ zustand: z, skript, dokumente }).catch(() => ({}))
-          skript = mitBehauptungen(skript, probleme)
+          const probleme = await pruefeBehauptungen({ zustand: z, skript, dokumente, nur: 'hook' }).catch(() => ({}))
+          skript = mitBehauptungen(skript, probleme, 'hook')
           z = aufraeumen({ ...z, gewaehlterHook: idx, skript })
           break
         }
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
           if (!hook) return { ok: false as const, fehler: 'Bitte zuerst einen Hook wählen.' }
           z = await ergaenzeKapitelAusExport(id, z)
           const kontext = { faktenblatt: z.faktenblatt, frueher }
-          const dokumente = await ladeDokumente(z)
+          const dokumente = kapitelMitDokumenten(abschnittId) ? await ladeDokumente(z) : []
           const teil = await erzeugeSkript({ zustand: z, hook, dokumente, nur: abschnittId })
           const stueck = teil.abschnitte[0]
           if (!stueck?.saetze.length) return { ok: false as const, fehler: 'Das Kapitel ist leer.' }
@@ -123,8 +124,8 @@ export async function POST(req: Request) {
             { leitfrage: z.skript?.leitfrage ?? hook.leitfrage, hookTyp: z.skript?.hookTyp ?? hook.typ, abschnitte, kernphrasen: teil.kernphrasen },
             kontext,
           )
-          const probleme = await pruefeBehauptungen({ zustand: z, skript, dokumente }).catch(() => ({}))
-          skript = mitBehauptungen(skript, probleme)
+          const probleme = await pruefeBehauptungen({ zustand: z, skript, dokumente, nur: abschnittId }).catch(() => ({}))
+          skript = mitBehauptungen(skript, probleme, abschnittId)
           z = aufraeumen({ ...z, skript })
           break
         }
@@ -149,7 +150,7 @@ export async function POST(req: Request) {
             abschnittId,
             satzId,
             anweisung,
-            dokumente: satzId ? [] : await ladeDokumente(z),
+            dokumente: satzId || !kapitelMitDokumenten(abschnittId) ? [] : await ladeDokumente(z),
           })
           const abschnitte = z.skript.abschnitte.map((a) => {
             if (a.id !== abschnittId) return a
