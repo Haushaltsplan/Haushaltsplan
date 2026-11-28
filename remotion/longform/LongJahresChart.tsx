@@ -1,9 +1,10 @@
 /** Jahreschart des Zahlen-Kapitels. Balken, Linien oder zwei Reihen, Schätzjahre blasser. */
 import { useMemo } from 'react'
 import { AbsoluteFill, useCurrentFrame } from 'remotion'
-import { pct, usd, usdKurz } from '../../lib/youtube/longform/longform-format'
+import { pct, usdKurz } from '../../lib/youtube/longform/longform-format'
 import type { LongformJahresGross, LongformJahreslinie, LongformJahrespunkt, LongformJahresreihe } from '../../lib/youtube/longform/longform-types'
 import { aktiverSatz, ein, zaehleText, type SzeneProps } from './long-bausteine'
+import { aktiveMarke, mitJahre, satzZahlen, type ZahlenMarke } from './long-zahlen-satz'
 import { LONG_DISPLAY, LONG_GRUEN, LONG_LINIE, LONG_MONO, LONG_MUTED, LONG_RAND_X, LONG_ROT, LONG_SERIF, LONG_TEXT, mitAlpha } from './long-look'
 
 const X0 = 228
@@ -128,6 +129,77 @@ function grossFarbe(g: LongformJahresGross): string {
   return g.wert < 0 ? LONG_ROT : LONG_TEXT
 }
 
+function markeFarbe(m: ZahlenMarke): string {
+  if (m.ton === 'blau') return BLAU
+  if (m.schaetzung && (m.wert == null || m.wert >= 0)) return GOLD
+  return grossFarbe({ text: m.text, wert: m.wert ?? 0, farbig: m.farbig })
+}
+
+function heroPx(text: string): number {
+  const n = text.length
+  if (n > 22) return 48
+  if (n > 16) return 56
+  if (n > 12) return 64
+  return 80
+}
+
+/** Ein nacktes Jahr zählt nicht von null hoch. Das wirkt wie ein Zähler, nicht wie eine Jahreszahl. */
+function zaehlHero(m: ZahlenMarke, fort: number): string {
+  if (/^\d{4}$/.test(m.text) || !/\d/.test(m.text)) return m.text
+  return zaehleText(m.text, fort)
+}
+
+type Etikett = { key: string; x: number; y: number; w: number; h: number; text: string; aktiv: boolean; schaetzung: boolean; farbe: string }
+
+function etikettBoxen(
+  reihe: LongformJahresreihe,
+  geo: { x: (jahr: number) => number; y: (wert: number) => number; band: number },
+  balkenBreite: number,
+  marken: ZahlenMarke[],
+  aktivId: string | null,
+): Etikett[] {
+  const roh: Etikett[] = []
+  const gesehen = new Set<string>()
+  for (const m of marken) {
+    if (!m.kurz || m.spanne || m.jahre.length !== 1) continue
+    const jahr = m.jahre[0]!
+    const key = `${m.linieId ?? reihe.id}-${jahr}`
+    if (gesehen.has(key)) continue
+    const linie = reihe.linien.find((l) => l.id === (m.linieId ?? reihe.linien[0]?.id))
+    const punkt = linie?.punkte.find((p) => p.jahr === jahr)
+    if (!linie || !punkt) continue
+    const li = reihe.linien.findIndex((l) => l.id === linie.id)
+    const versatz = reihe.art === 'doppel' ? (li === 0 ? -balkenBreite - 2 : 2) : reihe.art === 'balken' ? -balkenBreite / 2 : 0
+    const cx = geo.x(jahr) + (reihe.art === 'balken' || reihe.art === 'doppel' ? versatz + balkenBreite / 2 : 0)
+    const yWert = geo.y(punkt.wert)
+    const w = Math.max(72, m.kurz.length * 11 + 26)
+    const h = 34
+    const y = punkt.wert >= 0 ? Math.max(Y0 + 6, yWert - h - 12) : Math.min(Y1 - h - 10, yWert + 12)
+    const x = Math.max(X0, Math.min(X1 - w, cx - w / 2))
+    gesehen.add(key)
+    roh.push({
+      key,
+      x,
+      y,
+      w,
+      h,
+      text: m.kurz,
+      aktiv: m.id === aktivId,
+      schaetzung: m.schaetzung,
+      farbe: punkt.wert < 0 ? LONG_ROT : m.schaetzung ? GOLD : reihe.einheit === 'pct' ? LONG_GRUEN : LONG_TEXT,
+    })
+  }
+  for (let n = 0; n < roh.length; n++) {
+    const a = roh[n]!
+    for (let k = 0; k < n; k++) {
+      const b = roh[k]!
+      const ueber = a.x < b.x + b.w + 8 && a.x + a.w + 8 > b.x && a.y < b.y + b.h + 6 && a.y + a.h + 6 > b.y
+      if (ueber) a.y = Math.max(Y0 + 6, b.y - a.h - 8)
+    }
+  }
+  return roh
+}
+
 function spreadPfad(punkte: LongformJahrespunkt[], wacc: number, x: (jahr: number) => number, y: (wert: number) => number): string {
   const sortiert = [...punkte].sort((a, b) => a.jahr - b.jahr)
   if (sortiert.length < 2) return ''
@@ -197,25 +269,74 @@ export function LongJahresChart(sp: SzeneProps) {
   const hatSchaetzung = reihe.linien.some((l) => l.punkte.some((p) => p.schaetzung))
   const balkenBreite = Math.max(6, Math.min(reihe.art === 'doppel' ? 18 : 28, geo.band * (reihe.art === 'doppel' ? 0.32 : 0.52)))
   const jahrSchrift = geo.jahre.length > 24 ? 12 : geo.jahre.length > 16 ? 14 : 16
+  const satz = sp.p.saetze[i]!
+  const zeit = sp.t.saetze[i]!
+  const zahlen = satzZahlen(satz.faktIds, sp.p.fakten, reihe)
+  const aktiv = aktiveMarke(zahlen.marken, zeit.woerter, zeit.from, zeit.from + zeit.dauer, frame + sp.block.from)
+  const hero = aktiv?.marke ?? null
+  const heroEin = hero && aktiv ? ein(frame, aktiv.seit - sp.block.from, 12) : 0
+  const fokusJahre = hero?.jahre ?? []
+  const mit = hero ? mitJahre(zahlen.marken, hero, zahlen.nebenjahre) : []
+  const dimmen = Boolean(hero && fokusJahre.length)
+  const stufe = (jahr: number): 'ruhig' | 'an' | 'mit' | 'aus' => {
+    if (!dimmen) return 'ruhig'
+    if (fokusJahre.includes(jahr)) return 'an'
+    if (mit.includes(jahr)) return 'mit'
+    return 'aus'
+  }
+  const punktAlpha = (jahr: number, linieId: string) => {
+    const s = stufe(jahr)
+    if (s === 'ruhig') return 1
+    if (hero?.linieId && linieId !== hero.linieId) return s === 'an' ? 0.5 : 0.32
+    if (s === 'an') return 1
+    if (s === 'mit') return 0.72
+    return 0.32
+  }
+  const waccBetont = Boolean(hero && (hero.ton === 'blau' || hero.id.includes('.spread')))
+  const etiketten = etikettBoxen(reihe, geo, balkenBreite, zahlen.marken, hero?.id ?? null)
+  const labelEin = ein(frame, startRel + 24, 10)
 
   return (
     <AbsoluteFill style={{ opacity: einblend }}>
-      <div style={{ position: 'absolute', left: LONG_RAND_X, top: 88 }}>
+      <div style={{ position: 'absolute', left: LONG_RAND_X, top: 88, maxWidth: hero ? 900 : 1200 }}>
         <div style={{ fontFamily: LONG_SERIF, fontSize: 68, color: LONG_TEXT }}>{reihe.label}</div>
         <div style={{ fontFamily: LONG_MONO, fontSize: 20, letterSpacing: 2, color: LONG_MUTED, marginTop: 8 }}>
           {von}–{bis}
           {hatSchaetzung ? ' · estimates marked' : ''}
         </div>
       </div>
-      {reihe.gross ? (
-        <div style={{ position: 'absolute', right: LONG_RAND_X, top: 88, textAlign: 'right', opacity: fort, maxWidth: 720 }}>
-          <div style={{ fontFamily: LONG_DISPLAY, fontWeight: 900, fontSize: reihe.einheit === 'usd' ? 64 : 80, color: grossFarbe(reihe.gross), letterSpacing: -1, lineHeight: 1, whiteSpace: 'nowrap' }}>
-            {zaehleText(reihe.einheit === 'usd' ? usd(reihe.gross.wert * 1_000_000) : reihe.gross.text, fort)}
+      {hero ? (
+        <div style={{ position: 'absolute', right: LONG_RAND_X, top: 78, width: 640, textAlign: 'right', opacity: heroEin, pointerEvents: 'none' }}>
+          <div
+            style={{
+              fontFamily: LONG_MONO,
+              fontSize: 16,
+              letterSpacing: 2.6,
+              textTransform: 'uppercase',
+              color: hero.schaetzung ? GOLD : hero.ton === 'blau' ? BLAU : LONG_MUTED,
+            }}
+          >
+            {hero.caption}
+          </div>
+          <div
+            style={{
+              marginTop: 8,
+              fontFamily: LONG_DISPLAY,
+              fontWeight: 900,
+              fontSize: heroPx(hero.text),
+              letterSpacing: -1.5,
+              lineHeight: 0.96,
+              color: markeFarbe(hero),
+              fontVariantNumeric: 'tabular-nums',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {zaehlHero(hero, heroEin)}
           </div>
         </div>
-      ) : (
+      ) : reihe.linien.length > 1 ? (
         <Legende linien={reihe.linien} fort={fort} werte />
-      )}
+      ) : null}
       <svg width={1920} height={1080} style={{ position: 'absolute', inset: 0 }}>
         <defs>
           <clipPath id="lf-zahlen-clip">
@@ -234,17 +355,24 @@ export function LongJahresChart(sp: SzeneProps) {
             </text>
           </g>
         ))}
-        {geo.jahre.map((j) => (
-          <g key={j.jahr}>
-            {j.schaetzung ? (
-              <rect x={geo.x(j.jahr) - geo.band / 2} y={Y0} width={geo.band} height={Y1 - Y0} fill="rgba(232, 195, 106, 0.06)" />
-            ) : null}
-            <line x1={geo.x(j.jahr)} x2={geo.x(j.jahr)} y1={Y1} y2={Y1 + 7} stroke={j.schaetzung ? GOLD : 'rgba(243, 241, 236, 0.2)'} strokeWidth={1} />
-            <text x={geo.x(j.jahr)} y={Y1 + 28} textAnchor="middle" fill={j.schaetzung ? GOLD : j.hatWert ? ACHSE : 'rgba(243, 241, 236, 0.35)'} fontFamily={LONG_MONO} fontSize={jahrSchrift}>
-              {j.schaetzung ? `${j.jahr}e` : j.jahr}
-            </text>
-          </g>
-        ))}
+        {geo.jahre.map((j) => {
+          const s = stufe(j.jahr)
+          const jahrFill = j.schaetzung ? GOLD : s === 'an' ? LONG_TEXT : s === 'aus' ? 'rgba(243, 241, 236, 0.28)' : j.hatWert ? ACHSE : 'rgba(243, 241, 236, 0.35)'
+          return (
+            <g key={j.jahr}>
+              {j.schaetzung ? (
+                <rect x={geo.x(j.jahr) - geo.band / 2} y={Y0} width={geo.band} height={Y1 - Y0} fill="rgba(232, 195, 106, 0.06)" />
+              ) : null}
+              {s === 'an' ? (
+                <rect x={geo.x(j.jahr) - geo.band * 0.46} y={Y0} width={geo.band * 0.92} height={Y1 - Y0} fill="rgba(243, 241, 236, 0.06)" />
+              ) : null}
+              <line x1={geo.x(j.jahr)} x2={geo.x(j.jahr)} y1={Y1} y2={Y1 + (s === 'an' ? 12 : 7)} stroke={s === 'an' ? LONG_TEXT : j.schaetzung ? GOLD : 'rgba(243, 241, 236, 0.2)'} strokeWidth={s === 'an' ? 1.5 : 1} />
+              <text x={geo.x(j.jahr)} y={Y1 + 28} textAnchor="middle" fill={jahrFill} fontFamily={LONG_MONO} fontSize={s === 'an' ? jahrSchrift + 3 : jahrSchrift}>
+                {j.schaetzung ? `${j.jahr}e` : j.jahr}
+              </text>
+            </g>
+          )
+        })}
         {reihe.art === 'balken' || reihe.art === 'doppel'
           ? reihe.linien.map((linie, li) => (
               <g key={linie.id}>
@@ -256,7 +384,19 @@ export function LongJahresChart(sp: SzeneProps) {
                 const h = Math.abs(geo.nullLinie - geo.y(p.wert)) * zeichnen
                 const top = p.wert >= 0 ? geo.nullLinie - h : geo.nullLinie
                 const versatz = reihe.art === 'doppel' ? (li === 0 ? -balkenBreite - 2 : 2) : -balkenBreite / 2
-                return <rect key={`${linie.id}-${p.jahr}`} x={geo.x(p.jahr) + versatz} y={top} width={balkenBreite} height={Math.max(h, 0)} fill={farbe} rx={2} />
+                const alpha = punktAlpha(p.jahr, linie.id)
+                return (
+                  <rect
+                    key={`${linie.id}-${p.jahr}`}
+                    x={geo.x(p.jahr) + versatz}
+                    y={top}
+                    width={balkenBreite}
+                    height={Math.max(h, 0)}
+                    fill={farbe}
+                    rx={2}
+                    opacity={alpha}
+                  />
+                )
               })}
               </g>
             ))
@@ -264,10 +404,11 @@ export function LongJahresChart(sp: SzeneProps) {
         {reihe.art === 'linien' || reihe.art === 'roic' ? (
           <g clipPath="url(#lf-zahlen-clip)">
             {reihe.art === 'roic' && reihe.wacc != null && reihe.linien[0] ? (
-              <path d={spreadPfad(reihe.linien[0].punkte, reihe.wacc, geo.x, geo.y)} fill="rgba(232, 195, 106, 0.16)" />
+              <path d={spreadPfad(reihe.linien[0].punkte, reihe.wacc, geo.x, geo.y)} fill="rgba(232, 195, 106, 0.16)" opacity={dimmen && !hero?.id.includes('spread') ? 0.35 : 1} />
             ) : null}
             {reihe.linien.map((linie, li) => {
               const farbe = LINIEN_FARBEN[li % LINIEN_FARBEN.length]!
+              const linieAlpha = !dimmen || !hero?.linieId || hero.linieId === linie.id ? 1 : 0.32
               return (
                 <g key={linie.id}>
                   {linienStuecke(linie.punkte).map((st, si) =>
@@ -280,37 +421,42 @@ export function LongJahresChart(sp: SzeneProps) {
                         strokeWidth={3}
                         strokeLinejoin="round"
                         strokeDasharray={st.schaetzung ? '7 6' : undefined}
-                        opacity={st.schaetzung ? 0.75 : 1}
+                        opacity={(st.schaetzung ? 0.75 : 1) * linieAlpha}
                       />
                     ),
                   )}
-                  {linie.punkte.map((p) => (
-                    <circle
-                      key={`${linie.id}-punkt-${p.jahr}`}
-                      cx={geo.x(p.jahr)}
-                      cy={geo.y(p.wert)}
-                      r={4.5}
-                      fill={p.schaetzung ? '#0C0C0E' : farbe}
-                      stroke={farbe}
-                      strokeWidth={2}
-                    />
-                  ))}
+                  {linie.punkte.map((p) => {
+                    const an = stufe(p.jahr) === 'an' && (!hero?.linieId || hero.linieId === linie.id)
+                    return (
+                      <g key={`${linie.id}-punkt-${p.jahr}`} opacity={punktAlpha(p.jahr, linie.id)}>
+                        {an ? <line x1={geo.x(p.jahr)} x2={geo.x(p.jahr)} y1={geo.y(p.wert)} y2={Y1} stroke={farbe} strokeWidth={1.5} opacity={0.45} /> : null}
+                        <circle
+                          cx={geo.x(p.jahr)}
+                          cy={geo.y(p.wert)}
+                          r={an ? 7 : 4.5}
+                          fill={p.schaetzung ? '#0C0C0E' : farbe}
+                          stroke={farbe}
+                          strokeWidth={an ? 3 : 2}
+                        />
+                      </g>
+                    )
+                  })}
                 </g>
               )
             })}
           </g>
         ) : null}
         {reihe.art === 'roic' && reihe.wacc != null ? (
-          <g>
-            <line x1={X0} x2={X1} y1={geo.y(reihe.wacc)} y2={geo.y(reihe.wacc)} stroke={BLAU} strokeWidth={2} strokeDasharray="10 7" />
-            <text x={X1 - 8} y={geo.y(reihe.wacc) - 12} textAnchor="end" fill={BLAU} fontFamily={LONG_MONO} fontSize={16}>
+          <g opacity={dimmen && !waccBetont ? 0.4 : 1}>
+            <line x1={X0} x2={X1} y1={geo.y(reihe.wacc)} y2={geo.y(reihe.wacc)} stroke={BLAU} strokeWidth={waccBetont ? 3 : 2} strokeDasharray="10 7" />
+            <text x={X1 - 8} y={geo.y(reihe.wacc) - 12} textAnchor="end" fill={BLAU} fontFamily={LONG_MONO} fontSize={waccBetont ? 18 : 16}>
               WACC
             </text>
           </g>
         ) : null}
         {reihe.schnitt ? (
-          <g>
-            <line x1={X0} x2={X1} y1={geo.y(reihe.schnitt.wert)} y2={geo.y(reihe.schnitt.wert)} stroke={ACHSE} strokeWidth={2} strokeDasharray="8 6" />
+          <g opacity={hero?.id.endsWith('.schnitt') ? 1 : dimmen ? 0.45 : 1}>
+            <line x1={X0} x2={X1} y1={geo.y(reihe.schnitt.wert)} y2={geo.y(reihe.schnitt.wert)} stroke={ACHSE} strokeWidth={hero?.id.endsWith('.schnitt') ? 3 : 2} strokeDasharray="8 6" />
             <text
               x={X0 + 10}
               y={geo.y(reihe.schnitt.wert) < Y0 + 36 ? geo.y(reihe.schnitt.wert) + 22 : geo.y(reihe.schnitt.wert) - 12}
@@ -324,9 +470,26 @@ export function LongJahresChart(sp: SzeneProps) {
             </text>
           </g>
         ) : null}
+        {etiketten.map((e) => (
+          <text
+            key={e.key}
+            x={e.x + e.w / 2}
+            y={e.y + 22}
+            textAnchor="middle"
+            fill={e.farbe}
+            fontFamily={LONG_MONO}
+            fontSize={e.aktiv ? 20 : 17}
+            stroke="#0C0C0E"
+            strokeWidth={6}
+            paintOrder="stroke"
+            opacity={labelEin * (e.aktiv ? 1 : 0.8)}
+          >
+            {e.text}
+          </text>
+        ))}
       </svg>
-      {reihe.gross && reihe.linien.length > 1 ? (
-        <Legende linien={reihe.linien} fort={1} unten farben={reihe.id === 'schulden' ? [GOLD, CASH] : undefined} />
+      {hero && reihe.linien.length > 1 ? (
+        <Legende linien={reihe.linien} fort={1} unten aktivId={hero.linieId} farben={reihe.id === 'schulden' ? [GOLD, CASH] : undefined} />
       ) : null}
       <div style={{ position: 'absolute', left: LONG_RAND_X, bottom: 36, fontFamily: LONG_MONO, fontSize: 16, color: mitAlpha(LONG_TEXT, 0.45) }}>
         {reihe.quelle}
@@ -341,12 +504,14 @@ function Legende({
   unten = false,
   werte = false,
   farben,
+  aktivId = null,
 }: {
   linien: LongformJahreslinie[]
   fort: number
   unten?: boolean
   werte?: boolean
   farben?: string[]
+  aktivId?: string | null
 }) {
   return (
     <div
@@ -366,8 +531,9 @@ function Legende({
         const letzte = fertig[fertig.length - 1]
         const zahl = werte && letzte ? pct(letzte.wert) : null
         const farbe = (farben ?? LINIEN_FARBEN)[i % (farben ?? LINIEN_FARBEN).length]
+        const gedimmt = aktivId != null && l.id !== aktivId
         return (
-          <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: LONG_MONO, fontSize: 16, color: LONG_MUTED }}>
+          <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: LONG_MONO, fontSize: 16, color: LONG_MUTED, opacity: gedimmt ? 0.35 : 1 }}>
             <span style={{ width: 18, height: 4, background: farbe, display: 'inline-block' }} />
             {l.label}
             {zahl ? <span style={{ color: letzte && letzte.wert < 0 ? LONG_ROT : LONG_GRUEN }}>{zahl}</span> : null}
