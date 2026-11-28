@@ -282,7 +282,7 @@ export function LongJahresChart(sp: SzeneProps) {
     if (!dimmen) return 'ruhig'
     if (fokusJahre.includes(jahr)) return 'an'
     if (mit.includes(jahr)) return 'mit'
-    if (hero?.id.endsWith('.wachstum') && fokusJahre.length >= 2) {
+    if (hero?.spanne && hero.jahre.length >= 2 && (hero.id.endsWith('.wachstum') || hero.id.startsWith('km.'))) {
       const lo = Math.min(...fokusJahre)
       const hi = Math.max(...fokusJahre)
       if (jahr > lo && jahr < hi) return 'mit'
@@ -352,7 +352,7 @@ export function LongJahresChart(sp: SzeneProps) {
         <text x={X0} y={Y0 - 16} fill={ACHSE} fontFamily={LONG_MONO} fontSize={14} letterSpacing={1.5}>
           {einheitTitel(reihe.einheit)}
         </text>
-        {hero?.id.endsWith('.wachstum') && hero.jahre.length >= 2 && heroEin > 0 ? (
+        {hero?.spanne && hero.jahre.length >= 2 && (hero.id.endsWith('.wachstum') || hero.id.startsWith('km.')) && heroEin > 0 ? (
           <g opacity={heroEin}>
             <line
               x1={geo.x(Math.min(...hero.jahre))}

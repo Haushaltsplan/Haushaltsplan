@@ -155,6 +155,47 @@ function spreadPunkte(linie: LongformJahreslinie, wacc: number): LongformJahresp
   }))
 }
 
+const KM: Record<string, { reihe: string; linie: string | null; fenster: number | null; caption: string; farbig: LongformJahresGross['farbig'] }> = {
+  'km.rev_cagr_5y': { reihe: 'umsatz', linie: null, fenster: 6, caption: '5-year growth', farbig: 'vorzeichen' },
+  'km.rev_cagr_3y': { reihe: 'umsatz', linie: null, fenster: 4, caption: '3-year growth', farbig: 'vorzeichen' },
+  'km.ltm_brutto': { reihe: 'marge', linie: 'brutto', fenster: null, caption: 'Gross · last twelve months', farbig: 'vorzeichen' },
+  'km.ltm_ebit': { reihe: 'marge', linie: 'ebit', fenster: null, caption: 'Operating · last twelve months', farbig: 'vorzeichen' },
+  'km.ltm_roic': { reihe: 'roic', linie: null, fenster: null, caption: 'Last twelve months', farbig: 'vorzeichen' },
+  'km.roic_5y_avg': { reihe: 'roic', linie: null, fenster: 5, caption: '5-year average', farbig: 'vorzeichen' },
+  'km.incremental_roic': { reihe: 'roic', linie: null, fenster: null, caption: 'New capital', farbig: 'vorzeichen' },
+  'km.fcf_conversion': { reihe: 'fcf', linie: null, fenster: null, caption: 'FCF conversion', farbig: 'vorzeichen' },
+  'km.brutto_std_10y': { reihe: 'marge', linie: 'brutto', fenster: null, caption: '10-year swing', farbig: 'hell' },
+  'km.net_debt_ebitda': { reihe: 'schulden', linie: null, fenster: null, caption: 'Net debt / EBITDA', farbig: 'hell' },
+  'km.interest_coverage': { reihe: 'schulden', linie: null, fenster: null, caption: 'Interest coverage', farbig: 'hell' },
+  'km.aktien_verwaesserung': { reihe: 'aktien', linie: null, fenster: 6, caption: 'Per year', farbig: 'hell' },
+}
+
+function parseKm(id: string, fakt: ZahlenFakt | undefined, reihe: LongformJahresreihe): ZahlenMarke | null {
+  const ziel = KM[id]
+  const text = fakt?.text?.trim() ?? ''
+  if (!ziel || ziel.reihe !== reihe.id || !text) return null
+  const linie = ziel.linie ? linieNachId(reihe, ziel.linie) : standardLinie(reihe)
+  const fertig = linie ? istPunkte(linie) : []
+  const fenster = ziel.fenster ? fertig.slice(-ziel.fenster) : []
+  const a = fenster[0]
+  const b = fenster.length ? fenster[fenster.length - 1] : null
+  const jahre = a && b ? (a.jahr === b.jahr ? [a.jahr] : [a.jahr, b.jahr]) : []
+  const spanne = jahre.length === 2
+  return marke({
+    id,
+    text,
+    wert: fakt?.wert ?? null,
+    farbig: ziel.farbig,
+    ton: 'zahl',
+    schaetzung: false,
+    jahre,
+    spanne,
+    linieId: linie?.id ?? null,
+    caption: spanne ? `${ziel.caption} · ${jahre[0]}–${jahre[1]}` : ziel.caption,
+    kurz: '',
+  })
+}
+
 function parseEine(id: string, fakt: ZahlenFakt | undefined, reihe: LongformJahresreihe): ZahlenMarke | null {
   if (!id.startsWith('reihe.')) return null
   const body = id.slice('reihe.'.length)
@@ -356,7 +397,7 @@ export function satzZahlen(
   const gesehen = new Set<string>()
   for (const id of faktIds) {
     if (gesehen.has(id)) continue
-    const eine = parseEine(id, fakten[id], reihe)
+    const eine = parseEine(id, fakten[id], reihe) ?? parseKm(id, fakten[id], reihe)
     if (!eine) continue
     gesehen.add(id)
     roh.push(eine)
