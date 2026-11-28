@@ -113,7 +113,7 @@ const SCORE_TITEL: Record<string, string> = {
 const SCORE_REIHE = 1760
 const SCORE_LUECKE = 28
 
-function scoreFokus(satz: { visual: { fokus: string | null }; faktIds: string[] } | undefined): string {
+function scoreFokus(satz: { visual: { fokus?: string | null }; faktIds: string[] } | undefined): string {
   return (satz?.visual.fokus ?? satz?.faktIds.find((id) => id.startsWith('sc.'))?.slice(3) ?? '').toLowerCase()
 }
 
