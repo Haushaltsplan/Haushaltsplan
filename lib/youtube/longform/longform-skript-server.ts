@@ -391,17 +391,17 @@ function zahlenAuftrag(fb: LongformFaktenblatt): string {
   const nr = () => String(schritte.length + 1)
   if (hat('umsatz')) {
     schritte.push(
-      `${nr()}. fokus umsatz. Revenue bars. Several sentences, every one with this same fokus. First year is reihe.umsatz.anfang_jahr, last finished year is reihe.umsatz.ende_jahr, the big number is reihe.umsatz. Low and high are reihe.umsatz.tief and reihe.umsatz.hoch. A fact whose label says estimate (reihe.umsatz.e.<year>) must be spoken as an estimate. If that fact is missing, do not mention a forecast.`,
+      `${nr()}. fokus umsatz. Revenue bars. Several sentences, every one with this same fokus. First year is reihe.umsatz.anfang_jahr, last finished year is reihe.umsatz.ende_jahr, the big number is reihe.umsatz. Low and high are reihe.umsatz.tief and reihe.umsatz.hoch. Mention reihe.umsatz.wachstum only in a sentence that says that average annual growth, with no other number. If you do not say it, leave the fact out. A fact whose label says estimate (reihe.umsatz.e.<year>) must be spoken as an estimate. If that fact is missing, do not mention a forecast.`,
     )
   }
   if (hat('gewinn')) {
     schritte.push(
-      `${nr()}. fokus gewinn. Net income bars, same rules. Negative years are losses. Facts: reihe.gewinn, reihe.gewinn.anfang, reihe.gewinn.anfang_jahr, reihe.gewinn.ende_jahr, reihe.gewinn.tief, reihe.gewinn.hoch, and reihe.gewinn.e.<year> only when that estimate exists.`,
+      `${nr()}. fokus gewinn. Net income bars, same rules. Negative years are losses. Facts: reihe.gewinn, reihe.gewinn.anfang, reihe.gewinn.anfang_jahr, reihe.gewinn.ende_jahr, reihe.gewinn.tief, reihe.gewinn.hoch, and reihe.gewinn.e.<year> only when that estimate exists. Mention reihe.gewinn.wachstum only in a sentence that says that average annual growth, with no other number. If you do not say it, leave the fact out.`,
     )
   }
   if (hat('fcf')) {
     schritte.push(
-      `${nr()}. fokus fcf. Free cash flow bars. Say that this is what is left after the factories. Same estimate rule, ids reihe.fcf and reihe.fcf.e.<year>.`,
+      `${nr()}. fokus fcf. Free cash flow bars. Say that this is what is left after the factories. Same estimate rule, ids reihe.fcf and reihe.fcf.e.<year>. Mention reihe.fcf.wachstum only in a sentence that says that average annual growth, with no other number. If you do not say it, leave the fact out.`,
     )
   }
   if (hat('marge')) {
@@ -416,7 +416,7 @@ function zahlenAuftrag(fb: LongformFaktenblatt): string {
   }
   if (hat('capex')) {
     schritte.push(
-      `${nr()}. fokus capex. Capital-spending bars. The height is the amount spent. Do not call a bar a loss because the cash left the company. Same estimate rule, ids reihe.capex and reihe.capex.e.<year>.`,
+      `${nr()}. fokus capex. Capital-spending bars. The height is the amount spent. Do not call a bar a loss because the cash left the company. Same estimate rule, ids reihe.capex and reihe.capex.e.<year>. Mention reihe.capex.wachstum only in a sentence that says that average annual growth, with no other number. If you do not say it, leave the fact out.`,
     )
   }
   if (hat('schulden')) {

@@ -282,6 +282,11 @@ export function LongJahresChart(sp: SzeneProps) {
     if (!dimmen) return 'ruhig'
     if (fokusJahre.includes(jahr)) return 'an'
     if (mit.includes(jahr)) return 'mit'
+    if (hero?.id.endsWith('.wachstum') && fokusJahre.length >= 2) {
+      const lo = Math.min(...fokusJahre)
+      const hi = Math.max(...fokusJahre)
+      if (jahr > lo && jahr < hi) return 'mit'
+    }
     return 'aus'
   }
   const punktAlpha = (jahr: number, linieId: string) => {
@@ -347,6 +352,20 @@ export function LongJahresChart(sp: SzeneProps) {
         <text x={X0} y={Y0 - 16} fill={ACHSE} fontFamily={LONG_MONO} fontSize={14} letterSpacing={1.5}>
           {einheitTitel(reihe.einheit)}
         </text>
+        {hero?.id.endsWith('.wachstum') && hero.jahre.length >= 2 && heroEin > 0 ? (
+          <g opacity={heroEin}>
+            <line
+              x1={geo.x(Math.min(...hero.jahre))}
+              x2={geo.x(Math.max(...hero.jahre))}
+              y1={Y0 - 36}
+              y2={Y0 - 36}
+              stroke={markeFarbe(hero)}
+              strokeWidth={2}
+            />
+            <line x1={geo.x(Math.min(...hero.jahre))} x2={geo.x(Math.min(...hero.jahre))} y1={Y0 - 36} y2={Y0 - 22} stroke={markeFarbe(hero)} strokeWidth={2} />
+            <line x1={geo.x(Math.max(...hero.jahre))} x2={geo.x(Math.max(...hero.jahre))} y1={Y0 - 36} y2={Y0 - 22} stroke={markeFarbe(hero)} strokeWidth={2} />
+          </g>
+        ) : null}
         {geo.ticks.map((t) => (
           <g key={t}>
             <line x1={X0} x2={X1} y1={geo.y(t)} y2={geo.y(t)} stroke={t === 0 ? 'rgba(243, 241, 236, 0.28)' : LONG_LINIE} strokeWidth={t === 0 ? 1.5 : 1} />

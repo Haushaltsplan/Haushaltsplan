@@ -180,6 +180,29 @@ function parseEine(id: string, fakt: ZahlenFakt | undefined, reihe: LongformJahr
     })
   }
 
+  const wachsLinie = /^(?:(.+)\.)?wachstum$/.exec(rest)
+  if (wachsLinie) {
+    const linie = wachsLinie[1] ? linieNachId(reihe, wachsLinie[1]) : standardLinie(reihe)
+    const fertig = linie ? istPunkte(linie) : []
+    const erster = fertig[0]
+    const letzter = letzte(fertig)
+    if (!erster || !letzter || !text) return null
+    const name = linieName(linie?.id ?? null, mehrere)
+    return marke({
+      id,
+      text,
+      wert,
+      farbig: 'vorzeichen',
+      ton: 'zahl',
+      schaetzung: false,
+      jahre: [erster.jahr, letzter.jahr],
+      spanne: true,
+      linieId: linie?.id ?? null,
+      caption: name ? `${name} · average growth · ${erster.jahr}–${letzter.jahr}` : `Average growth · ${erster.jahr}–${letzter.jahr}`,
+      kurz: '',
+    })
+  }
+
   if (rest === 'aenderung') {
     const linie = standardLinie(reihe)
     const fertig = linie ? istPunkte(linie) : []

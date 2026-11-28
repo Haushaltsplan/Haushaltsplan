@@ -357,6 +357,15 @@ function geldText(mioWert: number): { wert: number; text: string } {
   return { wert: mioWert * 1_000_000, text: usd(mioWert * 1_000_000) }
 }
 
+/** Jährliche Rate vom ersten zum letzten abgeschlossenen Jahr. Beide Enden müssen positiv sein. */
+function jahresWachstum(erster: Punkt, letzter: Punkt): number | null {
+  const spanne = letzter.jahr - erster.jahr
+  if (spanne < 1 || erster.wert <= 0 || letzter.wert <= 0) return null
+  const rate = (Math.pow(letzter.wert / erster.wert, 1 / spanne) - 1) * 100
+  if (!Number.isFinite(rate)) return null
+  return Math.abs(rate) >= 100 ? Math.round(rate) : Math.round(rate * 10) / 10
+}
+
 function faktenEinerLinie(
   prefix: string,
   name: string,
@@ -392,6 +401,19 @@ function faktenEinerLinie(
   push(`${prefix}.hoch`, `${name}, high, ${hoch.jahr}`, hoch)
   for (const e of punkte.filter((p) => p.schaetzung)) {
     push(`${prefix}.e.${e.jahr}`, `${name}, ${e.jahr} estimate`, e)
+  }
+  if (einheit === 'usd') {
+    const rate = jahresWachstum(erster, letzter)
+    if (rate != null) {
+      out.push({
+        id: `${prefix}.wachstum`,
+        label: `${name}, average annual growth from ${erster.jahr} to ${letzter.jahr}. Compound rate of the finished years only, estimates excluded.`,
+        wert: rate,
+        text: pct(rate, { vorzeichen: true }),
+        einheit: 'pct',
+        quelle,
+      })
+    }
   }
   return out
 }
